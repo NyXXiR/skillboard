@@ -1,0 +1,32 @@
+{
+  "name": "agent-skillboard",
+  "version": "0.1.0",
+  "description": "Workflow-scoped control plane for AI agent skills.",
+  "type": "module",
+  "files": [
+    "bin",
+    "src",
+    "docs",
+    "examples",
+    "profiles",
+    "README.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "skillboard": "bin/skillboard.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check bin/skillboard.mjs && node --test"
+  },
+  "dependencies": {
+    "yaml": "^2.8.1"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

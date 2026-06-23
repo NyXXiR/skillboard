@@ -1,0 +1,193 @@
+version: 1
+
+defaults:
+  invocation_policy: deny-by-default
+  allow_model_invocation: false
+  require_explicit_workflow: true
+
+skills:
+  meerkat.requirement-intake:
+    path: requirement-intake
+    status: active
+    invocation: router-only
+    exposure: exported
+    category: requirements
+    canonical_for:
+      - requirement-clarification
+    conflicts_with:
+      - matt.grill-me
+
+  matt.tdd:
+    path: tdd
+    status: active
+    invocation: workflow-auto
+    exposure: exported
+    category: engineering
+
+  matt.grill-me:
+    path: grill-me
+    status: vendor
+    invocation: manual-only
+    exposure: exported
+    category: requirements
+    replaced_by: meerkat.requirement-intake
+
+  matt.grill-with-docs:
+    path: grill-with-docs
+    status: quarantined
+    invocation: blocked
+    exposure: exported
+    category: requirements
+    replaced_by: meerkat.requirement-intake
+
+  meerkat.test-first-implementation:
+    path: vendor/meerkat-test-first-implementation
+    status: candidate
+    invocation: workflow-auto
+    exposure: exported
+    category: engineering
+
+  meerkat.codex-ready-task:
+    path: vendor/meerkat-codex-ready-task
+    status: candidate
+    invocation: router-only
+    exposure: exported
+    category: handoff
+
+  lazycodex.ulw-plan:
+    path: vendor/lazycodex-ulw-plan
+    status: vendor
+    invocation: manual-only
+    exposure: unit-managed
+    category: handoff
+    owner_install_unit: lazycodex.omo
+
+  user.workflow-router:
+    path: user/workflow-router
+    status: active
+    invocation: global-auto
+    exposure: global-meta
+    category: meta
+
+capabilities:
+  requirement-clarification:
+    canonical: meerkat.requirement-intake
+    alternatives:
+      - matt.grill-me
+      - matt.grill-with-docs
+    default_policy: router-only
+
+  test-first-implementation:
+    canonical: matt.tdd
+    alternatives:
+      - meerkat.test-first-implementation
+    default_policy: workflow-auto
+
+  codex-handoff:
+    canonical: meerkat.codex-ready-task
+    alternatives:
+      - lazycodex.ulw-plan
+    default_policy: router-only
+
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - codex-night-workflow
+
+  claude:
+    status: configured
+    workflows:
+      - requirement-review
+
+  lazycodex:
+    status: fallback
+    workflows:
+      - large-refactor-workflow
+    commands:
+      - $ulw-plan
+      - $start-work
+      - $ulw-loop
+
+install_units:
+  lazycodex.omo:
+    kind: harness
+    source: npx lazycodex-ai install
+    scope: user-global
+    manifest_path: ~/.codex/plugins/cache/sisyphuslabs/omo/plugin.json
+    cache_path: ~/.codex/plugins/cache/sisyphuslabs/omo
+    provided_components:
+      - skills
+      - commands
+      - mcp-server
+      - hook
+    components:
+      skills:
+        - lazycodex.ulw-plan
+      commands:
+        - $ulw-plan
+        - $start-work
+        - $ulw-loop
+      hooks:
+        - post-tool-use
+      mcp_servers:
+        - omo-docs
+    modified_config_files:
+      - ~/.codex/config.toml
+      - ~/.codex/plugins/cache
+      - ~/.local/bin
+    auto_update: false
+    enabled: true
+    workflow_dependencies:
+      - large-refactor-workflow
+    permission_risk: high
+    rollback: manual
+
+workflows:
+  codex-night-workflow:
+    harness: codex
+    active_skills:
+      - meerkat.requirement-intake
+      - matt.tdd
+    blocked_skills:
+      - matt.grill-me
+    required_outputs:
+      - diff_summary
+      - test_result_or_reason
+      - risk_notes
+    required_capabilities:
+      test-first-implementation:
+        preferred: matt.tdd
+        fallback:
+          - meerkat.test-first-implementation
+        policy: workflow-auto
+
+  requirement-review:
+    harness: claude
+    active_skills:
+      - meerkat.requirement-intake
+    blocked_skills: []
+    required_outputs:
+      - clarified_requirements
+      - open_questions
+    required_capabilities:
+      requirement-clarification:
+        preferred: meerkat.requirement-intake
+        fallback:
+          - matt.grill-with-docs
+        policy: router-only
+
+  large-refactor-workflow:
+    harness: lazycodex
+    active_skills:
+      - lazycodex.ulw-plan
+    blocked_skills: []
+    required_outputs:
+      - migration_plan
+      - verification_summary
+    required_capabilities:
+      codex-handoff:
+        preferred: lazycodex.ulw-plan
+        fallback:
+          - meerkat.codex-ready-task
+        policy: manual-only

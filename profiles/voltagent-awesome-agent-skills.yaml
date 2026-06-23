@@ -1,0 +1,18 @@
+id: github.voltagent.awesome-agent-skills
+source: VoltAgent/awesome-agent-skills
+kind: marketplace
+namespace: voltagent
+target_path_prefix: voltagent
+scope: cache
+default_status: vendor
+default_invocation: manual-only
+default_exposure: exported
+default_category: uncategorized
+provided_components:
+  - marketplace
+  - skills
+skill_paths:
+  - "skills/*/SKILL.md"
+  - "*/SKILL.md"
+permission_risk: low
+rollback: remove cache

@@ -1,0 +1,222 @@
+import { readdir, readFile } from "node:fs/promises";
+import { basename, dirname, join, relative, resolve } from "node:path";
+import YAML from "yaml";
+import { readString, requireRecord } from "./config-helpers.mjs";
+import { loadSourceProfile } from "./source-profile-loader.mjs";
+
+export { loadSourceProfile };
+
+export async function importSource(options) {
+  const sourceRoot = resolve(options.sourceRoot);
+  const profile = options.profile;
+  const files = await findSkillFiles(sourceRoot);
+  const matchedFiles = files
+    .map((file) => ({
+      file,
+      relativeFile: relative(sourceRoot, file).replaceAll("\\", "/")
+    }))
+    .filter((entry) => matchesAnyProfilePattern(entry.relativeFile, profile.skillPaths))
+    .sort((left, right) => left.relativeFile.localeCompare(right.relativeFile));
+  const skills = [];
+  const warnings = [];
+
+  for (const entry of matchedFiles) {
+    const frontmatter = parseSkillFrontmatter(await readFile(entry.file, "utf8"));
+    const slug = skillSlug(entry.relativeFile, frontmatter, profile);
+    const id = skillId(slug, frontmatter, profile);
+    const path = skillTargetPath(slug, profile);
+    skills.push({
+      id,
+      path,
+      status: profile.defaultStatus,
+      invocation: safeDefaultInvocation(profile.defaultInvocation),
+      exposure: profile.defaultExposure,
+      category: profile.defaultCategory,
+      ownerInstallUnit: profile.id,
+      description: frontmatter.description
+    });
+  }
+
+  if (skills.length === 0) {
+    warnings.push(`No SKILL.md files matched profile ${profile.id} under ${sourceRoot}`);
+  }
+
+  return {
+    profile,
+    sourceRoot,
+    skills,
+    installUnit: {
+      id: profile.id,
+      kind: profile.kind,
+      source: profile.source || sourceRoot,
+      scope: profile.scope,
+      manifestPath: profile.manifestPath,
+      cachePath: profile.cachePath,
+      providedComponents: profile.providedComponents,
+      components: {
+        skills: skills.map((skill) => skill.id),
+        commands: profile.components.commands,
+        hooks: profile.components.hooks,
+        mcpServers: profile.components.mcpServers
+      },
+      modifiedConfigFiles: profile.modifiedConfigFiles,
+      autoUpdate: profile.autoUpdate,
+      enabled: profile.enabled,
+      workflowDependencies: profile.workflowDependencies,
+      permissionRisk: profile.permissionRisk,
+      rollback: profile.rollback
+    },
+    warnings
+  };
+}
+
+export function renderImportFragment(imported) {
+  return YAML.stringify(importFragment(imported));
+}
+
+export function mergeImportFragment(configText, imported, options = {}) {
+  const config = requireRecord(YAML.parse(configText) ?? {}, "config root");
+  const fragment = importFragment(imported);
+  const replace = options.replace === true;
+  const skillIds = Object.keys(fragment.skills);
+  const unitIds = Object.keys(fragment.install_units);
+  const existingSkills = requireRecord(config.skills ?? {}, "skills");
+  const existingUnits = requireRecord(config.install_units ?? {}, "install_units");
+  const duplicateSkills = skillIds.filter((id) => existingSkills[id] !== undefined);
+  const duplicateUnits = unitIds.filter((id) => existingUnits[id] !== undefined);
+
+  if (!replace && (duplicateSkills.length > 0 || duplicateUnits.length > 0)) {
+    throw new Error(duplicateMessage(duplicateSkills, duplicateUnits));
+  }
+
+  config.skills = { ...existingSkills, ...fragment.skills };
+  config.install_units = { ...existingUnits, ...fragment.install_units };
+  return {
+    text: YAML.stringify(config),
+    addedSkills: skillIds,
+    addedInstallUnits: unitIds,
+    replacedSkills: duplicateSkills,
+    replacedInstallUnits: duplicateUnits
+  };
+}
+
+function importFragment(imported) {
+  const skills = {};
+  for (const skill of imported.skills) {
+    skills[skill.id] = {
+      path: skill.path,
+      status: skill.status,
+      invocation: skill.invocation,
+      exposure: skill.exposure,
+      category: skill.category,
+      owner_install_unit: skill.ownerInstallUnit
+    };
+  }
+  const unit = imported.installUnit;
+  return {
+    skills,
+    install_units: {
+      [unit.id]: {
+        kind: unit.kind,
+        source: unit.source,
+        scope: unit.scope,
+        manifest_path: unit.manifestPath,
+        cache_path: unit.cachePath,
+        provided_components: unit.providedComponents,
+        components: {
+          skills: unit.components.skills,
+          commands: unit.components.commands,
+          hooks: unit.components.hooks,
+          mcp_servers: unit.components.mcpServers
+        },
+        modified_config_files: unit.modifiedConfigFiles,
+        auto_update: unit.autoUpdate,
+        enabled: unit.enabled,
+        workflow_dependencies: unit.workflowDependencies,
+        permission_risk: unit.permissionRisk,
+        rollback: unit.rollback
+      }
+    }
+  };
+}
+
+function duplicateMessage(skillIds, unitIds) {
+  const parts = [];
+  if (skillIds.length > 0) {
+    parts.push(`skills already exist: ${skillIds.join(", ")}`);
+  }
+  if (unitIds.length > 0) {
+    parts.push(`install units already exist: ${unitIds.join(", ")}`);
+  }
+  return `${parts.join("; ")}. Re-run with --replace to overwrite.`;
+}
+
+async function findSkillFiles(root) {
+  const files = [];
+  const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await findSkillFiles(path)));
+    } else if (entry.isFile() && entry.name === "SKILL.md") {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+function parseSkillFrontmatter(text) {
+  const match = /^---[ \t]*\r?\n(?<body>[\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(text);
+  if (match?.groups === undefined) {
+    throw new Error("SKILL.md is missing YAML frontmatter");
+  }
+  const raw = requireRecord(YAML.parse(match.groups.body), "SKILL.md frontmatter");
+  return {
+    name: readString(raw, "name", ""),
+    description: readString(raw, "description", "")
+  };
+}
+
+function matchesAnyProfilePattern(file, patterns) {
+  const activePatterns = patterns.length === 0 ? ["**/SKILL.md"] : patterns;
+  return activePatterns.some((pattern) => patternToRegExp(pattern).test(file));
+}
+
+function patternToRegExp(pattern) {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replaceAll("**", "\0")
+    .replaceAll("*", "[^/]*")
+    .replaceAll("\0", ".*");
+  return new RegExp(`^${escaped}$`);
+}
+
+function skillSlug(relativeFile, frontmatter, profile) {
+  if (profile.idStrategy === "frontmatter-name" && frontmatter.name.length > 0) {
+    return normalizeSlug(frontmatter.name.split(".").at(-1));
+  }
+  return normalizeSlug(basename(dirname(relativeFile)));
+}
+
+function skillId(slug, frontmatter, profile) {
+  if (profile.idStrategy === "frontmatter-name" && frontmatter.name.includes(".")) {
+    return frontmatter.name;
+  }
+  return profile.namespace.length === 0 ? slug : `${profile.namespace}.${slug}`;
+}
+
+function skillTargetPath(slug, profile) {
+  return profile.targetPathPrefix.length === 0 ? slug : `${profile.targetPathPrefix}/${slug}`;
+}
+
+function normalizeSlug(value) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function safeDefaultInvocation(invocation) {
+  return invocation === "global-auto" ? "blocked" : invocation;
+}

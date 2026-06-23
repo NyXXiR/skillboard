@@ -1,0 +1,17 @@
+id: github.anthropics.skills
+source: anthropics/skills
+kind: marketplace
+namespace: anthropic
+target_path_prefix: anthropic
+scope: project
+default_status: vendor
+default_invocation: manual-only
+default_exposure: exported
+default_category: uncategorized
+provided_components:
+  - skills
+skill_paths:
+  - "skills/*/SKILL.md"
+  - "*/SKILL.md"
+permission_risk: medium
+rollback: plugin uninstall

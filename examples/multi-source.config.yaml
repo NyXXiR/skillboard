@@ -1,0 +1,265 @@
+version: 1
+defaults:
+  invocation_policy: deny-by-default
+  allow_model_invocation: false
+  require_explicit_workflow: true
+
+skills:
+  private.workflow-router:
+    path: private/workflow-router
+    status: active
+    invocation: global-auto
+    exposure: global-meta
+    category: meta
+    owner_install_unit: local.agent-skills-private
+
+  private.tdd-work-continuity:
+    path: private/tdd-work-continuity
+    status: active
+    invocation: router-only
+    exposure: exported
+    category: engineering
+    owner_install_unit: local.agent-skills-private
+
+  matt.grill-me:
+    path: matt/grill-me
+    status: vendor
+    invocation: manual-only
+    exposure: exported
+    category: requirements
+    owner_install_unit: github.mattpocock.skills
+    replaced_by: private.workflow-router
+
+  matt.tdd:
+    path: matt/tdd
+    status: active
+    invocation: workflow-auto
+    exposure: exported
+    category: engineering
+    owner_install_unit: github.mattpocock.skills
+
+  omo.ulw-plan:
+    path: omo/ulw-plan
+    status: vendor
+    invocation: manual-only
+    exposure: unit-managed
+    category: handoff
+    owner_install_unit: github.code-yeongyu.oh-my-openagent
+
+  omo.review-work:
+    path: omo/review-work
+    status: vendor
+    invocation: manual-only
+    exposure: unit-managed
+    category: review
+    owner_install_unit: github.code-yeongyu.oh-my-openagent
+
+  anthropic.docx:
+    path: anthropic/docx
+    status: vendor
+    invocation: manual-only
+    exposure: exported
+    category: documents
+    owner_install_unit: github.anthropics.skills
+
+  anthropic.skill-creator:
+    path: anthropic/skill-creator
+    status: vendor
+    invocation: manual-only
+    exposure: exported
+    category: meta
+    owner_install_unit: github.anthropics.skills
+
+  wshobson.python-testing:
+    path: wshobson/python-testing
+    status: candidate
+    invocation: router-only
+    exposure: exported
+    category: engineering
+    owner_install_unit: github.wshobson.agents
+
+  wshobson.security-review:
+    path: wshobson/security-review
+    status: candidate
+    invocation: router-only
+    exposure: exported
+    category: security
+    owner_install_unit: github.wshobson.agents
+
+capabilities:
+  workflow-routing:
+    canonical: private.workflow-router
+    alternatives: []
+    default_policy: global-auto
+
+  test-first-implementation:
+    canonical: matt.tdd
+    alternatives:
+      - private.tdd-work-continuity
+      - wshobson.python-testing
+    default_policy: workflow-auto
+
+  implementation-review:
+    canonical: omo.review-work
+    alternatives:
+      - wshobson.security-review
+    default_policy: router-only
+
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - codex-night-workflow
+      - skill-discovery-workflow
+
+  lazycodex:
+    status: fallback
+    workflows:
+      - large-refactor-workflow
+    commands:
+      - $ulw-plan
+      - $start-work
+
+  claude-code:
+    status: configured
+    workflows:
+      - document-workflow
+
+workflows:
+  codex-night-workflow:
+    harness: codex
+    active_skills:
+      - matt.tdd
+      - private.tdd-work-continuity
+    blocked_skills:
+      - matt.grill-me
+    required_capabilities:
+      test-first-implementation:
+        preferred: matt.tdd
+        fallback:
+          - private.tdd-work-continuity
+        policy: workflow-auto
+
+  large-refactor-workflow:
+    harness: lazycodex
+    active_skills:
+      - omo.ulw-plan
+      - omo.review-work
+      - wshobson.security-review
+    required_capabilities:
+      implementation-review:
+        preferred: omo.review-work
+        fallback:
+          - wshobson.security-review
+        policy: router-only
+
+  document-workflow:
+    harness: claude-code
+    active_skills:
+      - anthropic.docx
+
+  skill-discovery-workflow:
+    harness: codex
+    active_skills:
+      - private.workflow-router
+
+install_units:
+  local.agent-skills-private:
+    kind: skill
+    source: /mnt/d/workspace/agent-skills-private
+    scope: user-global
+    provided_components:
+      - skills
+    components:
+      skills:
+        - private.workflow-router
+        - private.tdd-work-continuity
+    enabled: true
+    permission_risk: low
+    rollback: git
+
+  github.mattpocock.skills:
+    kind: marketplace
+    source: npx skills@latest add mattpocock/skills
+    scope: user-global
+    provided_components:
+      - skills
+    components:
+      skills:
+        - matt.grill-me
+        - matt.tdd
+    enabled: true
+    permission_risk: medium
+    rollback: reinstall
+
+  github.code-yeongyu.oh-my-openagent:
+    kind: harness
+    source: npx lazycodex-ai install
+    scope: user-global
+    provided_components:
+      - skills
+      - commands
+      - hooks
+      - mcp-server
+    components:
+      skills:
+        - omo.ulw-plan
+        - omo.review-work
+      commands:
+        - $ulw-plan
+        - $start-work
+      hooks:
+        - post-tool-use
+      mcp_servers:
+        - omo-docs
+    modified_config_files:
+      - ~/.codex/config.toml
+    enabled: true
+    workflow_dependencies:
+      - large-refactor-workflow
+    permission_risk: high
+    rollback: manual
+
+  github.anthropics.skills:
+    kind: marketplace
+    source: /plugin marketplace add anthropics/skills
+    scope: project
+    provided_components:
+      - skills
+    components:
+      skills:
+        - anthropic.docx
+        - anthropic.skill-creator
+    enabled: true
+    permission_risk: medium
+    rollback: plugin uninstall
+
+  github.wshobson.agents:
+    kind: marketplace
+    source: npx codex-marketplace add wshobson/agents
+    scope: project
+    provided_components:
+      - skills
+      - agents
+      - commands
+    components:
+      skills:
+        - wshobson.python-testing
+        - wshobson.security-review
+      commands:
+        - /plugin install python-development
+    enabled: true
+    permission_risk: medium
+    rollback: plugin uninstall
+
+  github.voltagent.awesome-agent-skills:
+    kind: marketplace
+    source: git clone https://github.com/VoltAgent/awesome-agent-skills
+    scope: cache
+    provided_components:
+      - marketplace
+    enabled: true
+    workflow_dependencies:
+      - skill-discovery-workflow
+    permission_risk: low
+    rollback: remove cache

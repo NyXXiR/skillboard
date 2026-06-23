@@ -1,0 +1,8 @@
+node_modules/
+coverage/
+dist/
+.DS_Store
+*.log
+.agent-work/
+.ultrawork/
+.ultrawork/evidence/*.tmp

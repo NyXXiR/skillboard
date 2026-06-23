@@ -1,0 +1,19 @@
+id: github.wshobson.agents
+source: wshobson/agents
+kind: marketplace
+namespace: wshobson
+target_path_prefix: wshobson
+scope: project
+default_status: candidate
+default_invocation: router-only
+default_exposure: exported
+default_category: uncategorized
+provided_components:
+  - skills
+  - agents
+  - commands
+skill_paths:
+  - "skills/*/SKILL.md"
+  - "*/SKILL.md"
+permission_risk: medium
+rollback: plugin uninstall

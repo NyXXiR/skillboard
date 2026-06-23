@@ -1,0 +1,32 @@
+id: github.code-yeongyu.oh-my-openagent
+source: code-yeongyu/oh-my-openagent
+kind: harness
+namespace: omo
+target_path_prefix: omo
+scope: user-global
+default_status: vendor
+default_invocation: manual-only
+default_exposure: unit-managed
+default_category: uncategorized
+provided_components:
+  - skills
+  - commands
+  - hooks
+  - mcp-server
+skill_paths:
+  - "skills/*/SKILL.md"
+  - "plugins/*/skills/*/SKILL.md"
+components:
+  commands:
+    - $ulw-plan
+    - $start-work
+  hooks:
+    - post-tool-use
+  mcp_servers:
+    - omo-docs
+modified_config_files:
+  - ~/.codex/config.toml
+auto_update: false
+enabled: true
+permission_risk: high
+rollback: manual
