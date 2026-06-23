@@ -55,6 +55,7 @@ test("scan records installed skill metadata from SKILL.md", async () => {
 test("reconcile quarantines newly discovered skills and maps known capabilities", async () => {
   await withFixture(async ({ configPath, skillsRoot }) => {
     const workspace = await loadWorkspace({ configPath, skillsRoot });
+    workspace.skills = workspace.skills.filter((skill) => skill.id !== "matt.grill-with-docs");
     const plan = reconcileWorkspace(workspace, { actualHarnesses: ["codex", "lazycodex"] });
 
     assert.deepEqual(plan.autoActions, [

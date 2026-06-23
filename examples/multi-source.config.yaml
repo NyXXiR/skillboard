@@ -8,7 +8,7 @@ skills:
   private.workflow-router:
     path: private/workflow-router
     status: active
-    invocation: global-auto
+    invocation: router-only
     exposure: global-meta
     category: meta
     owner_install_unit: local.agent-skills-private
@@ -90,7 +90,7 @@ capabilities:
   workflow-routing:
     canonical: private.workflow-router
     alternatives: []
-    default_policy: global-auto
+    default_policy: router-only
 
   test-first-implementation:
     canonical: matt.tdd
@@ -166,7 +166,7 @@ workflows:
 install_units:
   local.agent-skills-private:
     kind: skill
-    source: /mnt/d/workspace/agent-skills-private
+    source: ./examples/multi-source-skills/private
     scope: user-global
     provided_components:
       - skills
@@ -175,6 +175,7 @@ install_units:
         - private.workflow-router
         - private.tdd-work-continuity
     enabled: true
+    trust_level: trusted
     permission_risk: low
     rollback: git
 
@@ -189,6 +190,7 @@ install_units:
         - matt.grill-me
         - matt.tdd
     enabled: true
+    trust_level: reviewed
     permission_risk: medium
     rollback: reinstall
 
@@ -215,6 +217,7 @@ install_units:
     modified_config_files:
       - ~/.codex/config.toml
     enabled: true
+    trust_level: reviewed
     workflow_dependencies:
       - large-refactor-workflow
     permission_risk: high
@@ -231,6 +234,7 @@ install_units:
         - anthropic.docx
         - anthropic.skill-creator
     enabled: true
+    trust_level: reviewed
     permission_risk: medium
     rollback: plugin uninstall
 
@@ -249,6 +253,7 @@ install_units:
       commands:
         - /plugin install python-development
     enabled: true
+    trust_level: reviewed
     permission_risk: medium
     rollback: plugin uninstall
 
@@ -259,6 +264,7 @@ install_units:
     provided_components:
       - marketplace
     enabled: true
+    trust_level: unreviewed
     workflow_dependencies:
       - skill-discovery-workflow
     permission_risk: low

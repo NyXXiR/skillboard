@@ -3,6 +3,17 @@ import { test } from "node:test";
 import { checkPolicy, loadWorkspace } from "../src/index.mjs";
 import { withFixture } from "./fixtures.mjs";
 
+test("policy check passes for the baseline fixture", async () => {
+  await withFixture(async ({ configPath, skillsRoot }) => {
+    const workspace = await loadWorkspace({ configPath, skillsRoot });
+    const result = checkPolicy(workspace);
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.errors, []);
+    assert.deepEqual(result.warnings, []);
+  });
+});
+
 test("policy check rejects workflow references to undeclared skills", async () => {
   await withFixture(async ({ configPath, skillsRoot }) => {
     const workspace = await loadWorkspace({ configPath, skillsRoot });
@@ -18,12 +29,25 @@ test("policy check rejects undeclared capability, harness, and install-unit work
   await withFixture(async ({ configPath, skillsRoot }) => {
     const workspace = await loadWorkspace({ configPath, skillsRoot });
     workspace.capabilities[0].alternatives.push("missing.skill");
+    workspace.workflows[0].requiredCapabilities.push({
+      name: "missing-capability",
+      preferred: "matt.tdd",
+      fallback: [],
+      policy: "workflow-auto"
+    });
     workspace.workflows[0].requiredCapabilities[0].fallback.push("missing.fallback");
     workspace.workflows[0].harness = "missing-harness";
     workspace.harnesses[0].workflows.push("missing-workflow");
     workspace.installUnits.push({
       id: "bad.bundle",
       kind: "plugin",
+      sourceClass: undefined,
+      priority: undefined,
+      trustLevel: "trusted",
+      sourceDigest: undefined,
+      signature: undefined,
+      publicKey: undefined,
+      verifiedAt: undefined,
       source: "test",
       scope: "project",
       manifestPath: "",
@@ -54,6 +78,7 @@ test("policy check rejects undeclared capability, harness, and install-unit work
       errors,
       /Capability requirement requirement-clarification references undeclared alternative skill: missing\.skill/
     );
+    assert.match(errors, /Workflow codex-night-workflow references undeclared required capability: missing-capability/);
     assert.match(errors, /Workflow codex-night-workflow references undeclared harness: missing-harness/);
     assert.match(errors, /Harness codex references undeclared workflow: missing-workflow/);
     assert.match(errors, /Install unit bad\.bundle references undeclared workflow dependency: missing-workflow/);
@@ -64,36 +89,6 @@ test("policy allows global invocation only for explicitly global meta skills", a
   await withFixture(async ({ configPath, skillsRoot }) => {
     const workspace = await loadWorkspace({ configPath, skillsRoot });
     workspace.skills.push({
-      id: "matt.grill-with-docs",
-      path: "grill-with-docs",
-      status: "quarantined",
-      invocation: "blocked",
-      exposure: "exported",
-      category: "requirements",
-      canonicalFor: [],
-      conflictsWith: [],
-      replacedBy: "meerkat.requirement-intake"
-    });
-    workspace.skills.push({
-      id: "meerkat.test-first-implementation",
-      path: "vendor/meerkat-test-first-implementation",
-      status: "candidate",
-      invocation: "workflow-auto",
-      exposure: "exported",
-      category: "engineering",
-      canonicalFor: [],
-      conflictsWith: [],
-      replacedBy: undefined
-    });
-    workspace.workflows.push({
-      name: "large-refactor-workflow",
-      harness: "lazycodex",
-      activeSkills: [],
-      blockedSkills: [],
-      requiredOutputs: [],
-      requiredCapabilities: []
-    });
-    workspace.skills.push({
       id: "user.workflow-router",
       path: "user/workflow-router",
       status: "active",
@@ -102,7 +97,8 @@ test("policy allows global invocation only for explicitly global meta skills", a
       category: "meta",
       canonicalFor: [],
       conflictsWith: [],
-      replacedBy: undefined
+      replacedBy: undefined,
+      ownerInstallUnit: undefined
     });
     workspace.skills[0].invocation = "global-auto";
     const result = checkPolicy(workspace);
@@ -117,39 +113,16 @@ test("policy allows global invocation only for explicitly global meta skills", a
 test("policy rejects install-unit component ownership drift", async () => {
   await withFixture(async ({ configPath, skillsRoot }) => {
     const workspace = await loadWorkspace({ configPath, skillsRoot });
-    workspace.skills.push({
-      id: "matt.grill-with-docs",
-      path: "grill-with-docs",
-      status: "quarantined",
-      invocation: "blocked",
-      exposure: "exported",
-      category: "requirements",
-      canonicalFor: [],
-      conflictsWith: [],
-      replacedBy: "meerkat.requirement-intake"
-    });
-    workspace.skills.push({
-      id: "meerkat.test-first-implementation",
-      path: "vendor/meerkat-test-first-implementation",
-      status: "candidate",
-      invocation: "workflow-auto",
-      exposure: "exported",
-      category: "engineering",
-      canonicalFor: [],
-      conflictsWith: [],
-      replacedBy: undefined
-    });
-    workspace.workflows.push({
-      name: "large-refactor-workflow",
-      harness: "lazycodex",
-      activeSkills: [],
-      blockedSkills: [],
-      requiredOutputs: [],
-      requiredCapabilities: []
-    });
     workspace.installUnits.push({
       id: "github.mattpocock.skills",
       kind: "marketplace",
+      sourceClass: undefined,
+      priority: undefined,
+      trustLevel: "reviewed",
+      sourceDigest: undefined,
+      signature: undefined,
+      publicKey: undefined,
+      verifiedAt: undefined,
       source: "npx skills@latest add mattpocock/skills",
       scope: "user-global",
       manifestPath: "",

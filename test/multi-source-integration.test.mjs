@@ -23,5 +23,5 @@ test("workspace consistently manages private skills and five external repositori
   assert.match(dashboard, /github\.voltagent\.awesome-agent-skills/);
   assert.match(dashboard, /`matt\.tdd` — active, workflow-auto, exported, engineering, owner: `github\.mattpocock\.skills`/);
   assert.match(dashboard, /`omo\.ulw-plan` — vendor, manual-only, unit-managed, handoff, owner: `github\.code-yeongyu\.oh-my-openagent`/);
-  assert.match(dashboard, /`private\.workflow-router` — active, global-auto, global-meta, meta, owner: `local\.agent-skills-private`/);
+  assert.match(dashboard, /`private\.workflow-router` — active, router-only, global-meta, meta, owner: `local\.agent-skills-private`/);
 });

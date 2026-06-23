@@ -1,0 +1,8 @@
+{
+  "lsp": {
+    "typescript": {
+      "command": ["./node_modules/.bin/typescript-language-server", "--stdio"],
+      "priority": 100
+    }
+  }
+}

@@ -63,3 +63,132 @@ test("policy rejects install units that list components they do not provide", as
   assert.equal(result.ok, false);
   assert.match(result.errors.join("\n"), /Install unit lazycodex\.omo lists skills but does not include skills in provided_components/);
 });
+
+test("policy rejects non-callable skills in workflow active pools", async () => {
+  const workspace = await loadWorkspace({ configPath: CONFIG, skillsRoot: SKILLS });
+  workspace.workflows.find((workflow) => workflow.name === "codex-night-workflow").activeSkills.push("matt.grill-with-docs");
+
+  const result = checkPolicy(workspace);
+  const errors = result.errors.join("\n");
+
+  assert.equal(result.ok, false);
+  assert.match(errors, /Workflow codex-night-workflow activates non-callable skill matt\.grill-with-docs with status: quarantined/);
+  assert.match(errors, /Workflow codex-night-workflow activates non-callable skill matt\.grill-with-docs with invocation: blocked/);
+});
+
+test("policy rejects non-callable preferred capability skills", async () => {
+  const workspace = await loadWorkspace({ configPath: CONFIG, skillsRoot: SKILLS });
+  const workflow = workspace.workflows.find((candidate) => candidate.name === "requirement-review");
+  workflow.requiredCapabilities[0].preferred = "matt.grill-with-docs";
+
+  const result = checkPolicy(workspace);
+  const errors = result.errors.join("\n");
+
+  assert.equal(result.ok, false);
+  assert.match(errors, /Capability requirement requirement-clarification in workflow requirement-review prefers non-callable skill matt\.grill-with-docs with status: quarantined/);
+  assert.match(errors, /Capability requirement requirement-clarification in workflow requirement-review prefers non-callable skill matt\.grill-with-docs with invocation: blocked/);
+});
+
+test("policy rejects undeclared required capability names", async () => {
+  const workspace = await loadWorkspace({ configPath: CONFIG, skillsRoot: SKILLS });
+  workspace.workflows[0].requiredCapabilities.push({
+    name: "missing-capability",
+    preferred: "matt.tdd",
+    fallback: [],
+    policy: "workflow-auto"
+  });
+
+  const result = checkPolicy(workspace);
+
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /Workflow codex-night-workflow references undeclared required capability: missing-capability/);
+});
+
+test("policy rejects unsupported capability policy values", async () => {
+  const workspace = await loadWorkspace({ configPath: CONFIG, skillsRoot: SKILLS });
+  workspace.capabilities[0].defaultPolicy = "typo-auto";
+  workspace.workflows[0].requiredCapabilities[0].policy = "typo-auto";
+
+  const result = checkPolicy(workspace);
+  const errors = result.errors.join("\n");
+
+  assert.equal(result.ok, false);
+  assert.match(errors, /Capability requirement test-first-implementation in workflow codex-night-workflow has unsupported policy: typo-auto/);
+  assert.match(errors, /Capability requirement-clarification has unsupported default_policy: typo-auto/);
+});
+
+test("policy rejects blocked skills in workflow capability selections", async () => {
+  const workspace = await loadWorkspace({ configPath: CONFIG, skillsRoot: SKILLS });
+  const workflow = workspace.workflows.find((candidate) => candidate.name === "codex-night-workflow");
+  workflow.blockedSkills.push("matt.tdd");
+  workflow.requiredCapabilities[0].fallback.push("matt.grill-me");
+  workflow.blockedSkills.push("matt.grill-me");
+
+  const result = checkPolicy(workspace);
+  const errors = result.errors.join("\n");
+
+  assert.equal(result.ok, false);
+  assert.match(errors, /Capability requirement test-first-implementation in workflow codex-night-workflow prefers blocked skill: matt\.tdd/);
+  assert.match(errors, /Capability requirement test-first-implementation in workflow codex-night-workflow lists blocked fallback skill: matt\.grill-me/);
+});
+
+test("policy rejects non-callable fallback capability skills", async () => {
+  const workspace = await loadWorkspace({ configPath: CONFIG, skillsRoot: SKILLS });
+  const workflow = workspace.workflows.find((candidate) => candidate.name === "requirement-review");
+  workflow.requiredCapabilities[0].fallback.push("matt.grill-with-docs");
+
+  const result = checkPolicy(workspace);
+  const errors = result.errors.join("\n");
+
+  assert.equal(result.ok, false);
+  assert.match(errors, /Capability requirement requirement-clarification in workflow requirement-review lists fallback non-callable skill matt\.grill-with-docs with status: quarantined/);
+  assert.match(errors, /Capability requirement requirement-clarification in workflow requirement-review lists fallback non-callable skill matt\.grill-with-docs with invocation: blocked/);
+});
+
+test("policy rejects spoofed reserved user source class", async () => {
+  const workspace = await loadWorkspace({ configPath: CONFIG, skillsRoot: SKILLS });
+  const unit = workspace.installUnits.find((candidate) => candidate.id === "lazycodex.omo");
+  unit.sourceClass = "user";
+
+  const result = checkPolicy(workspace);
+
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /Install unit lazycodex\.omo uses reserved source_class: user/);
+});
+
+test("policy rejects local-id remote source_class user spoofing", async () => {
+  const workspace = await loadWorkspace({ configPath: CONFIG, skillsRoot: SKILLS });
+  workspace.installUnits.push({
+    id: "local.evil-pack",
+    kind: "skill",
+    sourceClass: "user",
+    priority: undefined,
+    trustLevel: "unreviewed",
+    sourceDigest: undefined,
+    signature: undefined,
+    publicKey: undefined,
+    verifiedAt: undefined,
+    source: "github.com/evil/skills",
+    scope: "project",
+    manifestPath: "",
+    cachePath: "",
+    providedComponents: ["skills"],
+    components: {
+      skills: [],
+      commands: [],
+      hooks: [],
+      mcpServers: []
+    },
+    modifiedConfigFiles: [],
+    autoUpdate: false,
+    enabled: true,
+    workflowDependencies: [],
+    permissionRisk: "medium",
+    rollback: "unknown"
+  });
+
+  const result = checkPolicy(workspace);
+
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /Install unit local\.evil-pack uses reserved source_class: user/);
+});

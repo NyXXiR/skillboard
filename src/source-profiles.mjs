@@ -48,6 +48,13 @@ export async function importSource(options) {
     installUnit: {
       id: profile.id,
       kind: profile.kind,
+      sourceClass: profile.sourceClass,
+      priority: profile.priority,
+      trustLevel: profile.trustLevel,
+      sourceDigest: profile.sourceDigest,
+      signature: profile.signature,
+      publicKey: profile.publicKey,
+      verifiedAt: profile.verifiedAt,
       source: profile.source || sourceRoot,
       scope: profile.scope,
       manifestPath: profile.manifestPath,
@@ -75,29 +82,58 @@ export function renderImportFragment(imported) {
 }
 
 export function mergeImportFragment(configText, imported, options = {}) {
-  const config = requireRecord(YAML.parse(configText) ?? {}, "config root");
+  const document = YAML.parseDocument(configText);
+  if (document.errors.length > 0) {
+    throw new Error(`Invalid YAML config: ${document.errors.map((error) => error.message).join("; ")}`);
+  }
+  requireYamlMap(document.contents, "config root");
   const fragment = importFragment(imported);
   const replace = options.replace === true;
   const skillIds = Object.keys(fragment.skills);
   const unitIds = Object.keys(fragment.install_units);
-  const existingSkills = requireRecord(config.skills ?? {}, "skills");
-  const existingUnits = requireRecord(config.install_units ?? {}, "install_units");
-  const duplicateSkills = skillIds.filter((id) => existingSkills[id] !== undefined);
-  const duplicateUnits = unitIds.filter((id) => existingUnits[id] !== undefined);
+  const existingSkills = ensureMap(document, "skills");
+  const existingUnits = ensureMap(document, "install_units");
+  const duplicateSkills = skillIds.filter((id) => existingSkills.get(id, true) !== undefined);
+  const duplicateUnits = unitIds.filter((id) => existingUnits.get(id, true) !== undefined);
 
   if (!replace && (duplicateSkills.length > 0 || duplicateUnits.length > 0)) {
     throw new Error(duplicateMessage(duplicateSkills, duplicateUnits));
   }
 
-  config.skills = { ...existingSkills, ...fragment.skills };
-  config.install_units = { ...existingUnits, ...fragment.install_units };
+  for (const skillId of skillIds) {
+    existingSkills.set(skillId, document.createNode(fragment.skills[skillId]));
+  }
+  for (const unitId of unitIds) {
+    existingUnits.set(unitId, document.createNode(fragment.install_units[unitId]));
+  }
   return {
-    text: YAML.stringify(config),
+    text: preserveLineEndings(String(document), configText),
     addedSkills: skillIds,
     addedInstallUnits: unitIds,
     replacedSkills: duplicateSkills,
     replacedInstallUnits: duplicateUnits
   };
+}
+
+function ensureMap(document, key) {
+  const existing = document.get(key, true);
+  if (existing === undefined) {
+    const next = document.createNode({});
+    document.set(key, next);
+    return next;
+  }
+  return requireYamlMap(existing, key);
+}
+
+function requireYamlMap(value, label) {
+  if (!YAML.isMap(value)) {
+    throw new Error(`${label} must be a mapping`);
+  }
+  return value;
+}
+
+function preserveLineEndings(text, reference) {
+  return reference.includes("\r\n") ? text.replace(/\n/g, "\r\n") : text;
 }
 
 function importFragment(imported) {
@@ -113,11 +149,18 @@ function importFragment(imported) {
     };
   }
   const unit = imported.installUnit;
-  return {
+  return stripUndefined({
     skills,
     install_units: {
       [unit.id]: {
         kind: unit.kind,
+        source_class: unit.sourceClass,
+        priority: unit.priority,
+        trust_level: unit.trustLevel,
+        source_digest: unit.sourceDigest,
+        signature: unit.signature,
+        public_key: unit.publicKey,
+        verified_at: unit.verifiedAt,
         source: unit.source,
         scope: unit.scope,
         manifest_path: unit.manifestPath,
@@ -137,7 +180,7 @@ function importFragment(imported) {
         rollback: unit.rollback
       }
     }
-  };
+  });
 }
 
 function duplicateMessage(skillIds, unitIds) {
@@ -219,4 +262,16 @@ function normalizeSlug(value) {
 
 function safeDefaultInvocation(invocation) {
   return invocation === "global-auto" ? "blocked" : invocation;
+}
+
+function stripUndefined(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripUndefined(item));
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value)
+      .filter((entry) => entry[1] !== undefined)
+      .map(([key, entryValue]) => [key, stripUndefined(entryValue)]));
+  }
+  return value;
 }

@@ -8,33 +8,13 @@ import {
   readStringList,
   requireRecord
 } from "./config-helpers.mjs";
+import {
+  EXPOSURE_VALUES,
+  HARNESS_STATUS_VALUES,
+  INVOCATION_VALUES,
+  STATUS_VALUES
+} from "./domain/constants.mjs";
 import { parseInstallUnits } from "./install-units.mjs";
-
-const STATUS_VALUES = new Set([
-  "discovered",
-  "quarantined",
-  "vendor",
-  "candidate",
-  "active",
-  "active-manual",
-  "active-router",
-  "active-auto",
-  "canonical",
-  "blocked",
-  "deprecated",
-  "archived",
-  "removed"
-]);
-const INVOCATION_VALUES = new Set([
-  "manual-only",
-  "router-only",
-  "workflow-auto",
-  "global-auto",
-  "blocked",
-  "deprecated"
-]);
-const HARNESS_STATUS_VALUES = new Set(["available", "configured", "primary", "fallback", "disabled", "removed"]);
-const EXPOSURE_VALUES = new Set(["exported", "global-meta", "unit-managed", "private"]);
 
 export async function loadWorkspace(options) {
   const configText = await readFile(options.configPath, "utf8");
@@ -154,11 +134,15 @@ function parseCapabilities(value) {
   const raw = requireRecord(value ?? {}, "capabilities");
   return Object.entries(raw).map(([name, entry]) => {
     const capability = requireRecord(entry, `capabilities.${name}`);
+    const defaultPolicy = readString(capability, "default_policy", "manual-only");
+    if (!INVOCATION_VALUES.has(defaultPolicy)) {
+      throw new Error(`Unsupported capability default_policy for ${name}: ${defaultPolicy}`);
+    }
     return {
       name,
       canonical: readString(capability, "canonical", ""),
       alternatives: readStringList(capability, "alternatives"),
-      defaultPolicy: readString(capability, "default_policy", "manual-only")
+      defaultPolicy
     };
   });
 }
@@ -199,11 +183,15 @@ function parseRequiredCapabilities(value, label) {
   const raw = requireRecord(value ?? {}, label);
   return Object.entries(raw).map(([name, entry]) => {
     const capability = requireRecord(entry, `${label}.${name}`);
+    const policy = readString(capability, "policy", "manual-only");
+    if (!INVOCATION_VALUES.has(policy)) {
+      throw new Error(`Unsupported capability policy for ${label}.${name}: ${policy}`);
+    }
     return {
       name,
       preferred: readString(capability, "preferred", ""),
       fallback: readStringList(capability, "fallback"),
-      policy: readString(capability, "policy", "manual-only")
+      policy
     };
   });
 }

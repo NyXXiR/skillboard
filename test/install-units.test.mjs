@@ -61,6 +61,13 @@ test("scan records install units for packaged harness and plugin bundles", async
       {
         id: "lazycodex.omo",
         kind: "harness",
+        sourceClass: undefined,
+        priority: undefined,
+        trustLevel: "unreviewed",
+        sourceDigest: undefined,
+        signature: undefined,
+        publicKey: undefined,
+        verifiedAt: undefined,
         source: "npx lazycodex-ai install",
         scope: "user-global",
         manifestPath: "~/.codex/plugins/cache/sisyphuslabs/omo/plugin.json",

@@ -138,6 +138,7 @@ install_units:
       - ~/.local/bin
     auto_update: false
     enabled: true
+    trust_level: reviewed
     workflow_dependencies:
       - large-refactor-workflow
     permission_risk: high

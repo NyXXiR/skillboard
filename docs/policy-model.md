@@ -91,8 +91,8 @@ workflows:
       - matt.grill-me
 ```
 
-The long-term lockfile should pin skill source, version/hash, invocation mode,
-compatible harnesses, and policy decisions.
+The generated lockfile pins install-unit source/cache digests, skill content
+digests, workflow bindings, and policy decisions.
 
 ## Capabilities
 

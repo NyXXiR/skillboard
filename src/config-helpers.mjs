@@ -38,6 +38,28 @@ export function readBoolean(record, key, fallback) {
   return value;
 }
 
+export function readNumber(record, key, fallback) {
+  const value = record[key];
+  if (value === undefined) {
+    return fallback;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${key} must be a number`);
+  }
+  return value;
+}
+
+export function readOptionalNumber(record, key) {
+  const value = record[key];
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${key} must be a number`);
+  }
+  return value;
+}
+
 export function readStringList(record, key) {
   const value = record[key];
   if (value === undefined) {

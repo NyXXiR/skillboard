@@ -51,6 +51,7 @@ export function renderDashboard(workspace) {
     lines.push(`- MCP servers: ${formatList(unit.components.mcpServers)}`);
     lines.push(`- Modifies: ${formatList(unit.modifiedConfigFiles)}`);
     lines.push(`- Workflow dependencies: ${formatList(unit.workflowDependencies)}`);
+    lines.push(`- Trust level: \`${unit.trustLevel}\``);
     lines.push(`- permission risk: \`${unit.permissionRisk}\``);
     lines.push(`- Rollback: \`${unit.rollback}\``);
     lines.push("");

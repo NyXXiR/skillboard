@@ -4,7 +4,7 @@ SkillBoard has several versioned surfaces. They should not all move at the same
 pace, and not every skill file belongs in central version control.
 
 This document defines the public alpha policy for releases, config compatibility,
-source profiles, and the future lockfile.
+source profiles, and the generated lockfile.
 
 ## Status
 
@@ -36,8 +36,8 @@ SkillBoard versions these surfaces deliberately:
 - Exported skill entries: shared or vendor skills governed by SkillBoard.
 - Install-unit entries: plugin, marketplace, package, harness, MCP, hook, agent,
   and LSP sources.
-- Future lockfile data: pinned source, version/hash, policy, and compatible
-  harnesses.
+- Lockfile data: pinned source/cache digest, skill content digests, policy, and
+  compatible harnesses.
 
 SkillBoard does not try to centrally version every prompt or helper skill. A
 workflow-internal private skill can remain inside that workflow package until it
@@ -59,8 +59,8 @@ must call them out clearly.
 Suggested tags:
 
 - `v0.1.0-alpha`: first public GitHub alpha.
-- `v0.2.0-alpha`: source inventory or dry-run diff.
-- `v0.3.0-alpha`: lockfile or pinning.
+- `v0.2.0-alpha`: source inventory refresh or richer dry-run diff.
+- `v0.3.0-alpha`: signed remote source verification and pin refresh workflow.
 - `v1.0.0`: config schema and core CLI behavior are stable enough for external
   workflows to rely on.
 
@@ -145,24 +145,29 @@ When a workflow changes its required outputs, required capabilities, or
 workflow-auto skill set, treat it as a compatibility change even if no file paths
 changed.
 
-## Future Lockfile Policy
+## Lockfile Policy
 
-`skillboard.lock.yaml` is planned but not implemented.
+`skillboard lock write` generates `skillboard.lock.yaml` from the current
+workspace.
 
-The lockfile should eventually pin:
+The lockfile pins:
 
-- SkillBoard package version used to generate it;
 - config schema version;
-- source profile id and version/hash;
-- install-unit source and resolved cache path;
+- install-unit source, cache path, verified path, digest, and trust status;
 - skill id, path, and content hash;
-- invocation policy;
-- compatible harnesses;
 - workflow/capability bindings;
-- generated timestamp and platform notes.
+- generated timestamp.
 
 The lockfile should represent a verified working set, not a desired-state file.
 Users should edit `skillboard.config.yaml`; tools should generate the lockfile.
+Local `source` and `cache_path` entries are digest-verified by `skillboard audit
+sources --verify`. Remote or command-based sources need a configured
+`source_digest` and, when signatures are used, a matching `public_key`.
+Relative local paths are resolved from the config directory first and then from
+the current working directory, so bundled examples can use project-root-relative
+paths while project configs can still keep config-local paths.
+`skillboard lock write` refuses to write when verification has errors unless
+`--allow-unverified` is passed explicitly for investigation artifacts.
 
 ## Release Checklist
 
@@ -177,8 +182,10 @@ Before tagging a public release:
 
 For alpha releases, include a short "known gaps" section. Current gaps:
 
-- source inventory refresh is not implemented;
+- source inventory refresh is limited to init-time local agent and plugin
+  manifest discovery;
 - dry-run diff before merge is not implemented;
-- lockfile/pinning is not implemented;
-- rich detector plugins for config-mutating installers are not implemented;
-- YAML comments may be normalized during `--merge`.
+- remote source fetching and pin refresh is not implemented;
+- detector plugins for installer command output and non-manifest config
+  mutation are not implemented;
+- unusual YAML trivia may still be normalized during `--merge`.

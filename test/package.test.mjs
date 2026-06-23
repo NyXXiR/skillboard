@@ -6,7 +6,7 @@ import { test } from "node:test";
 test("package manifest excludes internal work artifacts from npm pack", async () => {
   const manifest = JSON.parse(await readFile(resolve("package.json"), "utf8"));
 
-  assert.deepEqual(manifest.files, ["bin", "src", "docs", "examples", "profiles", "README.md", "LICENSE"]);
+  assert.deepEqual(manifest.files, ["bin", "src", "docs", "examples", "profiles", "README.md", "LICENSE", "tsconfig.lsp.json"]);
 });
 
 test("package manifest is publishable as the SkillBoard CLI", async () => {

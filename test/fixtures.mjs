@@ -54,6 +54,19 @@ skills:
     exposure: exported
     category: requirements
     replaced_by: meerkat.requirement-intake
+  matt.grill-with-docs:
+    path: grill-with-docs
+    status: quarantined
+    invocation: blocked
+    exposure: exported
+    category: requirements
+    replaced_by: meerkat.requirement-intake
+  meerkat.test-first-implementation:
+    path: vendor/meerkat-test-first-implementation
+    status: candidate
+    invocation: workflow-auto
+    exposure: exported
+    category: engineering
 capabilities:
   requirement-clarification:
     canonical: meerkat.requirement-intake
@@ -94,4 +107,8 @@ workflows:
         fallback:
           - meerkat.test-first-implementation
         policy: workflow-auto
+  large-refactor-workflow:
+    harness: lazycodex
+    active_skills: []
+    blocked_skills: []
 `;

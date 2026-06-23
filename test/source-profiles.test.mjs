@@ -84,7 +84,7 @@ test("cli import can safely merge a profile into config", async () => {
     const sourceRoot = join(root, "source");
     const configPath = join(root, "skillboard.config.yaml");
     await writeSkill(join(sourceRoot, "skills", "tdd", "SKILL.md"), "tdd", "Run test-driven development.");
-    await writeFile(configPath, "version: 1\nskills: {}\ninstall_units: {}\n", "utf8");
+    await writeFile(configPath, "# keep import comment\nversion: 1\nskills: {}\ninstall_units: {}\n", "utf8");
 
     const result = await execFileAsync(process.execPath, [
       "bin/skillboard.mjs",
@@ -98,8 +98,10 @@ test("cli import can safely merge a profile into config", async () => {
       "--merge"
     ]);
     const merged = YAML.parse(await readFile(configPath, "utf8"));
+    const mergedText = await readFile(configPath, "utf8");
 
     assert.match(result.stdout, /Import merged/);
+    assert.match(mergedText, /# keep import comment/);
     assert.equal(merged.skills["matt.tdd"].owner_install_unit, "github.mattpocock.skills");
     assert.deepEqual(merged.install_units["github.mattpocock.skills"].components.skills, ["matt.tdd"]);
   } finally {

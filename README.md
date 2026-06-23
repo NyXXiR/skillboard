@@ -45,7 +45,9 @@ This repository is an early CLI-first foundation. It currently supports:
 - Recursive `SKILL.md` discovery.
 - Source-profile import for cloned or installed skill repositories.
 - Capability and harness config parsing.
-- Agent runtime install-unit inventory.
+- Agent runtime install-unit inventory, including Codex plugin skills, hooks,
+  MCP servers, commands, and modified config files when manifest metadata is
+  available.
 - Strong reference checks for workflows, skills, capabilities, harnesses, and
   install units.
 - Semantic policy checks for workflow-scoped auto invocation, canonical skill
@@ -81,48 +83,65 @@ skillboard init
 
 `skillboard init` creates `skillboard.config.yaml`, `skills/`,
 `.skillboard/reports/`, `.skillboard/profiles/`, `AGENTS.md`, and `CLAUDE.md`.
-The agent bridge files tell Codex-style and Claude Code agents to use
-`skillboard.config.yaml` as the control-plane source of truth instead of treating
-every installed `SKILL.md` as active.
+It also scans known local agent skill roots, including Codex user/system skills
+and Codex plugin-cache manifests. Discovered skills are added as `quarantined` /
+`blocked` managed entries, while plugin hooks, MCP servers, commands, and
+modified config files are attached to the owning install unit for review. The
+agent bridge files tell Codex-style and Claude Code agents to use
+`skillboard.config.yaml` as the control-plane source of truth instead of
+treating every installed `SKILL.md` as active.
 
-Run the bundled examples:
+To remove the project bridge safely:
 
 ```bash
-node bin/skillboard.mjs dashboard \
-  --config examples/skillboard.config.yaml \
-  --skills examples/skills \
-  --out reports/skill-map.md
+skillboard uninstall --dry-run
+skillboard uninstall
+```
 
-node bin/skillboard.mjs import \
-  --profile github.mattpocock.skills \
-  --source-root /path/to/mattpocock-skills \
-  --out reports/mattpocock-import.yaml
+`skillboard uninstall` removes only SkillBoard bridge blocks and unchanged
+generated helper files by default. It preserves `skillboard.config.yaml`, local
+skills, reports, and any user content in `AGENTS.md` or `CLAUDE.md`. Add
+`--remove-config` only when you want to delete an untouched default config.
 
-node bin/skillboard.mjs import \
-  --profile github.mattpocock.skills \
-  --source-root /path/to/mattpocock-skills \
-  --config skillboard.config.yaml \
-  --merge
+Run the bundled examples from the repository root:
 
-node bin/skillboard.mjs impact disable matt.tdd \
-  --config examples/skillboard.config.yaml \
-  --skills examples/skills
-
-node bin/skillboard.mjs reconcile \
-  --config examples/skillboard.config.yaml \
-  --skills examples/skills \
-  --actual-harnesses codex,claude \
-  --out reports/reconcile-plan.md
-
+```bash
+npm install
+npm run check
 node bin/skillboard.mjs check \
   --config examples/multi-source.config.yaml \
   --skills examples/multi-source-skills
-
-node bin/skillboard.mjs dashboard \
+node bin/skillboard.mjs list skills \
   --config examples/multi-source.config.yaml \
   --skills examples/multi-source-skills \
-  --out reports/multi-source-skill-map.md
+  --workflow codex-night-workflow
+node bin/skillboard.mjs explain private.tdd-work-continuity \
+  --config examples/multi-source.config.yaml \
+  --skills examples/multi-source-skills
+node bin/skillboard.mjs can-use matt.tdd \
+  --workflow codex-night-workflow \
+  --config examples/multi-source.config.yaml \
+  --skills examples/multi-source-skills
+node bin/skillboard.mjs audit sources --verify \
+  --config examples/multi-source.config.yaml \
+  --skills examples/multi-source-skills
+mkdir -p .skillboard/reports
+node bin/skillboard.mjs lock write \
+  --config examples/multi-source.config.yaml \
+  --skills examples/multi-source-skills \
+  --out .skillboard/reports/multi-source.lock.yaml \
+  --replace
+node bin/skillboard.mjs hook install \
+  --workflow codex-night-workflow \
+  --config examples/multi-source.config.yaml \
+  --skills examples/multi-source-skills \
+  --out .skillboard/reports/codex-night-guard.sh \
+  --skillboard-bin "node bin/skillboard.mjs"
 ```
+
+The multi-source example intentionally uses project-root-relative local paths,
+such as `./examples/multi-source-skills/private`, so a fresh clone can run these
+commands without editing machine-specific paths.
 
 ## Config Shape
 
@@ -284,14 +303,30 @@ private skill source plus five external repositories:
 - `wshobson/agents`
 - `VoltAgent/awesome-agent-skills`
 
+Run the example commands from the repository root. Local example sources are
+written as project-root-relative paths; command or remote sources remain
+metadata-only unless you pin them with `source_digest`.
+
 ## Commands
 
 ```bash
-skillboard init [--dir <path>]
+skillboard init [--dir <path>] [--scan-root <dir>[,<dir>]] [--no-scan-installed]
+skillboard uninstall [--dir <path>] [--dry-run] [--remove-config] [--keep-empty-dirs]
 skillboard import --profile <id-or-path> --source-root <dir> [--profile-dirs a,b] [--out <path>]
 skillboard import --profile <id-or-path> --source-root <dir> --config <path> --merge [--replace]
 node bin/skillboard.mjs scan --config <path> --skills <dir>
 node bin/skillboard.mjs check --config <path> --skills <dir>
+node bin/skillboard.mjs list [skills|workflows|harnesses|install-units] --config <path> --skills <dir>
+node bin/skillboard.mjs explain <skill-id> --config <path> --skills <dir>
+node bin/skillboard.mjs can-use <skill-id> --workflow <name> --config <path> --skills <dir>
+node bin/skillboard.mjs guard use <skill-id> --workflow <name> --config <path> --skills <dir>
+node bin/skillboard.mjs audit sources --config <path> --skills <dir> [--verify]
+node bin/skillboard.mjs hook install --workflow <name> --config <path> --skills <dir> [--out <path>]
+node bin/skillboard.mjs lock write --config <path> --skills <dir> [--out <path>] [--replace] [--allow-unverified]
+node bin/skillboard.mjs activate <skill-id> --workflow <name> --config <path> --skills <dir>
+node bin/skillboard.mjs block <skill-id> --workflow <name> --config <path> --skills <dir>
+node bin/skillboard.mjs quarantine <skill-id> --config <path> --skills <dir>
+node bin/skillboard.mjs prefer <skill-id> --workflow <name> --capability <name> --config <path> --skills <dir>
 node bin/skillboard.mjs dashboard --config <path> --skills <dir> [--out <path>]
 node bin/skillboard.mjs reconcile --config <path> --skills <dir> [--actual-harnesses a,b] [--out <path>]
 node bin/skillboard.mjs impact disable <skill-id> --config <path> --skills <dir> [--out <path>]
@@ -327,7 +362,7 @@ Modern agent environments increasingly install packaged primitives:
 
 An install unit records source, scope, manifest/cache paths, provided
 components, modified config files, enablement, workflow dependencies, permission
-risk, and rollback shape. LazyCodex-style setups fit this model as
+risk, trust level, digest/signature pins, and rollback shape. LazyCodex-style setups fit this model as
 user-global harness/plugin bundles that provide commands, skills, MCP
 integrations, hooks, and config.
 
@@ -344,4 +379,4 @@ See [docs/positioning.md](docs/positioning.md) and
 [docs/policy-model.md](docs/policy-model.md). See
 [docs/adapters.md](docs/adapters.md) for the source-profile adapter model, and
 [docs/versioning.md](docs/versioning.md) for release, schema, profile, workflow,
-and future lockfile versioning rules.
+and lockfile versioning rules.

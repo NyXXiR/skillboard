@@ -1,8 +1,7 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-
-const BRIDGE_START = "<!-- BEGIN SKILLBOARD -->";
-const BRIDGE_END = "<!-- END SKILLBOARD -->";
+import { discoverAgentSkillInventory, mergeAgentSkillInventory } from "./agent-inventory.mjs";
+import { BRIDGE_START, bridgeBlock, defaultConfig, hookReadme, profileReadme } from "./lifecycle-content.mjs";
 
 export async function initProject(options) {
   const root = options.root;
@@ -10,12 +9,15 @@ export async function initProject(options) {
   const skillsRoot = join(root, "skills");
   const reportRoot = join(root, ".skillboard", "reports");
   const profileRoot = join(root, ".skillboard", "profiles");
+  const hookRoot = join(root, ".skillboard", "hooks");
   const created = [];
   const updated = [];
   await mkdir(skillsRoot, { recursive: true });
   await mkdir(reportRoot, { recursive: true });
   await mkdir(profileRoot, { recursive: true });
-  if (!(await exists(configPath))) {
+  await mkdir(hookRoot, { recursive: true });
+  const configCreated = !(await exists(configPath));
+  if (configCreated) {
     await writeFile(configPath, defaultConfig(), "utf8");
     created.push("skillboard.config.yaml");
   }
@@ -23,6 +25,11 @@ export async function initProject(options) {
   if (!(await exists(profileReadmePath))) {
     await writeFile(profileReadmePath, profileReadme(), "utf8");
     created.push(".skillboard/profiles/README.md");
+  }
+  const hookReadmePath = join(hookRoot, "README.md");
+  if (!(await exists(hookReadmePath))) {
+    await writeFile(hookReadmePath, hookReadme(), "utf8");
+    created.push(".skillboard/hooks/README.md");
   }
   for (const filename of ["AGENTS.md", "CLAUDE.md"]) {
     const result = await ensureBridge(join(root, filename));
@@ -32,7 +39,22 @@ export async function initProject(options) {
       updated.push(filename);
     }
   }
-  return { created, updated, alreadyInitialized: created.length === 0 && updated.length === 0 };
+  const scan = options.scanInstalled === false
+    ? { scannedSkills: 0, scannedInstallUnits: 0, changed: false, addedSkills: [], addedInstallUnits: [], updatedInstallUnits: [], skippedSkills: [] }
+    : await mergeInstalledAgentSkills(configPath, {
+      roots: options.scanRoots,
+      home: options.home,
+      env: options.env
+    });
+  if (scan.changed && !configCreated) {
+    updated.push("skillboard.config.yaml");
+  }
+  return {
+    created,
+    updated,
+    scan,
+    alreadyInitialized: created.length === 0 && updated.length === 0 && !scan.changed
+  };
 }
 
 async function exists(path) {
@@ -54,52 +76,20 @@ async function ensureBridge(path) {
   return "updated";
 }
 
-function defaultConfig() {
-  return `version: 1
-defaults:
-  invocation_policy: deny-by-default
-  allow_model_invocation: false
-  require_explicit_workflow: true
-
-skills: {}
-capabilities: {}
-harnesses: {}
-workflows: {}
-install_units: {}
-`;
-}
-
-function bridgeBlock() {
-  return `${BRIDGE_START}
-# SkillBoard Control Plane
-
-This project uses SkillBoard as the source of truth for agent skill activation.
-
-- Read \`skillboard.config.yaml\` before assuming an installed skill is active.
-- Installed \`SKILL.md\` files are not automatically callable.
-- Prefer workflow-scoped skills over global skill invocation.
-- Only \`global-meta\` skills may be treated as globally available.
-- Run \`skillboard check --config skillboard.config.yaml --skills skills\` when policy state matters.
-- Run \`skillboard dashboard --config skillboard.config.yaml --skills skills --out .skillboard/reports/skill-map.md\` to refresh the visible control map.
-- Run \`skillboard import --profile <id-or-path> --source-root <repo> --out .skillboard/reports/import-fragment.yaml\` after installing a new skill repository, then review the fragment before merging it into \`skillboard.config.yaml\`.
-
-${BRIDGE_END}`;
-}
-
-function profileReadme() {
-  return `# SkillBoard source profiles
-
-Put project-specific source profiles here when a skill repository or harness
-bundle is not covered by a built-in profile.
-
-Use:
-
-\`\`\`bash
-skillboard import --profile .skillboard/profiles/example.yaml --source-root /path/to/repo
-\`\`\`
-
-The import command emits a YAML fragment with governed \`skills\` and
-\`install_units\`. Review the fragment before merging it into
-\`skillboard.config.yaml\`; imported skills are not automatically active.
-`;
+async function mergeInstalledAgentSkills(configPath, options) {
+  const inventory = await discoverAgentSkillInventory(options);
+  const current = await readFile(configPath, "utf8");
+  const merged = mergeAgentSkillInventory(current, inventory);
+  if (merged.changed) {
+    await writeFile(configPath, merged.text, "utf8");
+  }
+  return {
+    scannedSkills: inventory.skills.length,
+    scannedInstallUnits: inventory.installUnits.length,
+    changed: merged.changed,
+    addedSkills: merged.addedSkills,
+    addedInstallUnits: merged.addedInstallUnits,
+    updatedInstallUnits: merged.updatedInstallUnits,
+    skippedSkills: merged.skippedSkills
+  };
 }
