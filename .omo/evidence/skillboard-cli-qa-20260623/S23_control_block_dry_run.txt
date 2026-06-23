@@ -1,0 +1,23 @@
+SCENARIO: S23_control_block_dry_run
+DESCRIPTION: block dry-run validates removal impact
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs block matt.tdd --workflow codex-night-workflow --config /tmp/tmp.m5IsEE5n8N/control.config.yaml --skills examples/multi-source-skills --dry-run --json
+--- stdout/stderr ---
+{
+  "message": "Blocked matt.tdd in codex-night-workflow",
+  "dryRun": true,
+  "changed": true,
+  "plan": {
+    "changed": true,
+    "beforeBytes": 6533,
+    "afterBytes": 6548,
+    "beforeLines": 272,
+    "afterLines": 272,
+    "changedLineCount": 7
+  },
+  "warnings": [
+    "[SKILL-GLOBAL-001] Skill private.workflow-router is global-auto; prefer workflow-auto or router-only."
+  ]
+}
+--- exit_code ---
+0

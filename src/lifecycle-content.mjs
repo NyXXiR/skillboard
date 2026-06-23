@@ -30,8 +30,14 @@ This project uses SkillBoard as the source of truth for agent skill activation.
 - Run \`skillboard hook install --workflow <name> --config skillboard.config.yaml --skills skills --out .skillboard/hooks/<name>-guard.sh\` to materialize an executable guard hook.
 - Prefer workflow-scoped skills over global skill invocation.
 - Only \`global-meta\` skills may be treated as globally available.
+- Run \`skillboard doctor --config skillboard.config.yaml --skills skills\` or \`skillboard status --config skillboard.config.yaml --skills skills --json\` to inspect control-plane health; add \`--strict\` when review-needed safe mode should fail automation.
 - Run \`skillboard check --config skillboard.config.yaml --skills skills\` when policy state matters.
 - Run \`skillboard dashboard --config skillboard.config.yaml --skills skills --out .skillboard/reports/skill-map.md\` to refresh the visible control map.
+- Run \`skillboard add skill <skill-id> --path <relative-skill-path> --config skillboard.config.yaml --skills skills\` to register a user-owned skill without treating the file as automatically active.
+- Run \`skillboard add harness <harness-name> --config skillboard.config.yaml --skills skills\` and \`skillboard add workflow <workflow-name> --harness <harness-name> --config skillboard.config.yaml --skills skills --skill <skill-id>\` to add local growth paths without editing YAML by hand.
+- Use \`skillboard activate <skill-id> --workflow <name> --config skillboard.config.yaml --skills skills\` and \`skillboard block <skill-id> --workflow <name> --config skillboard.config.yaml --skills skills\` for workflow-scoped enablement.
+- Use \`skillboard remove skill <skill-id> --config skillboard.config.yaml --skills skills --force\` only after reviewing \`skillboard impact disable <skill-id> --config skillboard.config.yaml --skills skills\`; removal updates policy references and does not delete \`SKILL.md\` files.
+- Run \`skillboard inventory refresh --dry-run --config skillboard.config.yaml\` after installing a new local agent skill pack, plugin, workflow bundle, or harness.
 - Run \`skillboard import --profile <id-or-path> --source-root <repo> --out .skillboard/reports/import-fragment.yaml\` after installing a new skill repository, then review the fragment before merging it into \`skillboard.config.yaml\`.
 
 ${BRIDGE_END}`;

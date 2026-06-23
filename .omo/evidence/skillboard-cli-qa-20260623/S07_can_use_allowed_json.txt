@@ -1,0 +1,37 @@
+SCENARIO: S07_can_use_allowed_json
+DESCRIPTION: can-use allowed private router-only skill
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs can-use private.tdd-work-continuity --config examples/multi-source.config.yaml --skills examples/multi-source-skills --workflow codex-night-workflow --json
+--- stdout/stderr ---
+{
+  "allowed": true,
+  "automaticAllowed": false,
+  "skill": "private.tdd-work-continuity",
+  "workflow": "codex-night-workflow",
+  "invocation": "router-only",
+  "status": "active",
+  "trust": {
+    "level": "trusted",
+    "reviewed": true,
+    "signed": false,
+    "pinned": false,
+    "verifiedAt": null,
+    "ownerInstallUnit": "local.agent-skills-private",
+    "sourceClass": "user",
+    "permissionRisk": "low"
+  },
+  "roles": [
+    "active",
+    "fallback"
+  ],
+  "capabilityRoles": [
+    {
+      "capability": "test-first-implementation",
+      "role": "fallback",
+      "policy": "workflow-auto"
+    }
+  ],
+  "reasons": []
+}
+--- exit_code ---
+0

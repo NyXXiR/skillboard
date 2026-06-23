@@ -1,0 +1,12 @@
+Script started on 2026-06-23 21:54:46+09:00 [COMMAND="node bin/skillboard.mjs can-use matt.grill-me --workflow codex-night-workflow --config examples/multi-source.config.yaml --skills examples/multi-source-skills" <not executed on terminal>]
+Allowed: false
+Automatic allowed: false
+Skill: matt.grill-me
+Workflow: codex-night-workflow
+Invocation: manual-only
+Trust: reviewed
+Roles: blocked
+Reasons:
+- Workflow codex-night-workflow blocks skill matt.grill-me.
+
+Script done on 2026-06-23 21:54:47+09:00 [COMMAND_EXIT_CODE="2"]

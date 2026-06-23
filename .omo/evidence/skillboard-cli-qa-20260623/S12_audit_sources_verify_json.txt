@@ -1,0 +1,154 @@
+SCENARIO: S12_audit_sources_verify_json
+DESCRIPTION: audit sources --verify JSON against example sources
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs audit sources --config examples/multi-source.config.yaml --skills examples/multi-source-skills --verify --json
+--- stdout/stderr ---
+{
+  "ok": false,
+  "units": [
+    {
+      "id": "local.agent-skills-private",
+      "kind": "skill",
+      "source": "/mnt/d/workspace/agent-skills-private",
+      "cachePath": null,
+      "verifiedPath": "/mnt/d/workspace/agent-skills-private",
+      "verifiedField": "source",
+      "sourceClass": "user",
+      "trustLevel": "trusted",
+      "permissionRisk": "low",
+      "expectedDigest": null,
+      "actualDigest": null,
+      "digestVerified": false,
+      "signatureVerified": false,
+      "status": "unverified",
+      "findings": [
+        {
+          "severity": "error",
+          "message": "cannot verify local source: ENOENT: no such file or directory, lstat '/mnt/d/workspace/agent-skills-private'"
+        }
+      ]
+    },
+    {
+      "id": "github.mattpocock.skills",
+      "kind": "marketplace",
+      "source": "npx skills@latest add mattpocock/skills",
+      "cachePath": null,
+      "verifiedPath": null,
+      "verifiedField": "source",
+      "sourceClass": "external-package",
+      "trustLevel": "reviewed",
+      "permissionRisk": "medium",
+      "expectedDigest": null,
+      "actualDigest": null,
+      "digestVerified": false,
+      "signatureVerified": false,
+      "status": "metadata-only",
+      "findings": [
+        {
+          "severity": "warning",
+          "message": "remote or command source has no source_digest pin"
+        }
+      ]
+    },
+    {
+      "id": "github.code-yeongyu.oh-my-openagent",
+      "kind": "harness",
+      "source": "npx lazycodex-ai install",
+      "cachePath": null,
+      "verifiedPath": null,
+      "verifiedField": "source",
+      "sourceClass": "harness-bundle",
+      "trustLevel": "reviewed",
+      "permissionRisk": "high",
+      "expectedDigest": null,
+      "actualDigest": null,
+      "digestVerified": false,
+      "signatureVerified": false,
+      "status": "metadata-only",
+      "findings": [
+        {
+          "severity": "warning",
+          "message": "remote or command source has no source_digest pin"
+        }
+      ]
+    },
+    {
+      "id": "github.anthropics.skills",
+      "kind": "marketplace",
+      "source": "/plugin marketplace add anthropics/skills",
+      "cachePath": null,
+      "verifiedPath": "/plugin marketplace add anthropics/skills",
+      "verifiedField": "source",
+      "sourceClass": "external-package",
+      "trustLevel": "reviewed",
+      "permissionRisk": "medium",
+      "expectedDigest": null,
+      "actualDigest": null,
+      "digestVerified": false,
+      "signatureVerified": false,
+      "status": "unverified",
+      "findings": [
+        {
+          "severity": "error",
+          "message": "cannot verify local source: ENOENT: no such file or directory, lstat '/plugin marketplace add anthropics/skills'"
+        }
+      ]
+    },
+    {
+      "id": "github.wshobson.agents",
+      "kind": "marketplace",
+      "source": "npx codex-marketplace add wshobson/agents",
+      "cachePath": null,
+      "verifiedPath": null,
+      "verifiedField": "source",
+      "sourceClass": "external-package",
+      "trustLevel": "reviewed",
+      "permissionRisk": "medium",
+      "expectedDigest": null,
+      "actualDigest": null,
+      "digestVerified": false,
+      "signatureVerified": false,
+      "status": "metadata-only",
+      "findings": [
+        {
+          "severity": "warning",
+          "message": "remote or command source has no source_digest pin"
+        }
+      ]
+    },
+    {
+      "id": "github.voltagent.awesome-agent-skills",
+      "kind": "marketplace",
+      "source": "git clone https://github.com/VoltAgent/awesome-agent-skills",
+      "cachePath": null,
+      "verifiedPath": null,
+      "verifiedField": "source",
+      "sourceClass": "external-package",
+      "trustLevel": "unreviewed",
+      "permissionRisk": "low",
+      "expectedDigest": null,
+      "actualDigest": null,
+      "digestVerified": false,
+      "signatureVerified": false,
+      "status": "metadata-only",
+      "findings": [
+        {
+          "severity": "warning",
+          "message": "remote or command source has no source_digest pin"
+        }
+      ]
+    }
+  ],
+  "errors": [
+    "local.agent-skills-private: cannot verify local source: ENOENT: no such file or directory, lstat '/mnt/d/workspace/agent-skills-private'",
+    "github.anthropics.skills: cannot verify local source: ENOENT: no such file or directory, lstat '/plugin marketplace add anthropics/skills'"
+  ],
+  "warnings": [
+    "github.mattpocock.skills: remote or command source has no source_digest pin",
+    "github.code-yeongyu.oh-my-openagent: remote or command source has no source_digest pin",
+    "github.wshobson.agents: remote or command source has no source_digest pin",
+    "github.voltagent.awesome-agent-skills: remote or command source has no source_digest pin"
+  ]
+}
+--- exit_code ---
+1

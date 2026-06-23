@@ -1,0 +1,110 @@
+Script started on 2026-06-23 21:54:38+09:00 [COMMAND="node bin/skillboard.mjs list install-units --config examples/multi-source.config.yaml --skills examples/multi-source-skills --json" <not executed on terminal>]
+[
+  {
+    "id": "github.anthropics.skills",
+    "kind": "marketplace",
+    "sourceClass": "external-package",
+    "priority": 40,
+    "trustLevel": "reviewed",
+    "sourceDigest": null,
+    "signature": null,
+    "verifiedAt": null,
+    "source": "/plugin marketplace add anthropics/skills",
+    "scope": "project",
+    "enabled": true,
+    "skills": [
+      "anthropic.docx",
+      "anthropic.skill-creator"
+    ],
+    "permissionRisk": "medium"
+  },
+  {
+    "id": "github.code-yeongyu.oh-my-openagent",
+    "kind": "harness",
+    "sourceClass": "harness-bundle",
+    "priority": 60,
+    "trustLevel": "reviewed",
+    "sourceDigest": null,
+    "signature": null,
+    "verifiedAt": null,
+    "source": "npx lazycodex-ai install",
+    "scope": "user-global",
+    "enabled": true,
+    "skills": [
+      "omo.ulw-plan",
+      "omo.review-work"
+    ],
+    "permissionRisk": "high"
+  },
+  {
+    "id": "github.mattpocock.skills",
+    "kind": "marketplace",
+    "sourceClass": "external-package",
+    "priority": 40,
+    "trustLevel": "reviewed",
+    "sourceDigest": null,
+    "signature": null,
+    "verifiedAt": null,
+    "source": "npx skills@latest add mattpocock/skills",
+    "scope": "user-global",
+    "enabled": true,
+    "skills": [
+      "matt.grill-me",
+      "matt.tdd"
+    ],
+    "permissionRisk": "medium"
+  },
+  {
+    "id": "github.voltagent.awesome-agent-skills",
+    "kind": "marketplace",
+    "sourceClass": "external-package",
+    "priority": 40,
+    "trustLevel": "unreviewed",
+    "sourceDigest": null,
+    "signature": null,
+    "verifiedAt": null,
+    "source": "git clone https://github.com/VoltAgent/awesome-agent-skills",
+    "scope": "cache",
+    "enabled": true,
+    "skills": [],
+    "permissionRisk": "low"
+  },
+  {
+    "id": "github.wshobson.agents",
+    "kind": "marketplace",
+    "sourceClass": "external-package",
+    "priority": 40,
+    "trustLevel": "reviewed",
+    "sourceDigest": null,
+    "signature": null,
+    "verifiedAt": null,
+    "source": "npx codex-marketplace add wshobson/agents",
+    "scope": "project",
+    "enabled": true,
+    "skills": [
+      "wshobson.python-testing",
+      "wshobson.security-review"
+    ],
+    "permissionRisk": "medium"
+  },
+  {
+    "id": "local.agent-skills-private",
+    "kind": "skill",
+    "sourceClass": "user",
+    "priority": 100,
+    "trustLevel": "trusted",
+    "sourceDigest": null,
+    "signature": null,
+    "verifiedAt": null,
+    "source": "/mnt/d/workspace/agent-skills-private",
+    "scope": "user-global",
+    "enabled": true,
+    "skills": [
+      "private.workflow-router",
+      "private.tdd-work-continuity"
+    ],
+    "permissionRisk": "low"
+  }
+]
+
+Script done on 2026-06-23 21:54:39+09:00 [COMMAND_EXIT_CODE="0"]

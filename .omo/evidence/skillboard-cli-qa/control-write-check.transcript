@@ -1,0 +1,5 @@
+Script started on 2026-06-23 21:56:01+09:00 [COMMAND="node bin/skillboard.mjs check --config /tmp/skillboard-cli-qa/write.config.yaml --skills examples/multi-source-skills" <not executed on terminal>]
+[SKILL-GLOBAL-001] Skill private.workflow-router is global-auto; prefer workflow-auto or router-only.
+Policy check passed
+
+Script done on 2026-06-23 21:56:01+09:00 [COMMAND_EXIT_CODE="0"]

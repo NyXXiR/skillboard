@@ -85,6 +85,29 @@ test("cli import can safely merge a profile into config", async () => {
     const configPath = join(root, "skillboard.config.yaml");
     await writeSkill(join(sourceRoot, "skills", "tdd", "SKILL.md"), "tdd", "Run test-driven development.");
     await writeFile(configPath, "# keep import comment\nversion: 1\nskills: {}\ninstall_units: {}\n", "utf8");
+    const before = await readFile(configPath, "utf8");
+
+    const dryRun = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "import",
+      "--profile",
+      "github.mattpocock.skills",
+      "--source-root",
+      sourceRoot,
+      "--config",
+      configPath,
+      "--merge",
+      "--dry-run",
+      "--json"
+    ]);
+    const dryRunPayload = JSON.parse(dryRun.stdout);
+
+    assert.equal(dryRunPayload.dryRun, true);
+    assert.equal(dryRunPayload.changed, true);
+    assert.equal(dryRunPayload.plan.semanticAvailable, true);
+    assert.ok(dryRunPayload.plan.semanticChanges.some((change) => change.path === "/skills/matt.tdd"));
+    assert.deepEqual(dryRunPayload.addedSkills, ["matt.tdd"]);
+    assert.equal(await readFile(configPath, "utf8"), before);
 
     const result = await execFileAsync(process.execPath, [
       "bin/skillboard.mjs",

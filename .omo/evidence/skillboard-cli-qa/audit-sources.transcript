@@ -1,0 +1,12 @@
+Script started on 2026-06-23 21:54:38+09:00 [COMMAND="node bin/skillboard.mjs audit sources --config examples/multi-source.config.yaml --skills examples/multi-source-skills" <not executed on terminal>]
+Source audit: passed
+Errors: 0
+Warnings: 4
+github.anthropics.skills	external-package	trust=reviewed	risk=medium	pinned=false	signed=false	warning:source is not pinned by digest or signature
+github.code-yeongyu.oh-my-openagent	harness-bundle	trust=reviewed	risk=high	pinned=false	signed=false	warning:source is not pinned by digest or signature
+github.mattpocock.skills	external-package	trust=reviewed	risk=medium	pinned=false	signed=false	warning:source is not pinned by digest or signature
+github.voltagent.awesome-agent-skills	external-package	trust=unreviewed	risk=low	pinned=false	signed=false	ok
+github.wshobson.agents	external-package	trust=reviewed	risk=medium	pinned=false	signed=false	warning:source is not pinned by digest or signature
+local.agent-skills-private	user	trust=trusted	risk=low	pinned=false	signed=false	ok
+
+Script done on 2026-06-23 21:54:39+09:00 [COMMAND_EXIT_CODE="0"]

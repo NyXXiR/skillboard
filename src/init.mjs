@@ -1,6 +1,6 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { discoverAgentSkillInventory, mergeAgentSkillInventory } from "./agent-inventory.mjs";
+import { dirname, join } from "node:path";
+import { refreshAgentInventory } from "./inventory-refresh.mjs";
 import { BRIDGE_START, bridgeBlock, defaultConfig, hookReadme, profileReadme } from "./lifecycle-content.mjs";
 
 export async function initProject(options) {
@@ -40,7 +40,7 @@ export async function initProject(options) {
     }
   }
   const scan = options.scanInstalled === false
-    ? { scannedSkills: 0, scannedInstallUnits: 0, changed: false, addedSkills: [], addedInstallUnits: [], updatedInstallUnits: [], skippedSkills: [] }
+    ? { scannedSkills: 0, scannedInstallUnits: 0, changed: false, addedSkills: [], addedInstallUnits: [], updatedInstallUnits: [], addedWorkflows: [], addedHarnesses: [], skippedSkills: [], reviewNotes: [], warnings: [] }
     : await mergeInstalledAgentSkills(configPath, {
       roots: options.scanRoots,
       home: options.home,
@@ -77,19 +77,24 @@ async function ensureBridge(path) {
 }
 
 async function mergeInstalledAgentSkills(configPath, options) {
-  const inventory = await discoverAgentSkillInventory(options);
-  const current = await readFile(configPath, "utf8");
-  const merged = mergeAgentSkillInventory(current, inventory);
-  if (merged.changed) {
-    await writeFile(configPath, merged.text, "utf8");
-  }
+  const result = await refreshAgentInventory({
+    root: dirname(configPath),
+    configPath,
+    roots: options.roots,
+    home: options.home,
+    env: options.env
+  });
   return {
-    scannedSkills: inventory.skills.length,
-    scannedInstallUnits: inventory.installUnits.length,
-    changed: merged.changed,
-    addedSkills: merged.addedSkills,
-    addedInstallUnits: merged.addedInstallUnits,
-    updatedInstallUnits: merged.updatedInstallUnits,
-    skippedSkills: merged.skippedSkills
+    scannedSkills: result.scan.scannedSkills,
+    scannedInstallUnits: result.scan.scannedInstallUnits,
+    changed: result.changed,
+    addedSkills: result.scan.addedSkills,
+    addedInstallUnits: result.scan.addedInstallUnits,
+    updatedInstallUnits: result.scan.updatedInstallUnits,
+    addedWorkflows: result.scan.addedWorkflows,
+    addedHarnesses: result.scan.addedHarnesses,
+    skippedSkills: result.scan.skippedSkills,
+    reviewNotes: result.scan.reviewNotes,
+    warnings: result.scan.warnings
   };
 }

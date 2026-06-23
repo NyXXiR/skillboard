@@ -10,6 +10,7 @@ After publishing:
 ```bash
 npm install -g agent-skillboard
 skillboard init
+skillboard doctor
 ```
 
 The executable remains `skillboard` even though the npm package name is
@@ -23,6 +24,7 @@ cd skillboard
 npm install
 npm link
 skillboard init --dir /path/to/your/project
+skillboard doctor --dir /path/to/your/project
 ```
 
 ## What init Does
@@ -46,15 +48,93 @@ The bridge block is marked with `BEGIN SKILLBOARD` / `END SKILLBOARD` and is
 idempotent. Running init again does not duplicate it.
 
 By default, init scans known local agent skill roots such as Codex user skills,
-Codex system skills, and Codex plugin-cache manifests. Discovered skills are
-written to `skillboard.config.yaml` as managed install-unit components with
-`status: quarantined` and `invocation: blocked`, so the first run creates
-visibility without granting call permission. Plugin hooks, MCP servers,
-commands, and modified config files are recorded on the owning install unit when
-manifest metadata exposes them, which lets policy checks flag high-risk runtime
-extensions without flattening them into loose skills. Use `--no-scan-installed`
-for a scaffold-only bootstrap, or `--scan-root <dir>[,<dir>]` to add
-server-specific skill roots during bootstrap.
+Codex system skills, and Codex plugin-cache manifests. Trusted user-local skills
+are written as `active-manual` and attached to a generated local manual workflow
+when the project has no workflow metadata yet. That lets a first-time user keep
+their existing manual skills usable through `skillboard can-use` and guard
+checks without granting automatic model invocation. System, plugin, and other
+runtime-supplied skills are written with `status: quarantined` and
+`invocation: blocked`. Plugin hooks, MCP servers, commands, and modified config files are
+recorded on the owning install unit when manifest metadata exposes them, which
+lets policy checks flag high-risk runtime extensions without flattening them
+into loose skills. Use `--no-scan-installed` for a scaffold-only bootstrap, or
+`--scan-root <dir>[,<dir>]` to add server-specific skill roots during bootstrap.
+
+After init, run:
+
+```bash
+skillboard doctor --dir /path/to/your/project
+```
+
+Doctor is read-only. It reports config validity, bridge block status, managed
+skills and install units, policy/source audit health, high-risk runtime
+extensions, and the default uninstall dry-run plan. The default exit code stays
+zero when the project is usable but has review-needed safe-mode warnings, such as
+an unreviewed runtime extension. Add `--strict` when those warnings should fail a
+CI or automation gate. Use `--json` for an agent-readable health payload, or
+`--verify` when local source/cache digests should be checked as part of the
+report. `skillboard status` is the same report under a shorter command name.
+
+After installing a new local agent skill pack, plugin, workflow bundle, or
+harness, rescan before enabling anything:
+
+```bash
+skillboard inventory refresh --dir /path/to/your/project --dry-run
+skillboard inventory refresh --dir /path/to/your/project
+```
+
+The refresh command reuses the init scanner. If no workflows exist yet, trusted
+user-local skills are attached to a generated local manual workflow. If workflows
+already exist, those skills are imported as manual-only candidates with a review
+note instead of being attached to an arbitrary workflow. Runtime components
+remain attached to the owning install unit for review, and non-user runtime
+skills remain quarantined / blocked. Dry-run output includes a capped YAML
+semantic change list, while broken detector entries or malformed `SKILL.md`
+files are surfaced as scan warnings instead of aborting the whole refresh.
+
+Add a new workflow or harness without editing YAML by hand:
+
+```bash
+skillboard add harness codex --config skillboard.config.yaml --skills skills
+skillboard add workflow daily-workflow \
+  --harness codex \
+  --skill user.helper \
+  --config skillboard.config.yaml \
+  --skills skills
+```
+
+If an installer mutates runtime config without a manifest, parse its output and
+the mutated config files into the owning install unit before enabling anything:
+
+```bash
+skillboard inventory detect \
+  --unit acme.runtime \
+  --config /path/to/your/project/skillboard.config.yaml \
+  --install-output /path/to/install.log \
+  --config-file ~/.codex/config.toml \
+  --dry-run
+```
+
+The detector records discovered commands, hooks, MCP servers, and modified
+config files under `install_units.<id>`, then updates `permission_risk` from the
+detected runtime surface.
+
+For fetchable Git sources, refresh the project cache and digest pin before
+writing a lockfile:
+
+```bash
+skillboard sources refresh --dir /path/to/your/project --unit github.mattpocock.skills --dry-run
+skillboard sources refresh --dir /path/to/your/project --unit github.mattpocock.skills
+skillboard audit sources \
+  --config /path/to/your/project/skillboard.config.yaml \
+  --skills /path/to/your/project/skills \
+  --verify
+```
+
+`sources refresh` supports direct Git URLs, `git clone <url>` command strings,
+GitHub `org/repo` shorthands, and `file://` Git remotes. It writes the refreshed
+checkout under `.skillboard/sources/<install-unit-id>`, updates `cache_path`,
+`source_digest`, and `verified_at`, and leaves the config untouched on dry-run.
 
 ## Uninstall From A Project
 
@@ -76,8 +156,8 @@ Default uninstall behavior is conservative:
 - deletes `.skillboard/profiles/README.md` and `.skillboard/hooks/README.md`
   only when they still exactly match the generated text;
 - removes empty generated directories;
-- preserves `skillboard.config.yaml`, `skills/`, reports, and modified files by
-  default.
+- preserves `skillboard.config.yaml`, local skill files, reports, and modified
+  files by default. Empty generated directories can be removed.
 
 Use `--remove-config` to delete `skillboard.config.yaml` only when it still
 matches the untouched default config. If the config contains scanned skills or
@@ -106,14 +186,16 @@ skillboard import \
   --profile github.mattpocock.skills \
   --source-root /path/to/mattpocock-skills \
   --config skillboard.config.yaml \
-  --merge
+  --merge \
+  --dry-run
 ```
 
 `--merge` refuses to overwrite existing `skills` or `install_units`. Add
 `--replace` only when you intentionally want the imported source profile to
 replace those entries. The merge uses a structured YAML writer that keeps normal
 comments and ordering where possible, but review the diff before committing
-hand-edited formatting.
+hand-edited formatting. Drop `--dry-run` only after the reported text and YAML
+semantic change plan is acceptable.
 
 ```yaml
 install_units:

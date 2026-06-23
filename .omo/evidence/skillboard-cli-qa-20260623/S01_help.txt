@@ -1,0 +1,29 @@
+SCENARIO: S01_help
+DESCRIPTION: CLI help lists public surfaces
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs --help
+--- stdout/stderr ---
+SkillBoard - workflow-scoped agent skill policy
+
+Commands:
+  init [--dir <path>]
+  import --profile <id-or-path> --source-root <dir> [--profile-dirs a,b] [--out <path>]
+  import --profile <id-or-path> --source-root <dir> --config <path> --merge [--replace]
+  scan --config <path>
+  check --config <path> --skills <dir>
+  list [skills|workflows|harnesses|install-units] --config <path> --skills <dir> [--workflow <name>] [--json]
+  explain <skill-id> --config <path> --skills <dir> [--json]
+  can-use <skill-id> --workflow <name> --config <path> --skills <dir> [--json]
+  guard use <skill-id> --workflow <name> --config <path> --skills <dir> [--json]
+  audit sources --config <path> --skills <dir> [--verify] [--json]
+  hook install --workflow <name> --config <path> --skills <dir> [--out <path>] [--skillboard-bin <path>] [--json]
+  lock write --config <path> --skills <dir> [--out <path>] [--replace] [--json]
+  activate <skill-id> --workflow <name> [--mode manual-only|router-only|workflow-auto] --config <path> --skills <dir> [--dry-run] [--json]
+  block <skill-id> --workflow <name> --config <path> --skills <dir> [--dry-run] [--json]
+  quarantine <skill-id> --config <path> --skills <dir> [--dry-run] [--json]
+  prefer <skill-id> --workflow <name> --capability <name> --config <path> --skills <dir> [--dry-run] [--json]
+  dashboard --config <path> --skills <dir> [--out <path>]
+  reconcile --config <path> --skills <dir> [--actual-harnesses a,b] [--out <path>]
+  impact disable <skill-id> --config <path> --skills <dir> [--out <path>]
+--- exit_code ---
+0

@@ -97,11 +97,13 @@ skillboard import \
   --profile github.mattpocock.skills \
   --source-root /path/to/source \
   --config skillboard.config.yaml \
-  --merge
+  --merge \
+  --dry-run
 ```
 
 Merge is append-only by default and refuses duplicate skill or install-unit ids.
-`--replace` is the explicit overwrite escape hatch.
+`--replace` is the explicit overwrite escape hatch. Drop `--dry-run` after
+reviewing the change plan.
 
 The reconciler then applies the same policy rules regardless of source.
 

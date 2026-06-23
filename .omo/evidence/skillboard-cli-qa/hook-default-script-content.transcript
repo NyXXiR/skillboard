@@ -1,0 +1,4 @@
+Script started on 2026-06-23 21:55:06+09:00 [COMMAND="sed -n 1,120p /tmp/skillboard-cli-qa/codex-night-guard-default.sh" <not executed on terminal>]
+sed: can't read /tmp/skillboard-cli-qa/codex-night-guard-default.sh: No such file or directory
+
+Script done on 2026-06-23 21:55:06+09:00 [COMMAND_EXIT_CODE="2"]

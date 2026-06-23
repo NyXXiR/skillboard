@@ -1,0 +1,8 @@
+SCENARIO: S29_guard_missing_args
+DESCRIPTION: guard use missing workflow fails usage
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs guard use matt.tdd --config examples/multi-source.config.yaml --skills examples/multi-source-skills
+--- stdout/stderr ---
+Usage: skillboard guard use <skill-id> --workflow <name>
+--- exit_code ---
+1

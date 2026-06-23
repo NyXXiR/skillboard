@@ -1,0 +1,4 @@
+Script started on 2026-06-23 21:56:23+09:00 [COMMAND="node -e "import(\"yaml\").then(()=>console.log(\"yaml import ok\"))"" <not executed on terminal>]
+yaml import ok
+
+Script done on 2026-06-23 21:56:23+09:00 [COMMAND_EXIT_CODE="0"]

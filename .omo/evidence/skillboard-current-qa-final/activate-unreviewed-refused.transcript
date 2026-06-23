@@ -1,0 +1,5 @@
+$ activate unreviewed workflow-auto refuses and preserves config
+Control update would not be usable:
+Skill vendor.router is model-selectable but source github.vendor.skills is unreviewed.
+status=1
+preserved=yes

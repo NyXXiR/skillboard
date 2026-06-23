@@ -1,0 +1,7 @@
+Script started on 2026-06-23 21:56:01+09:00 [COMMAND="rg -n "QA_SENTINEL|preferred:|fallback:" /tmp/skillboard-cli-qa/write.config.yaml" <not executed on terminal>]
+138:        preferred: private.tdd-work-continuity
+139:        fallback:
+151:        preferred: omo.review-work
+152:        fallback:
+
+Script done on 2026-06-23 21:56:01+09:00 [COMMAND_EXIT_CODE="0"]

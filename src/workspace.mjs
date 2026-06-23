@@ -15,6 +15,7 @@ import {
   STATUS_VALUES
 } from "./domain/constants.mjs";
 import { parseInstallUnits } from "./install-units.mjs";
+import { normalizeSkillPath } from "./skill-paths.mjs";
 
 export async function loadWorkspace(options) {
   const configText = await readFile(options.configPath, "utf8");
@@ -117,7 +118,7 @@ function parseSkills(value) {
     }
     return {
       id,
-      path: readString(skill, "path", id),
+      path: normalizeSkillPath(readString(skill, "path", id), `skills.${id}.path`),
       status,
       invocation,
       exposure,

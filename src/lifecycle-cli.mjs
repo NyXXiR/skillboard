@@ -22,7 +22,11 @@ export async function runInitCommand(options, stdout) {
   }
   writeList(stdout, "Added managed skills", result.scan.addedSkills);
   writeList(stdout, "Added install units", result.scan.addedInstallUnits);
+  writeList(stdout, "Added workflows", result.scan.addedWorkflows ?? []);
+  writeList(stdout, "Added harnesses", result.scan.addedHarnesses ?? []);
   writeList(stdout, "Skipped existing skills", result.scan.skippedSkills);
+  writeList(stdout, "Review notes", result.scan.reviewNotes ?? []);
+  writeList(stdout, "Scan warnings", result.scan.warnings ?? []);
   return 0;
 }
 

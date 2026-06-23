@@ -1,0 +1,9 @@
+SCENARIO: S26_control_check_temp
+DESCRIPTION: check temp config after real prefer
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs check --config /tmp/tmp.m5IsEE5n8N/control.config.yaml --skills examples/multi-source-skills
+--- stdout/stderr ---
+[SKILL-GLOBAL-001] Skill private.workflow-router is global-auto; prefer workflow-auto or router-only.
+Policy check passed
+--- exit_code ---
+0

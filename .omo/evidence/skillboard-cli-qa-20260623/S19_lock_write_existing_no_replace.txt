@@ -1,0 +1,8 @@
+SCENARIO: S19_lock_write_existing_no_replace
+DESCRIPTION: lock write rejects existing lockfile without --replace
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs lock write --config examples/multi-source.config.yaml --skills examples/multi-source-skills --out /tmp/tmp.m5IsEE5n8N/skillboard.lock.yaml --json
+--- stdout/stderr ---
+EEXIST: file already exists, open '/tmp/tmp.m5IsEE5n8N/skillboard.lock.yaml'
+--- exit_code ---
+1

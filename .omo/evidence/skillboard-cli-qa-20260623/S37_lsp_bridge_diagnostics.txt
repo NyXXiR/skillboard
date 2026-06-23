@@ -1,0 +1,8 @@
+SCENARIO: S37_lsp_bridge_diagnostics
+DESCRIPTION: MCP LSP diagnostics for src/cli.mjs
+SURFACE: MCP LSP bridge
+INVOCATION: mcp__lsp.diagnostics {"filePath":"/mnt/i/workspace/skill-control-plane/src/cli.mjs","severity":"all"}
+--- output ---
+No diagnostics found
+--- exit_code ---
+0

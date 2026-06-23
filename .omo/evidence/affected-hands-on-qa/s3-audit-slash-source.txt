@@ -1,0 +1,53 @@
+surface: terminal CLI
+fixture_root: /tmp/skillboard-qa-slash-hbfxIr
+config: /tmp/skillboard-qa-slash-hbfxIr/skillboard.config.yaml
+skills: /tmp/skillboard-qa-slash-hbfxIr/skills
+invocation: node bin/skillboard.mjs audit sources --verify --config /tmp/skillboard-qa-slash-hbfxIr/skillboard.config.yaml --skills /tmp/skillboard-qa-slash-hbfxIr/skills --json
+
+config_before:
+version: 1
+skills: {}
+workflows: {}
+install_units:
+  command.source:
+    kind: marketplace
+    source: /plugin marketplace add anthropics/skills
+    scope: project
+    enabled: true
+    trust_level: reviewed
+    permission_risk: medium
+
+command_output:
+{
+  "ok": true,
+  "units": [
+    {
+      "id": "command.source",
+      "kind": "marketplace",
+      "source": "/plugin marketplace add anthropics/skills",
+      "cachePath": null,
+      "verifiedPath": null,
+      "verifiedField": "source",
+      "sourceClass": "external-package",
+      "trustLevel": "reviewed",
+      "permissionRisk": "medium",
+      "expectedDigest": null,
+      "actualDigest": null,
+      "digestVerified": false,
+      "signatureVerified": false,
+      "status": "metadata-only",
+      "findings": [
+        {
+          "severity": "warning",
+          "message": "remote or command source has no source_digest pin"
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "warnings": [
+    "command.source: remote or command source has no source_digest pin"
+  ]
+}
+
+exit_code: 0

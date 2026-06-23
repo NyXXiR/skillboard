@@ -1,0 +1,6 @@
+Script started on 2026-06-23 21:54:39+09:00 [COMMAND="node bin/skillboard.mjs list skills --config examples/multi-source.config.yaml --skills examples/multi-source-skills --workflow codex-night-workflow" <not executed on terminal>]
+private.tdd-work-continuity	active	router-only	user	owner=local.agent-skills-private	roles=active,fallback
+matt.grill-me	vendor	manual-only	external-package	owner=github.mattpocock.skills	roles=blocked
+matt.tdd	active	workflow-auto	external-package	owner=github.mattpocock.skills	roles=active,preferred
+
+Script done on 2026-06-23 21:54:39+09:00 [COMMAND_EXIT_CODE="0"]

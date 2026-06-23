@@ -1,0 +1,12 @@
+Script started on 2026-06-23 21:55:28+09:00 [COMMAND="node bin/skillboard.mjs can-use matt.tdd --workflow codex-night-workflow --config /tmp/skillboard-cli-qa/unreviewed-matt.config.yaml --skills examples/multi-source-skills" <not executed on terminal>]
+Allowed: false
+Automatic allowed: false
+Skill: matt.tdd
+Workflow: codex-night-workflow
+Invocation: workflow-auto
+Trust: unreviewed
+Roles: active, preferred
+Reasons:
+- Skill matt.tdd is model-selectable but source github.mattpocock.skills is unreviewed.
+
+Script done on 2026-06-23 21:55:29+09:00 [COMMAND_EXIT_CODE="2"]

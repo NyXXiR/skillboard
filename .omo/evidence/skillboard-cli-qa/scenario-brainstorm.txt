@@ -1,0 +1,21 @@
+SkillBoard CLI QA scenario brainstorm
+
+P0
+- audit sources on examples/multi-source.config.yaml and examples/multi-source-skills reports source trust/materialization status and exits according to policy.
+- hook install for codex-night-workflow writes a runnable guard hook to /tmp; executing it allows matt.tdd and denies matt.grill-me.
+- trust denial for model-selectable unreviewed external source: using a /tmp config copy, make a candidate source unreviewed/untrusted while router/model-selectable, then can-use/guard/audit must deny or fail with a clear reason.
+- control write dry-run for activate/block/quarantine/prefer must not mutate config and must show intended YAML changes.
+- npm run check must pass repository checks.
+
+P1
+- list skills/workflows/harnesses/install-units outputs expected IDs and supports --json.
+- explain returns source, workflow, capability, and trust context for known skills.
+- can-use returns exit 0 for allowed workflow skill and exit 2 for blocked/disallowed skill.
+- guard mirrors can-use with hook-friendly allow/deny output.
+- real control write against /tmp config preserves parseability and surrounding comments/formatting as far as observable.
+
+P2
+- invalid skill/workflow/config paths fail non-zero with clear errors.
+- hook install respects custom --skillboard-bin path.
+- repeated block/activate/prefer commands remain idempotent.
+- JSON output schemas remain stable enough for callers.

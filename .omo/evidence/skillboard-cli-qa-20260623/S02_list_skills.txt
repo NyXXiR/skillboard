@@ -1,0 +1,10 @@
+SCENARIO: S02_list_skills
+DESCRIPTION: list skills workflow filter
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs list skills --config examples/multi-source.config.yaml --skills examples/multi-source-skills --workflow codex-night-workflow
+--- stdout/stderr ---
+private.tdd-work-continuity	active	router-only	user	owner=local.agent-skills-private	roles=active,fallback
+matt.grill-me	vendor	manual-only	external-package	owner=github.mattpocock.skills	roles=blocked
+matt.tdd	active	workflow-auto	external-package	owner=github.mattpocock.skills	roles=active,preferred
+--- exit_code ---
+0

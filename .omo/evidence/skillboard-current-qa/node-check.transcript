@@ -1,0 +1,1 @@
+$ node --check bin/skillboard.mjs && find src test -name *.mjs -print0 | xargs -0 -n1 node --check

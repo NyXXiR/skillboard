@@ -1,0 +1,1 @@
+parsed /mnt/i/workspace/skill-control-plane/.omo/evidence/skillboard-doctor-status-cli/uninitialized-doctor-json.txt

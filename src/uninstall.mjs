@@ -1,4 +1,4 @@
-import { access, readFile, readdir, rm, rmdir, writeFile } from "node:fs/promises";
+import { access, lstat, readFile, readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BRIDGE_END, BRIDGE_START, defaultConfig, hookReadme, profileReadme } from "./lifecycle-content.mjs";
 
@@ -77,8 +77,12 @@ function emptyDirs(root) {
 }
 
 async function removeBridge(path, dryRun) {
-  if (!(await exists(path))) {
+  const stats = await pathStats(path);
+  if (stats === null) {
     return "absent";
+  }
+  if (stats.isSymbolicLink() || !stats.isFile()) {
+    return "preserved";
   }
   const current = await readFile(path, "utf8");
   const next = withoutBridgeBlock(current);
@@ -124,8 +128,12 @@ function withoutBridgeBlock(text) {
 }
 
 async function removeGeneratedFile(path, expected, dryRun) {
-  if (!(await exists(path))) {
+  const stats = await pathStats(path);
+  if (stats === null) {
     return "absent";
+  }
+  if (stats.isSymbolicLink() || !stats.isFile()) {
+    return "preserved";
   }
   const current = await readFile(path, "utf8");
   if (current !== expected) {
@@ -138,8 +146,12 @@ async function removeGeneratedFile(path, expected, dryRun) {
 }
 
 async function removeEmptyDir(path, dryRun, plannedRemovedPaths) {
-  if (!(await exists(path))) {
+  const stats = await pathStats(path);
+  if (stats === null) {
     return "absent";
+  }
+  if (stats.isSymbolicLink() || !stats.isDirectory()) {
+    return "preserved";
   }
   const entries = (await readdir(path)).filter((entry) => !plannedRemovedPaths.has(join(path, entry)));
   if (entries.length > 0) {
@@ -167,4 +179,15 @@ function lineEnding(text) {
 
 async function exists(path) {
   return access(path).then(() => true, () => false);
+}
+
+async function pathStats(path) {
+  try {
+    return await lstat(path);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
 }

@@ -1,0 +1,23 @@
+SCENARIO: S25_control_prefer_real_temp
+DESCRIPTION: prefer writes only temp config
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs prefer private.tdd-work-continuity --workflow codex-night-workflow --capability test-first-implementation --config /tmp/tmp.m5IsEE5n8N/control.config.yaml --skills examples/multi-source-skills --json
+--- stdout/stderr ---
+{
+  "message": "Preferred private.tdd-work-continuity for test-first-implementation in codex-night-workflow",
+  "dryRun": false,
+  "changed": true,
+  "plan": {
+    "changed": true,
+    "beforeBytes": 6533,
+    "afterBytes": 6553,
+    "beforeLines": 272,
+    "afterLines": 272,
+    "changedLineCount": 2
+  },
+  "warnings": [
+    "[SKILL-GLOBAL-001] Skill private.workflow-router is global-auto; prefer workflow-auto or router-only."
+  ]
+}
+--- exit_code ---
+0

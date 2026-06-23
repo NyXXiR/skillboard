@@ -1,0 +1,21 @@
+SCENARIO: S27_can_use_unknown
+DESCRIPTION: can-use unknown skill is denied
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs can-use missing.skill --config examples/multi-source.config.yaml --skills examples/multi-source-skills --workflow codex-night-workflow --json
+--- stdout/stderr ---
+{
+  "allowed": false,
+  "automaticAllowed": false,
+  "skill": "missing.skill",
+  "workflow": "codex-night-workflow",
+  "invocation": null,
+  "status": null,
+  "trust": null,
+  "roles": [],
+  "capabilityRoles": [],
+  "reasons": [
+    "Unknown skill: missing.skill"
+  ]
+}
+--- exit_code ---
+2

@@ -1,0 +1,4 @@
+Script started on 2026-06-23 21:54:46+09:00 [COMMAND="node bin/skillboard.mjs guard use matt.tdd --workflow codex-night-workflow --config examples/multi-source.config.yaml --skills examples/multi-source-skills" <not executed on terminal>]
+allow
+
+Script done on 2026-06-23 21:54:47+09:00 [COMMAND_EXIT_CODE="0"]

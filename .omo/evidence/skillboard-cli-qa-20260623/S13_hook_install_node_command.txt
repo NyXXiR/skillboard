@@ -1,0 +1,8 @@
+SCENARIO: S13_hook_install_node_command
+DESCRIPTION: hook install with --skillboard-bin 'node bin/skillboard.mjs'
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs hook install --config examples/multi-source.config.yaml --skills examples/multi-source-skills --workflow codex-night-workflow --out /tmp/tmp.m5IsEE5n8N/codex-night-guard.sh --skillboard-bin node bin/skillboard.mjs
+--- stdout/stderr ---
+Installed guard hook: /tmp/tmp.m5IsEE5n8N/codex-night-guard.sh
+--- exit_code ---
+0

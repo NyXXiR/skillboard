@@ -1,0 +1,57 @@
+$ audit sources --verify with slash command and bad digest
+{
+  "ok": false,
+  "units": [
+    {
+      "id": "local.bad",
+      "kind": "skill",
+      "source": "/tmp/tmp.udMEhRBkZr/source",
+      "cachePath": null,
+      "verifiedPath": "/tmp/tmp.udMEhRBkZr/source",
+      "verifiedField": "source",
+      "sourceClass": "user",
+      "trustLevel": "trusted",
+      "permissionRisk": "low",
+      "expectedDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "actualDigest": "sha256:a66a2902723272f4e8f4e4d5533e07856953f16a37151ea8ef2bb7681f23dcaf",
+      "digestVerified": false,
+      "signatureVerified": false,
+      "status": "verified-local",
+      "findings": [
+        {
+          "severity": "error",
+          "message": "source_digest mismatch: expected sha256:0000000000000000000000000000000000000000000000000000000000000000, got sha256:a66a2902723272f4e8f4e4d5533e07856953f16a37151ea8ef2bb7681f23dcaf"
+        }
+      ]
+    },
+    {
+      "id": "command.source",
+      "kind": "marketplace",
+      "source": "/plugin marketplace add anthropics/skills",
+      "cachePath": null,
+      "verifiedPath": null,
+      "verifiedField": "source",
+      "sourceClass": "external-package",
+      "trustLevel": "reviewed",
+      "permissionRisk": "medium",
+      "expectedDigest": null,
+      "actualDigest": null,
+      "digestVerified": false,
+      "signatureVerified": false,
+      "status": "metadata-only",
+      "findings": [
+        {
+          "severity": "warning",
+          "message": "remote or command source has no source_digest pin"
+        }
+      ]
+    }
+  ],
+  "errors": [
+    "local.bad: source_digest mismatch: expected sha256:0000000000000000000000000000000000000000000000000000000000000000, got sha256:a66a2902723272f4e8f4e4d5533e07856953f16a37151ea8ef2bb7681f23dcaf"
+  ],
+  "warnings": [
+    "command.source: remote or command source has no source_digest pin"
+  ]
+}
+status=1

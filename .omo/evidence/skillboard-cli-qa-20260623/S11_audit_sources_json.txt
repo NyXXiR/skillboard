@@ -1,0 +1,125 @@
+SCENARIO: S11_audit_sources_json
+DESCRIPTION: audit sources JSON
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs audit sources --config examples/multi-source.config.yaml --skills examples/multi-source-skills --json
+--- stdout/stderr ---
+{
+  "ok": true,
+  "units": [
+    {
+      "id": "github.anthropics.skills",
+      "kind": "marketplace",
+      "sourceClass": "external-package",
+      "enabled": true,
+      "trustLevel": "reviewed",
+      "permissionRisk": "medium",
+      "signed": false,
+      "pinned": false,
+      "verifiedAt": null,
+      "automaticSkills": [],
+      "findings": [
+        {
+          "severity": "warning",
+          "message": "source is not pinned by digest or signature"
+        }
+      ]
+    },
+    {
+      "id": "github.code-yeongyu.oh-my-openagent",
+      "kind": "harness",
+      "sourceClass": "harness-bundle",
+      "enabled": true,
+      "trustLevel": "reviewed",
+      "permissionRisk": "high",
+      "signed": false,
+      "pinned": false,
+      "verifiedAt": null,
+      "automaticSkills": [],
+      "findings": [
+        {
+          "severity": "warning",
+          "message": "source is not pinned by digest or signature"
+        }
+      ]
+    },
+    {
+      "id": "github.mattpocock.skills",
+      "kind": "marketplace",
+      "sourceClass": "external-package",
+      "enabled": true,
+      "trustLevel": "reviewed",
+      "permissionRisk": "medium",
+      "signed": false,
+      "pinned": false,
+      "verifiedAt": null,
+      "automaticSkills": [
+        "matt.tdd"
+      ],
+      "findings": [
+        {
+          "severity": "warning",
+          "message": "source is not pinned by digest or signature"
+        }
+      ]
+    },
+    {
+      "id": "github.voltagent.awesome-agent-skills",
+      "kind": "marketplace",
+      "sourceClass": "external-package",
+      "enabled": true,
+      "trustLevel": "unreviewed",
+      "permissionRisk": "low",
+      "signed": false,
+      "pinned": false,
+      "verifiedAt": null,
+      "automaticSkills": [],
+      "findings": []
+    },
+    {
+      "id": "github.wshobson.agents",
+      "kind": "marketplace",
+      "sourceClass": "external-package",
+      "enabled": true,
+      "trustLevel": "reviewed",
+      "permissionRisk": "medium",
+      "signed": false,
+      "pinned": false,
+      "verifiedAt": null,
+      "automaticSkills": [
+        "wshobson.python-testing",
+        "wshobson.security-review"
+      ],
+      "findings": [
+        {
+          "severity": "warning",
+          "message": "source is not pinned by digest or signature"
+        }
+      ]
+    },
+    {
+      "id": "local.agent-skills-private",
+      "kind": "skill",
+      "sourceClass": "user",
+      "enabled": true,
+      "trustLevel": "trusted",
+      "permissionRisk": "low",
+      "signed": false,
+      "pinned": false,
+      "verifiedAt": null,
+      "automaticSkills": [
+        "private.tdd-work-continuity",
+        "private.workflow-router"
+      ],
+      "findings": []
+    }
+  ],
+  "errors": [],
+  "warnings": [
+    "github.anthropics.skills: source is not pinned by digest or signature",
+    "github.code-yeongyu.oh-my-openagent: source is not pinned by digest or signature",
+    "github.mattpocock.skills: source is not pinned by digest or signature",
+    "github.wshobson.agents: source is not pinned by digest or signature"
+  ]
+}
+--- exit_code ---
+0

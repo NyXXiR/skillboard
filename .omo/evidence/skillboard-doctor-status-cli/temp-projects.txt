@@ -1,0 +1,2 @@
+tmp_root=/tmp/skillboard-qa.Higa4F
+evidence_dir=/mnt/i/workspace/skill-control-plane/.omo/evidence/skillboard-doctor-status-cli

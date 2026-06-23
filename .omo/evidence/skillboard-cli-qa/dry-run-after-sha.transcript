@@ -1,0 +1,4 @@
+Script started on 2026-06-23 21:55:47+09:00 [COMMAND="sha256sum /tmp/skillboard-cli-qa/dry-run.config.yaml" <not executed on terminal>]
+22bd4f0e1d2b4ee1e51f8c26a1294596233d57035faf2299074301c1a991a9fa  /tmp/skillboard-cli-qa/dry-run.config.yaml
+
+Script done on 2026-06-23 21:55:47+09:00 [COMMAND_EXIT_CODE="0"]

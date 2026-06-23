@@ -1,0 +1,54 @@
+SCENARIO: S03_list_workflows_json
+DESCRIPTION: list workflows JSON
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs list workflows --config examples/multi-source.config.yaml --skills examples/multi-source-skills --json
+--- stdout/stderr ---
+[
+  {
+    "name": "codex-night-workflow",
+    "harness": "codex",
+    "activeSkills": [
+      "matt.tdd",
+      "private.tdd-work-continuity"
+    ],
+    "blockedSkills": [
+      "matt.grill-me"
+    ],
+    "requiredCapabilities": [
+      "test-first-implementation"
+    ]
+  },
+  {
+    "name": "document-workflow",
+    "harness": "claude-code",
+    "activeSkills": [
+      "anthropic.docx"
+    ],
+    "blockedSkills": [],
+    "requiredCapabilities": []
+  },
+  {
+    "name": "large-refactor-workflow",
+    "harness": "lazycodex",
+    "activeSkills": [
+      "omo.ulw-plan",
+      "omo.review-work",
+      "wshobson.security-review"
+    ],
+    "blockedSkills": [],
+    "requiredCapabilities": [
+      "implementation-review"
+    ]
+  },
+  {
+    "name": "skill-discovery-workflow",
+    "harness": "codex",
+    "activeSkills": [
+      "private.workflow-router"
+    ],
+    "blockedSkills": [],
+    "requiredCapabilities": []
+  }
+]
+--- exit_code ---
+0

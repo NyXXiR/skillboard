@@ -1,0 +1,8 @@
+Script started on 2026-06-23 21:56:17+09:00 [COMMAND="rg -n "QA_SENTINEL|preferred:|fallback:" /tmp/skillboard-cli-qa/write-comment.config.yaml" <not executed on terminal>]
+112:      # QA_SENTINEL: preserve comments across control writes
+139:        preferred: private.tdd-work-continuity
+140:        fallback:
+152:        preferred: omo.review-work
+153:        fallback:
+
+Script done on 2026-06-23 21:56:17+09:00 [COMMAND_EXIT_CODE="0"]

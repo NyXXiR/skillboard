@@ -1,0 +1,62 @@
+$ node bin/skillboard.mjs lock write ...
+Lockfile written: /tmp/tmp.DHBb3nINw6/skillboard.lock.yaml
+version: 1
+generated_at: 2026-06-23T13:08:05.750Z
+config_schema_version: 1
+install_units:
+  local.agent-skills-private:
+    kind: skill
+    source: /mnt/d/workspace/agent-skills-private
+    cache_path: null
+    verified_path: /mnt/d/workspace/agent-skills-private
+    verified_field: source
+    source_class: user
+    trust_level: trusted
+    permission_risk: low
+    source_digest: null
+    digest_verified: false
+    signature_verified: false
+    status: unverified
+  github.mattpocock.skills:
+    kind: marketplace
+    source: npx skills@latest add mattpocock/skills
+    cache_path: null
+    verified_path: null
+    verified_field: source
+    source_class: external-package
+    trust_level: reviewed
+    permission_risk: medium
+    source_digest: null
+    digest_verified: false
+    signature_verified: false
+    status: metadata-only
+  github.code-yeongyu.oh-my-openagent:
+    kind: harness
+    source: npx lazycodex-ai install
+    cache_path: null
+    verified_path: null
+    verified_field: source
+    source_class: harness-bundle
+    trust_level: reviewed
+    permission_risk: high
+    source_digest: null
+    digest_verified: false
+    signature_verified: false
+    status: metadata-only
+  github.anthropics.skills:
+    kind: marketplace
+    source: /plugin marketplace add anthropics/skills
+    cache_path: null
+    verified_path: /plugin marketplace add anthropics/skills
+    verified_field: source
+    source_class: external-package
+    trust_level: reviewed
+    permission_risk: medium
+    source_digest: null
+    digest_verified: false
+    signature_verified: false
+    status: unverified
+  github.wshobson.agents:
+    kind: marketplace
+    source: npx codex-marketplace add wshobson/agents
+    cache_path: null

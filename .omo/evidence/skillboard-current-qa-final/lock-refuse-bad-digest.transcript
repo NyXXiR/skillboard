@@ -1,0 +1,5 @@
+$ lock write refuses bad digest
+Cannot write lockfile because source verification failed:
+local.bad: source_digest mismatch: expected sha256:0000000000000000000000000000000000000000000000000000000000000000, got sha256:a66a2902723272f4e8f4e4d5533e07856953f16a37151ea8ef2bb7681f23dcaf
+status=1
+lock_absent=yes

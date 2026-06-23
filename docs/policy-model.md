@@ -112,9 +112,10 @@ capabilities:
 This lets SkillBoard suggest replacements when a skill is removed and group
 overlapping skills by role instead of by name alone.
 
-When the reconciler discovers a new skill that already maps to a capability, it
-uses `default_policy` as the recommended invocation mode. The status remains
-`quarantined`, so the recommendation is visible but not automatically callable.
+When the reconciler discovers a new non-user skill that already maps to a
+capability, it uses `default_policy` as the recommended invocation mode. The
+status remains `quarantined`, so the recommendation is visible but not
+automatically callable.
 
 ## Harness Lifecycle
 
@@ -217,7 +218,13 @@ SkillBoard compares desired state with actual state:
 
 Safe automatic defaults:
 
-- New skills are quarantined and blocked.
-- New harnesses are disabled.
+- Trusted user-local skills become `active-manual` only when SkillBoard has no
+  existing workflow metadata and can create a local manual workflow.
+- Trusted user-local skills discovered after workflows exist become
+  `candidate` / `manual-only` with a review note instead of being attached to an
+  arbitrary workflow.
+- Runtime-supplied, external, system, or unreviewed skills are quarantined and
+  blocked.
+- New harnesses detected by reconciliation are disabled until workflows opt in.
 - Removed skills and harnesses produce impact reports before config changes.
 - Capability matches are surfaced as recommendations, not auto-activation.

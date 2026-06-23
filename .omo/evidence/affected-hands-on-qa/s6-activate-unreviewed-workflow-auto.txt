@@ -1,0 +1,77 @@
+surface: terminal CLI
+fixture_root: /tmp/skillboard-qa-activate-NsZRMq
+config: /tmp/skillboard-qa-activate-NsZRMq/skillboard.config.yaml
+skills: /tmp/skillboard-qa-activate-NsZRMq/skills
+invocation: node bin/skillboard.mjs activate vendor.router --workflow review-workflow --mode workflow-auto --config /tmp/skillboard-qa-activate-NsZRMq/skillboard.config.yaml --skills /tmp/skillboard-qa-activate-NsZRMq/skills
+
+config_before:
+version: 1
+skills:
+  vendor.router:
+    path: vendor/router
+    status: candidate
+    invocation: manual-only
+    exposure: exported
+    owner_install_unit: github.vendor.skills
+workflows:
+  review-workflow:
+    harness: codex
+    active_skills: []
+    blocked_skills: []
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - review-workflow
+install_units:
+  github.vendor.skills:
+    kind: marketplace
+    source: github.com/vendor/skills
+    scope: project
+    provided_components:
+      - skills
+    components:
+      skills:
+        - vendor.router
+    enabled: true
+    trust_level: unreviewed
+    permission_risk: medium
+
+command_output:
+Control update would not be usable:
+Skill vendor.router is model-selectable but source github.vendor.skills is unreviewed.
+
+exit_code: 1
+config_preserved_after: yes
+config_after:
+version: 1
+skills:
+  vendor.router:
+    path: vendor/router
+    status: candidate
+    invocation: manual-only
+    exposure: exported
+    owner_install_unit: github.vendor.skills
+workflows:
+  review-workflow:
+    harness: codex
+    active_skills: []
+    blocked_skills: []
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - review-workflow
+install_units:
+  github.vendor.skills:
+    kind: marketplace
+    source: github.com/vendor/skills
+    scope: project
+    provided_components:
+      - skills
+    components:
+      skills:
+        - vendor.router
+    enabled: true
+    trust_level: unreviewed
+    permission_risk: medium

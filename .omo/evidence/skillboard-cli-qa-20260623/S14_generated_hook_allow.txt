@@ -1,0 +1,8 @@
+SCENARIO: S14_generated_hook_allow
+DESCRIPTION: generated hook executes allowed skill
+SURFACE: CLI
+INVOCATION: /tmp/tmp.m5IsEE5n8N/codex-night-guard.sh private.tdd-work-continuity
+--- stdout/stderr ---
+allow
+--- exit_code ---
+0

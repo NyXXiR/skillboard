@@ -1,0 +1,59 @@
+ M .gitignore
+ M LICENSE
+ M README.md
+ M bin/skillboard.mjs
+ M docs/adapters.md
+ M docs/install.md
+ M docs/policy-model.md
+ M docs/positioning.md
+ M docs/versioning.md
+ M examples/multi-source-skills/anthropic/docx/SKILL.md
+ M examples/multi-source-skills/anthropic/skill-creator/SKILL.md
+ M examples/multi-source-skills/matt/grill-me/SKILL.md
+ M examples/multi-source-skills/matt/tdd/SKILL.md
+ M examples/multi-source-skills/omo/review-work/SKILL.md
+ M examples/multi-source-skills/omo/ulw-plan/SKILL.md
+ M examples/multi-source-skills/private/tdd-work-continuity/SKILL.md
+ M examples/multi-source-skills/private/workflow-router/SKILL.md
+ M examples/multi-source-skills/wshobson/python-testing/SKILL.md
+ M examples/multi-source-skills/wshobson/security-review/SKILL.md
+ M examples/multi-source.config.yaml
+ M examples/skillboard.config.yaml
+ M examples/skills/grill-me/SKILL.md
+ M examples/skills/grill-with-docs/SKILL.md
+ M examples/skills/requirement-intake/SKILL.md
+ M examples/skills/tdd/SKILL.md
+ M package-lock.json
+ M package.json
+ M profiles/anthropics-skills.yaml
+ M profiles/mattpocock-skills.yaml
+ M profiles/oh-my-openagent.yaml
+ M profiles/voltagent-awesome-agent-skills.yaml
+ M profiles/wshobson-agents.yaml
+ M src/cli.mjs
+ M src/config-helpers.mjs
+ M src/impact.mjs
+ M src/index.mjs
+ M src/init.mjs
+ M src/install-units.mjs
+ M src/policy.mjs
+ M src/reconcile.mjs
+ M src/report.mjs
+ M src/source-profile-loader.mjs
+ M src/source-profiles.mjs
+ M src/workspace.mjs
+ M test/cli.test.mjs
+ M test/fixtures.mjs
+ M test/install-units.test.mjs
+ M test/multi-source-integration.test.mjs
+ M test/package.test.mjs
+ M test/policy-hardening.test.mjs
+ M test/policy.test.mjs
+ M test/skillboard.test.mjs
+ M test/source-profiles.test.mjs
+?? .codex/
+?? .omo/
+?? .opencode/
+?? src/control.mjs
+?? src/domain/
+?? src/source-verification.mjs

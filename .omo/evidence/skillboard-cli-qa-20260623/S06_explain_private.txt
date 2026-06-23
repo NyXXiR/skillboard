@@ -1,0 +1,16 @@
+SCENARIO: S06_explain_private
+DESCRIPTION: explain a user/private skill
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs explain private.tdd-work-continuity --config examples/multi-source.config.yaml --skills examples/multi-source-skills
+--- stdout/stderr ---
+Skill: private.tdd-work-continuity
+Status: active
+Invocation: router-only
+Source: user (/mnt/d/workspace/agent-skills-private)
+Trust: trusted
+Owner install unit: local.agent-skills-private
+Workflows: codex-night-workflow:active,fallback
+Capabilities: test-first-implementation:alternative
+Replaced by: none
+--- exit_code ---
+0

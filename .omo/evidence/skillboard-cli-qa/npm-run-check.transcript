@@ -1,0 +1,62 @@
+Script started on 2026-06-23 21:54:23+09:00 [COMMAND="npm run check" <not executed on terminal>]
+
+> agent-skillboard@0.1.0 check
+> node --check bin/skillboard.mjs && node --test
+
+✔ cli check and dashboard handle the multi-source example (665.7394ms)
+✔ cli init bootstraps config and agent bridge files (769.3475ms)
+✔ cli impact can write disable reports to a file (358.4452ms)
+✔ cli list, explain, and can-use expose source-aware control state (1194.8572ms)
+✔ cli guard exposes hook-friendly allow and deny decisions (561.7208ms)
+✔ cli audit sources reports trust findings without blocking reviewed sources (285.7666ms)
+✔ cli hook install emits an executable guard script (570.6932ms)
+✔ cli can-use denies model-selectable skills from unreviewed external sources (251.3027ms)
+✔ cli prefer lets user skills take workflow capability priority (630.8448ms)
+✔ cli dry-run validates a control change without writing config (349.5295ms)
+✔ cli failed control writes preserve the original config and cleanup temp files (307.9053ms)
+✔ cli block removes a skill from workflow active and capability slots (607.4286ms)
+✔ cli classifies workflow bundles as their own install-unit source (251.2376ms)
+✔ cli accepts config-driven custom skill source classes (517.3913ms)
+✔ test/fixtures.mjs (135.8168ms)
+✔ scan records install units for packaged harness and plugin bundles (41.295ms)
+✔ dashboard shows install units without flattening bundles into skills (11.9005ms)
+✔ workspace consistently manages private skills and five external repositories (84.2721ms)
+✔ package manifest excludes internal work artifacts from npm pack (8.5845ms)
+✔ package manifest is publishable as the SkillBoard CLI (2.4269ms)
+✔ policy rejects unscoped workflow-auto skills when explicit workflows are required (58.1249ms)
+✔ policy rejects semantic drift in canonical_for and conflicts_with (20.7719ms)
+✔ policy rejects contradictory status and invocation combinations (15.6883ms)
+✔ policy rejects install units that list components they do not provide (13.4265ms)
+✔ policy rejects non-callable skills in workflow active pools (15.152ms)
+✔ policy rejects non-callable preferred capability skills (13.954ms)
+✔ policy rejects undeclared required capability names (17.3474ms)
+✔ policy rejects unsupported capability policy values (27.0361ms)
+✔ policy rejects blocked skills in workflow capability selections (14.3252ms)
+✔ policy check passes for the baseline fixture (57.9643ms)
+✔ policy check rejects workflow references to undeclared skills (19.1958ms)
+✔ policy check rejects undeclared capability, harness, and install-unit workflow references (18.6742ms)
+✔ policy allows global invocation only for explicitly global meta skills (17.9639ms)
+✔ policy rejects install-unit component ownership drift (17.9942ms)
+✔ dashboard shows workflow-scoped active and blocked skills (55.1743ms)
+✔ impact disable reports affected workflows and replacement (19.573ms)
+✔ scan records installed skill metadata from SKILL.md (18.8014ms)
+✔ reconcile quarantines newly discovered skills and maps known capabilities (26.0233ms)
+✔ scan accepts CRLF skill frontmatter (23.1321ms)
+✔ reconcile reports removed harnesses with affected workflows and migration hints (17.1055ms)
+✔ reconcile disables newly detected harnesses until a workflow opts in (16.3405ms)
+✔ reconcile warns when actual harness inventory is omitted (16.0818ms)
+✔ impact disable uses capability alternatives, not only replaced_by (17.6157ms)
+✔ source profiles import skill repositories into install-unit governed skills (60.2553ms)
+✔ cli import uses built-in source profiles without repo-specific branches (325.7616ms)
+✔ cli import can safely merge a profile into config (276.7444ms)
+✔ cli import merge refuses duplicate ids unless replace is explicit (608.877ms)
+ℹ tests 47
+ℹ suites 0
+ℹ pass 47
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7453.3395
+
+Script done on 2026-06-23 21:54:31+09:00 [COMMAND_EXIT_CODE="0"]

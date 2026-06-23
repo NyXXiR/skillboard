@@ -1,0 +1,9 @@
+SCENARIO: S10_guard_deny
+DESCRIPTION: guard use denied blocked skill
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs guard use matt.grill-me --config examples/multi-source.config.yaml --skills examples/multi-source-skills --workflow codex-night-workflow
+--- stdout/stderr ---
+deny
+- Workflow codex-night-workflow blocks skill matt.grill-me.
+--- exit_code ---
+2

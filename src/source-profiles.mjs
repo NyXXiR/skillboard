@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import YAML from "yaml";
 import { readString, requireRecord } from "./config-helpers.mjs";
+import { textChangePlan } from "./change-plan.mjs";
 import { loadSourceProfile } from "./source-profile-loader.mjs";
 
 export { loadSourceProfile };
@@ -106,8 +107,12 @@ export function mergeImportFragment(configText, imported, options = {}) {
   for (const unitId of unitIds) {
     existingUnits.set(unitId, document.createNode(fragment.install_units[unitId]));
   }
+  const text = preserveLineEndings(String(document), configText);
+  const plan = textChangePlan(configText, text);
   return {
-    text: preserveLineEndings(String(document), configText),
+    text,
+    changed: plan.changed,
+    plan,
     addedSkills: skillIds,
     addedInstallUnits: unitIds,
     replacedSkills: duplicateSkills,

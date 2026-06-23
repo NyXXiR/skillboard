@@ -1,0 +1,373 @@
+Initialized SkillBoard: /tmp/tmp.Jmchb55hHG/project
+Created: `skillboard.config.yaml`, `.skillboard/profiles/README.md`, `.skillboard/hooks/README.md`, `AGENTS.md`, `CLAUDE.md`
+Scanned installed agent skills: 1
+Managed install units: 2
+Added managed skills: `local-helper`
+Added install units: `codex.plugin.demo`, `codex.user-skills`
+Added workflows: `codex-local-manual`
+Added harnesses: `codex`
+{
+  "allowed": true,
+  "automaticAllowed": false,
+  "skill": "local-helper",
+  "workflow": "codex-local-manual",
+  "invocation": "manual-only",
+  "status": "active-manual",
+  "workflowKnown": true,
+  "trust": {
+    "level": "trusted",
+    "reviewed": true,
+    "signed": false,
+    "pinned": false,
+    "verifiedAt": null,
+    "ownerInstallUnit": "codex.user-skills",
+    "sourceClass": "user",
+    "permissionRisk": "low"
+  },
+  "roles": [
+    "active"
+  ],
+  "capabilityRoles": [],
+  "reasons": []
+}
+{
+  "ok": true,
+  "strictOk": false,
+  "reviewRequired": true,
+  "mode": "safe-mode",
+  "root": "/tmp/tmp.Jmchb55hHG/project",
+  "configPath": "/tmp/tmp.Jmchb55hHG/project/skillboard.config.yaml",
+  "skillsRoot": "/tmp/tmp.Jmchb55hHG/project/skills",
+  "initialized": true,
+  "config": {
+    "exists": true,
+    "valid": true,
+    "version": 1,
+    "error": null
+  },
+  "bridges": [
+    {
+      "file": "AGENTS.md",
+      "status": "installed"
+    },
+    {
+      "file": "CLAUDE.md",
+      "status": "installed"
+    }
+  ],
+  "workspace": {
+    "skills": {
+      "declared": 1,
+      "installed": 0,
+      "modelSelectable": 0,
+      "byStatus": {
+        "active": 0,
+        "candidate": 0,
+        "vendor": 0,
+        "quarantined": 0,
+        "blocked": 0,
+        "deprecated": 0,
+        "active-manual": 1
+      },
+      "byInvocation": {
+        "manual-only": 1,
+        "router-only": 0,
+        "workflow-auto": 0,
+        "global-auto": 0,
+        "blocked": 0,
+        "deprecated": 0
+      }
+    },
+    "workflows": 1,
+    "harnesses": 1,
+    "installUnits": {
+      "total": 2,
+      "bySourceClass": {
+        "user": 1,
+        "skill-pack": 0,
+        "workflow-bundle": 0,
+        "harness-bundle": 0,
+        "runtime-extension": 0,
+        "package-manager": 0,
+        "external-package": 1,
+        "unknown": 0
+      },
+      "highRisk": [
+        "codex.plugin.demo"
+      ],
+      "runtimeExtensions": [
+        "codex.plugin.demo"
+      ]
+    }
+  },
+  "policy": {
+    "ok": true,
+    "errors": [],
+    "warnings": [
+      "[UNIT-TRUST-001] Install unit codex.plugin.demo is high risk but not reviewed or trusted.",
+      "[UNIT-TRUST-001] Install unit codex.plugin.demo provides runtime components but is unreviewed."
+    ]
+  },
+  "sources": {
+    "checked": true,
+    "verified": false,
+    "ok": true,
+    "errors": [],
+    "warnings": [
+      "codex.plugin.demo: high-risk source is not reviewed or trusted",
+      "codex.plugin.demo: runtime extension source is unreviewed",
+      "codex.plugin.demo: source is not pinned by digest or signature"
+    ],
+    "blockingWarnings": [
+      "codex.plugin.demo: high-risk source is not reviewed or trusted",
+      "codex.plugin.demo: runtime extension source is unreviewed"
+    ],
+    "units": [
+      {
+        "id": "codex.plugin.demo",
+        "kind": "plugin",
+        "sourceClass": "external-package",
+        "enabled": true,
+        "trustLevel": "unreviewed",
+        "permissionRisk": "high",
+        "signed": false,
+        "pinned": false,
+        "verifiedAt": null,
+        "automaticSkills": [],
+        "findings": [
+          {
+            "severity": "warning",
+            "message": "high-risk source is not reviewed or trusted"
+          },
+          {
+            "severity": "warning",
+            "message": "runtime extension source is unreviewed"
+          },
+          {
+            "severity": "warning",
+            "message": "source is not pinned by digest or signature"
+          }
+        ]
+      },
+      {
+        "id": "codex.user-skills",
+        "kind": "skill",
+        "sourceClass": "user",
+        "enabled": true,
+        "trustLevel": "trusted",
+        "permissionRisk": "low",
+        "signed": false,
+        "pinned": false,
+        "verifiedAt": null,
+        "automaticSkills": [],
+        "findings": []
+      }
+    ]
+  },
+  "uninstall": {
+    "dryRun": true,
+    "removed": [
+      "AGENTS.md",
+      "CLAUDE.md",
+      ".skillboard/profiles/README.md",
+      ".skillboard/hooks/README.md",
+      ".skillboard/profiles",
+      ".skillboard/hooks",
+      ".skillboard/reports",
+      ".skillboard",
+      "skills"
+    ],
+    "updated": [],
+    "preserved": [
+      "skillboard.config.yaml"
+    ]
+  },
+  "recommendations": [
+    "review high-risk runtime extension warnings before enabling automatic invocation",
+    "review high-risk install units before trusting runtime extensions"
+  ],
+  "reviewSummary": {
+    "reviewRequired": true,
+    "blockingWarnings": 2,
+    "warnings": 3,
+    "quarantinedSkills": 0,
+    "modelSelectableSkills": 0,
+    "highRiskInstallUnits": [
+      "codex.plugin.demo"
+    ],
+    "runtimeExtensionInstallUnits": [
+      "codex.plugin.demo"
+    ]
+  }
+}
+{
+  "ok": true,
+  "strictOk": false,
+  "reviewRequired": true,
+  "mode": "safe-mode",
+  "root": "/tmp/tmp.Jmchb55hHG/project",
+  "configPath": "/tmp/tmp.Jmchb55hHG/project/skillboard.config.yaml",
+  "skillsRoot": "/tmp/tmp.Jmchb55hHG/project/skills",
+  "initialized": true,
+  "config": {
+    "exists": true,
+    "valid": true,
+    "version": 1,
+    "error": null
+  },
+  "bridges": [
+    {
+      "file": "AGENTS.md",
+      "status": "installed"
+    },
+    {
+      "file": "CLAUDE.md",
+      "status": "installed"
+    }
+  ],
+  "workspace": {
+    "skills": {
+      "declared": 1,
+      "installed": 0,
+      "modelSelectable": 0,
+      "byStatus": {
+        "active": 0,
+        "candidate": 0,
+        "vendor": 0,
+        "quarantined": 0,
+        "blocked": 0,
+        "deprecated": 0,
+        "active-manual": 1
+      },
+      "byInvocation": {
+        "manual-only": 1,
+        "router-only": 0,
+        "workflow-auto": 0,
+        "global-auto": 0,
+        "blocked": 0,
+        "deprecated": 0
+      }
+    },
+    "workflows": 1,
+    "harnesses": 1,
+    "installUnits": {
+      "total": 2,
+      "bySourceClass": {
+        "user": 1,
+        "skill-pack": 0,
+        "workflow-bundle": 0,
+        "harness-bundle": 0,
+        "runtime-extension": 0,
+        "package-manager": 0,
+        "external-package": 1,
+        "unknown": 0
+      },
+      "highRisk": [
+        "codex.plugin.demo"
+      ],
+      "runtimeExtensions": [
+        "codex.plugin.demo"
+      ]
+    }
+  },
+  "policy": {
+    "ok": true,
+    "errors": [],
+    "warnings": [
+      "[UNIT-TRUST-001] Install unit codex.plugin.demo is high risk but not reviewed or trusted.",
+      "[UNIT-TRUST-001] Install unit codex.plugin.demo provides runtime components but is unreviewed."
+    ]
+  },
+  "sources": {
+    "checked": true,
+    "verified": false,
+    "ok": true,
+    "errors": [],
+    "warnings": [
+      "codex.plugin.demo: high-risk source is not reviewed or trusted",
+      "codex.plugin.demo: runtime extension source is unreviewed",
+      "codex.plugin.demo: source is not pinned by digest or signature"
+    ],
+    "blockingWarnings": [
+      "codex.plugin.demo: high-risk source is not reviewed or trusted",
+      "codex.plugin.demo: runtime extension source is unreviewed"
+    ],
+    "units": [
+      {
+        "id": "codex.plugin.demo",
+        "kind": "plugin",
+        "sourceClass": "external-package",
+        "enabled": true,
+        "trustLevel": "unreviewed",
+        "permissionRisk": "high",
+        "signed": false,
+        "pinned": false,
+        "verifiedAt": null,
+        "automaticSkills": [],
+        "findings": [
+          {
+            "severity": "warning",
+            "message": "high-risk source is not reviewed or trusted"
+          },
+          {
+            "severity": "warning",
+            "message": "runtime extension source is unreviewed"
+          },
+          {
+            "severity": "warning",
+            "message": "source is not pinned by digest or signature"
+          }
+        ]
+      },
+      {
+        "id": "codex.user-skills",
+        "kind": "skill",
+        "sourceClass": "user",
+        "enabled": true,
+        "trustLevel": "trusted",
+        "permissionRisk": "low",
+        "signed": false,
+        "pinned": false,
+        "verifiedAt": null,
+        "automaticSkills": [],
+        "findings": []
+      }
+    ]
+  },
+  "uninstall": {
+    "dryRun": true,
+    "removed": [
+      "AGENTS.md",
+      "CLAUDE.md",
+      ".skillboard/profiles/README.md",
+      ".skillboard/hooks/README.md",
+      ".skillboard/profiles",
+      ".skillboard/hooks",
+      ".skillboard/reports",
+      ".skillboard",
+      "skills"
+    ],
+    "updated": [],
+    "preserved": [
+      "skillboard.config.yaml"
+    ]
+  },
+  "recommendations": [
+    "review high-risk runtime extension warnings before enabling automatic invocation",
+    "review high-risk install units before trusting runtime extensions"
+  ],
+  "reviewSummary": {
+    "reviewRequired": true,
+    "blockingWarnings": 2,
+    "warnings": 3,
+    "quarantinedSkills": 0,
+    "modelSelectableSkills": 0,
+    "highRiskInstallUnits": [
+      "codex.plugin.demo"
+    ],
+    "runtimeExtensionInstallUnits": [
+      "codex.plugin.demo"
+    ]
+  }
+}
+manual init safe-mode QA passed: /tmp/tmp.Jmchb55hHG/project

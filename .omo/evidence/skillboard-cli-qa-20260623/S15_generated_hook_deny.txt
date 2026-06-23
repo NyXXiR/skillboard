@@ -1,0 +1,9 @@
+SCENARIO: S15_generated_hook_deny
+DESCRIPTION: generated hook denies blocked skill
+SURFACE: CLI
+INVOCATION: /tmp/tmp.m5IsEE5n8N/codex-night-guard.sh matt.grill-me
+--- stdout/stderr ---
+deny
+- Workflow codex-night-workflow blocks skill matt.grill-me.
+--- exit_code ---
+2

@@ -1,0 +1,6 @@
+Script started on 2026-06-23 21:56:23+09:00 [COMMAND="npm ls --depth=0" <not executed on terminal>]
+agent-skillboard@0.1.0 /mnt/i/workspace/skill-control-plane
+└── yaml@2.9.0
+
+
+Script done on 2026-06-23 21:56:24+09:00 [COMMAND_EXIT_CODE="0"]

@@ -1,0 +1,38 @@
+SCENARIO: S31_audit_verify_temp_unpinned
+DESCRIPTION: audit sources --verify computes digest for temp local source
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs audit sources --config /tmp/tmp.m5IsEE5n8N/verify.config.yaml --skills /tmp/tmp.m5IsEE5n8N/skills --verify --json
+--- stdout/stderr ---
+{
+  "ok": true,
+  "units": [
+    {
+      "id": "local.verified",
+      "kind": "skill",
+      "source": "/tmp/tmp.m5IsEE5n8N/verified-source",
+      "cachePath": null,
+      "verifiedPath": "/tmp/tmp.m5IsEE5n8N/verified-source",
+      "verifiedField": "source",
+      "sourceClass": "user",
+      "trustLevel": "trusted",
+      "permissionRisk": "low",
+      "expectedDigest": null,
+      "actualDigest": "sha256:38da5bc875b8f6d93cd99dc65139458a0533055ebb8b6170c02a1b19a86e8558",
+      "digestVerified": false,
+      "signatureVerified": false,
+      "status": "verified-local",
+      "findings": [
+        {
+          "severity": "warning",
+          "message": "source is not pinned; computed sha256:38da5bc875b8f6d93cd99dc65139458a0533055ebb8b6170c02a1b19a86e8558"
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "warnings": [
+    "local.verified: source is not pinned; computed sha256:38da5bc875b8f6d93cd99dc65139458a0533055ebb8b6170c02a1b19a86e8558"
+  ]
+}
+--- exit_code ---
+0

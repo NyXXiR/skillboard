@@ -1,0 +1,8 @@
+SCENARIO: S09_guard_allow
+DESCRIPTION: guard use allowed output
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs guard use private.tdd-work-continuity --config examples/multi-source.config.yaml --skills examples/multi-source-skills --workflow codex-night-workflow
+--- stdout/stderr ---
+allow
+--- exit_code ---
+0

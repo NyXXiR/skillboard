@@ -1,0 +1,32 @@
+SCENARIO: S08_can_use_denied_json
+DESCRIPTION: can-use denied blocked skill
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs can-use matt.grill-me --config examples/multi-source.config.yaml --skills examples/multi-source-skills --workflow codex-night-workflow --json
+--- stdout/stderr ---
+{
+  "allowed": false,
+  "automaticAllowed": false,
+  "skill": "matt.grill-me",
+  "workflow": "codex-night-workflow",
+  "invocation": "manual-only",
+  "status": "vendor",
+  "trust": {
+    "level": "reviewed",
+    "reviewed": true,
+    "signed": false,
+    "pinned": false,
+    "verifiedAt": null,
+    "ownerInstallUnit": "github.mattpocock.skills",
+    "sourceClass": "external-package",
+    "permissionRisk": "medium"
+  },
+  "roles": [
+    "blocked"
+  ],
+  "capabilityRoles": [],
+  "reasons": [
+    "Workflow codex-night-workflow blocks skill matt.grill-me."
+  ]
+}
+--- exit_code ---
+2

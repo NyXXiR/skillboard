@@ -1,0 +1,21 @@
+Script started on 2026-06-23 21:55:11+09:00 [COMMAND="sed -n 1,120p /tmp/skillboard-cli-qa/codex-night-guard-default.sh" <not executed on terminal>]
+#!/usr/bin/env sh
+set -eu
+
+SKILLBOARD_BIN=${SKILLBOARD_BIN:-'skillboard'}
+SKILLBOARD_CONFIG=${SKILLBOARD_CONFIG:-'examples/multi-source.config.yaml'}
+SKILLBOARD_SKILLS=${SKILLBOARD_SKILLS:-'examples/multi-source-skills'}
+SKILLBOARD_WORKFLOW=${SKILLBOARD_WORKFLOW:-'codex-night-workflow'}
+
+if [ "${SKILLBOARD_SKILL_ID:-}" != "" ]; then
+  skill_id="$SKILLBOARD_SKILL_ID"
+elif [ "${1:-}" != "" ]; then
+  skill_id="$1"
+else
+  echo "SKILLBOARD_SKILL_ID or first argument is required" >&2
+  exit 64
+fi
+
+exec "$SKILLBOARD_BIN" guard use "$skill_id" --workflow "$SKILLBOARD_WORKFLOW" --config "$SKILLBOARD_CONFIG" --skills "$SKILLBOARD_SKILLS"
+
+Script done on 2026-06-23 21:55:11+09:00 [COMMAND_EXIT_CODE="0"]

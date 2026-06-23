@@ -1,0 +1,7 @@
+Script started on 2026-06-23 21:55:55+09:00 [COMMAND="node bin/skillboard.mjs prefer private.tdd-work-continuity --workflow codex-night-workflow --capability test-first-implementation --config /tmp/skillboard-cli-qa/write.config.yaml --skills examples/multi-source-skills" <not executed on terminal>]
+Preferred private.tdd-work-continuity for test-first-implementation in codex-night-workflow
+Changed: true
+Changed line positions: 2
+[SKILL-GLOBAL-001] Skill private.workflow-router is global-auto; prefer workflow-auto or router-only.
+
+Script done on 2026-06-23 21:55:55+09:00 [COMMAND_EXIT_CODE="0"]

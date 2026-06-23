@@ -1,0 +1,21 @@
+SCENARIO: S28_can_use_unknown_workflow
+DESCRIPTION: can-use unknown workflow is denied
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs can-use matt.tdd --config examples/multi-source.config.yaml --skills examples/multi-source-skills --workflow missing-workflow --json
+--- stdout/stderr ---
+{
+  "allowed": false,
+  "automaticAllowed": false,
+  "skill": "matt.tdd",
+  "workflow": "missing-workflow",
+  "invocation": "workflow-auto",
+  "status": "active",
+  "trust": null,
+  "roles": [],
+  "capabilityRoles": [],
+  "reasons": [
+    "Unknown workflow: missing-workflow"
+  ]
+}
+--- exit_code ---
+2

@@ -1,0 +1,49 @@
+surface: terminal CLI
+fixture_root: /tmp/skillboard-qa-lock-allow-U9112I
+config: /tmp/skillboard-qa-lock-allow-U9112I/skillboard.config.yaml
+skills: /tmp/skillboard-qa-lock-allow-U9112I/skills
+lock: /tmp/skillboard-qa-lock-allow-U9112I/skillboard.lock.yaml
+invocation: node bin/skillboard.mjs lock write --config /tmp/skillboard-qa-lock-allow-U9112I/skillboard.config.yaml --skills /tmp/skillboard-qa-lock-allow-U9112I/skills --out /tmp/skillboard-qa-lock-allow-U9112I/skillboard.lock.yaml --allow-unverified --json
+
+config_before:
+version: 1
+skills: {}
+workflows: {}
+install_units:
+  local.bad-digest:
+    kind: skill
+    source: /tmp/skillboard-qa-lock-allow-U9112I/source
+    scope: project
+    source_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    enabled: true
+    trust_level: trusted
+    permission_risk: low
+
+command_output:
+{
+  "path": "/tmp/skillboard-qa-lock-allow-U9112I/skillboard.lock.yaml",
+  "bytes": 566
+}
+
+exit_code: 0
+lock_exists_after: yes_nonempty
+lock_contents:
+version: 1
+generated_at: 2026-06-23T13:15:51.646Z
+config_schema_version: 1
+install_units:
+  local.bad-digest:
+    kind: skill
+    source: /tmp/skillboard-qa-lock-allow-U9112I/source
+    cache_path: null
+    verified_path: /tmp/skillboard-qa-lock-allow-U9112I/source
+    verified_field: source
+    source_class: user
+    trust_level: trusted
+    permission_risk: low
+    source_digest: sha256:ae60b3043917df1c89cceed3e2315a9c035f753488497ba0cf42c54a6c5f3c84
+    digest_verified: false
+    signature_verified: false
+    status: verified-local
+skills: {}
+workflows: {}

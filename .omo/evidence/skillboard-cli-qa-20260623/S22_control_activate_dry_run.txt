@@ -1,0 +1,21 @@
+SCENARIO: S22_control_activate_dry_run
+DESCRIPTION: activate dry-run validates mode
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs activate private.workflow-router --workflow large-refactor-workflow --mode router-only --config /tmp/tmp.m5IsEE5n8N/control.config.yaml --skills examples/multi-source-skills --dry-run --json
+--- stdout/stderr ---
+{
+  "message": "Activated private.workflow-router in large-refactor-workflow as router-only",
+  "dryRun": true,
+  "changed": true,
+  "plan": {
+    "changed": true,
+    "beforeBytes": 6533,
+    "afterBytes": 6610,
+    "beforeLines": 272,
+    "afterLines": 274,
+    "changedLineCount": 127
+  },
+  "warnings": []
+}
+--- exit_code ---
+0

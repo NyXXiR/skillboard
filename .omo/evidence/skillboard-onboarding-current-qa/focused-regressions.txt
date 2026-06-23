@@ -1,0 +1,286 @@
+TAP version 13
+# Subtest: cli check and dashboard handle the multi-source example
+ok 1 - cli check and dashboard handle the multi-source example
+  ---
+  duration_ms: 695.7549
+  type: 'test'
+  ...
+# Subtest: cli multi-source example is runnable from the project root without local path edits
+ok 2 - cli multi-source example is runnable from the project root without local path edits
+  ---
+  duration_ms: 2800.7257
+  type: 'test'
+  ...
+# Subtest: cli init bootstraps config and agent bridge files
+ok 3 - cli init bootstraps config and agent bridge files
+  ---
+  duration_ms: 908.6238
+  type: 'test'
+  ...
+# Subtest: cli supports a first-time local skill control flow
+ok 4 - cli supports a first-time local skill control flow
+  ---
+  duration_ms: 4519.1919
+  type: 'test'
+  ...
+# Subtest: cli add workflow and harness supports manual local growth
+ok 5 - cli add workflow and harness supports manual local growth
+  ---
+  duration_ms: 877.5003
+  type: 'test'
+  ...
+# Subtest: cli add workflow refuses unreviewed non-user source manual bypass
+ok 6 - cli add workflow refuses unreviewed non-user source manual bypass
+  ---
+  duration_ms: 559.8718
+  type: 'test'
+  ...
+# Subtest: cli add workflow refuses medium-risk unreviewed plugin manual bypass
+ok 7 - cli add workflow refuses medium-risk unreviewed plugin manual bypass
+  ---
+  duration_ms: 304.3377
+  type: 'test'
+  ...
+# Subtest: cli add skill with workflow validates immediate usability
+ok 8 - cli add skill with workflow validates immediate usability
+  ---
+  duration_ms: 301.59
+  type: 'test'
+  ...
+# Subtest: cli add skill rejects paths outside the skills root
+ok 9 - cli add skill rejects paths outside the skills root
+  ---
+  duration_ms: 259.8567
+  type: 'test'
+  ...
+# Subtest: cli check rejects configured skill paths outside the skills root
+ok 10 - cli check rejects configured skill paths outside the skills root
+  ---
+  duration_ms: 277.766
+  type: 'test'
+  ...
+# Subtest: cli doctor reports an uninitialized project without mutating it
+ok 11 - cli doctor reports an uninitialized project without mutating it
+  ---
+  duration_ms: 281.2556
+  type: 'test'
+  ...
+# Subtest: cli doctor strict fails review-required state without source blocking warnings
+ok 12 - cli doctor strict fails review-required state without source blocking warnings
+  ---
+  duration_ms: 798.9794
+  type: 'test'
+  ...
+# Subtest: cli doctor and status summarize initialized lifecycle health
+ok 13 - cli doctor and status summarize initialized lifecycle health
+  ---
+  duration_ms: 1110.8158
+  type: 'test'
+  ...
+# Subtest: cli doctor gives actionable guidance for unmanaged bridge files
+ok 14 - cli doctor gives actionable guidance for unmanaged bridge files
+  ---
+  duration_ms: 603.8174
+  type: 'test'
+  ...
+# Subtest: cli doctor treats high-risk unreviewed runtime extensions as safe-mode review by default
+ok 15 - cli doctor treats high-risk unreviewed runtime extensions as safe-mode review by default
+  ---
+  duration_ms: 966.1184
+  type: 'test'
+  ...
+# Subtest: cli doctor reports standalone runtime extension install units without blocking default status
+ok 16 - cli doctor reports standalone runtime extension install units without blocking default status
+  ---
+  duration_ms: 828.155
+  type: 'test'
+  ...
+# Subtest: cli doctor verify refuses to hash source paths outside the project root
+ok 17 - cli doctor verify refuses to hash source paths outside the project root
+  ---
+  duration_ms: 551.3137
+  type: 'test'
+  ...
+# Subtest: cli uninstall removes SkillBoard scaffolding without deleting user content
+ok 18 - cli uninstall removes SkillBoard scaffolding without deleting user content
+  ---
+  duration_ms: 810.6364
+  type: 'test'
+  ...
+# Subtest: cli uninstall preserves symlinked bridge files instead of editing targets
+ok 19 - cli uninstall preserves symlinked bridge files instead of editing targets
+  ---
+  duration_ms: 553.7105
+  type: 'test'
+  ...
+# Subtest: cli uninstall remove-config deletes only untouched generated config
+ok 20 - cli uninstall remove-config deletes only untouched generated config
+  ---
+  duration_ms: 1079.3147
+  type: 'test'
+  ...
+# Subtest: cli impact can write disable reports to a file
+ok 21 - cli impact can write disable reports to a file
+  ---
+  duration_ms: 290.5882
+  type: 'test'
+  ...
+# Subtest: cli init scans installed local user skills into manual workflow state
+ok 22 - cli init scans installed local user skills into manual workflow state
+  ---
+  duration_ms: 1192.5455
+  type: 'test'
+  ...
+# Subtest: cli inventory refresh rescans installed skills and supports dry-run
+ok 23 - cli inventory refresh rescans installed skills and supports dry-run
+  ---
+  duration_ms: 889.1957
+  type: 'test'
+  ...
+# Subtest: cli inventory refresh preserves existing workflows when importing local skills
+ok 24 - cli inventory refresh preserves existing workflows when importing local skills
+  ---
+  duration_ms: 294.7567
+  type: 'test'
+  ...
+# Subtest: cli sources refresh fetches git sources and updates digest pins
+ok 25 - cli sources refresh fetches git sources and updates digest pins
+  ---
+  duration_ms: 1428.7211
+  type: 'test'
+  ...
+# Subtest: cli inventory detect merges installer output and mutated config metadata
+ok 26 - cli inventory detect merges installer output and mutated config metadata
+  ---
+  duration_ms: 623.9803
+  type: 'test'
+  ...
+# Subtest: cli list, explain, and can-use expose source-aware control state
+ok 27 - cli list, explain, and can-use expose source-aware control state
+  ---
+  duration_ms: 1313.8553
+  type: 'test'
+  ...
+# Subtest: cli guard exposes hook-friendly allow and deny decisions
+ok 28 - cli guard exposes hook-friendly allow and deny decisions
+  ---
+  duration_ms: 657.1084
+  type: 'test'
+  ...
+# Subtest: cli audit sources reports trust findings without blocking reviewed sources
+ok 29 - cli audit sources reports trust findings without blocking reviewed sources
+  ---
+  duration_ms: 314.3726
+  type: 'test'
+  ...
+# Subtest: cli hook install emits an executable guard script
+ok 30 - cli hook install emits an executable guard script
+  ---
+  duration_ms: 1285.972
+  type: 'test'
+  ...
+# Subtest: cli hook install rejects existing paths and sanitizes default workflow filenames
+ok 31 - cli hook install rejects existing paths and sanitizes default workflow filenames
+  ---
+  duration_ms: 556.2986
+  type: 'test'
+  ...
+# Subtest: cli can-use denies model-selectable skills from unreviewed external sources
+ok 32 - cli can-use denies model-selectable skills from unreviewed external sources
+  ---
+  duration_ms: 283.7862
+  type: 'test'
+  ...
+# Subtest: cli can-use denies skills from disabled install units
+ok 33 - cli can-use denies skills from disabled install units
+  ---
+  duration_ms: 281.2644
+  type: 'test'
+  ...
+# Subtest: cli audit treats empty source_digest as unpinned
+ok 34 - cli audit treats empty source_digest as unpinned
+  ---
+  duration_ms: 264.1945
+  type: 'test'
+  ...
+# Subtest: cli audit verify checks local source digests and lock write records verified sources
+ok 35 - cli audit verify checks local source digests and lock write records verified sources
+  ---
+  duration_ms: 852.4086
+  type: 'test'
+  ...
+# Subtest: cli audit verify treats slash command sources as metadata sources
+ok 36 - cli audit verify treats slash command sources as metadata sources
+  ---
+  duration_ms: 283.0793
+  type: 'test'
+  ...
+# Subtest: cli lock write refuses verification errors by default
+ok 37 - cli lock write refuses verification errors by default
+  ---
+  duration_ms: 400.8413
+  type: 'test'
+  ...
+# Subtest: cli lock write allow-unverified records an explicit unverified lock
+ok 38 - cli lock write allow-unverified records an explicit unverified lock
+  ---
+  duration_ms: 311.4204
+  type: 'test'
+  ...
+# Subtest: cli activate refuses unusable unreviewed automatic external skills
+ok 39 - cli activate refuses unusable unreviewed automatic external skills
+  ---
+  duration_ms: 311.0457
+  type: 'test'
+  ...
+# Subtest: cli prefer refuses unusable unreviewed automatic external skills
+ok 40 - cli prefer refuses unusable unreviewed automatic external skills
+  ---
+  duration_ms: 301.9213
+  type: 'test'
+  ...
+# Subtest: cli prefer lets user skills take workflow capability priority
+ok 41 - cli prefer lets user skills take workflow capability priority
+  ---
+  duration_ms: 690.4953
+  type: 'test'
+  ...
+# Subtest: cli dry-run validates a control change without writing config
+ok 42 - cli dry-run validates a control change without writing config
+  ---
+  duration_ms: 371.9709
+  type: 'test'
+  ...
+# Subtest: cli failed control writes preserve the original config and cleanup temp files
+ok 43 - cli failed control writes preserve the original config and cleanup temp files
+  ---
+  duration_ms: 303.5185
+  type: 'test'
+  ...
+# Subtest: cli block removes a skill from workflow active and capability slots
+ok 44 - cli block removes a skill from workflow active and capability slots
+  ---
+  duration_ms: 679.0407
+  type: 'test'
+  ...
+# Subtest: cli classifies workflow bundles as their own install-unit source
+ok 45 - cli classifies workflow bundles as their own install-unit source
+  ---
+  duration_ms: 281.7434
+  type: 'test'
+  ...
+# Subtest: cli accepts config-driven custom skill source classes
+ok 46 - cli accepts config-driven custom skill source classes
+  ---
+  duration_ms: 557.4433
+  type: 'test'
+  ...
+1..46
+# tests 46
+# suites 0
+# pass 46
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 34204.2819

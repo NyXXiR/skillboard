@@ -1,0 +1,70 @@
+# scenario: uninitialized-doctor-json
+# cwd: /tmp/skillboard-qa.Higa4F/uninitialized
+# invocation: node /mnt/i/workspace/skill-control-plane/bin/skillboard.mjs doctor --json
+# start: 2026-06-23T23:59:44+09:00
+--- stdout+stderr ---
+{
+  "ok": false,
+  "root": "/tmp/skillboard-qa.Higa4F/uninitialized",
+  "configPath": "/tmp/skillboard-qa.Higa4F/uninitialized/skillboard.config.yaml",
+  "skillsRoot": "/tmp/skillboard-qa.Higa4F/uninitialized/skills",
+  "initialized": false,
+  "config": {
+    "exists": false,
+    "valid": false,
+    "version": null,
+    "error": "skillboard.config.yaml was not found"
+  },
+  "bridges": [
+    {
+      "file": "AGENTS.md",
+      "status": "absent"
+    },
+    {
+      "file": "CLAUDE.md",
+      "status": "absent"
+    }
+  ],
+  "workspace": {
+    "skills": {
+      "declared": 0,
+      "installed": 0,
+      "modelSelectable": 0,
+      "byStatus": {},
+      "byInvocation": {}
+    },
+    "workflows": 0,
+    "harnesses": 0,
+    "installUnits": {
+      "total": 0,
+      "bySourceClass": {},
+      "highRisk": [],
+      "runtimeExtensions": []
+    }
+  },
+  "policy": {
+    "ok": false,
+    "errors": [],
+    "warnings": []
+  },
+  "sources": {
+    "checked": false,
+    "verified": false,
+    "ok": false,
+    "errors": [],
+    "warnings": [],
+    "units": []
+  },
+  "uninstall": {
+    "dryRun": true,
+    "removed": [],
+    "updated": [],
+    "preserved": []
+  },
+  "recommendations": [
+    "run skillboard init"
+  ]
+}
+--- exit-status ---
+1
+# end: 2026-06-23T23:59:45+09:00

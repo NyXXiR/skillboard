@@ -12,7 +12,7 @@ export async function verifySources(workspace, options = {}) {
   const rootDir = options.rootDir === undefined ? process.cwd() : resolve(options.rootDir);
   const units = [];
   for (const unit of workspace.installUnits) {
-    units.push(await verifyInstallUnit(unit, { configDir, rootDir }));
+    units.push(await verifyInstallUnit(unit, { configDir, rootDir, restrictToRoot: options.restrictToRoot === true }));
   }
   const errors = units.flatMap((unit) => unit.findings
     .filter((finding) => finding.severity === "error")
@@ -85,7 +85,10 @@ async function verifyInstallUnit(unit, options) {
   let signatureVerified = false;
   let status = "metadata-only";
 
-  if (localPath === null) {
+  if (localPath !== null && options.restrictToRoot === true && !isPathInside(options.rootDir, localPath)) {
+    status = "unverified";
+    findings.push({ severity: "error", message: `${target.field} is outside the allowed root: ${localPath}` });
+  } else if (localPath === null) {
     if (unit.sourceDigest === undefined) {
       findings.push({ severity: "warning", message: "remote or command source has no source_digest pin" });
     }
@@ -137,6 +140,11 @@ async function verifyInstallUnit(unit, options) {
   };
 }
 
+function isPathInside(root, path) {
+  const relativePath = relative(root, path);
+  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
+}
+
 async function verificationTarget(unit, options) {
   const cachePath = unit.cachePath.trim();
   if (cachePath.length > 0) {
@@ -148,7 +156,7 @@ async function verificationTarget(unit, options) {
   return { path: await localSourcePath(unit.source, options, { allowBareRelative: false }), field: "source" };
 }
 
-async function sourceDigest(path) {
+export async function sourceDigest(path) {
   const hash = createHash("sha256");
   hash.update("skillboard-source-digest-v1\n");
   await addPathDigest(hash, path, path);

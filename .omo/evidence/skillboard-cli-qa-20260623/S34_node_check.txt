@@ -1,0 +1,7 @@
+SCENARIO: S34_node_check
+DESCRIPTION: node syntax check for CLI and source/test modules
+SURFACE: CLI
+INVOCATION: bash -lc node --check bin/skillboard.mjs && find src test -name '*.mjs' -print0 | xargs -0 -n1 node --check
+--- stdout/stderr ---
+--- exit_code ---
+0

@@ -1,0 +1,8 @@
+SCENARIO: S17_hook_symlink_reject
+DESCRIPTION: hook install rejects symlink path
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs hook install --config examples/multi-source.config.yaml --skills examples/multi-source-skills --workflow codex-night-workflow --out /tmp/tmp.m5IsEE5n8N/symlink-hook.sh --skillboard-bin node bin/skillboard.mjs
+--- stdout/stderr ---
+Refusing to overwrite existing hook path: /tmp/tmp.m5IsEE5n8N/symlink-hook.sh
+--- exit_code ---
+1

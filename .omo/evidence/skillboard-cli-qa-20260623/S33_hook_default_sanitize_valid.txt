@@ -1,0 +1,8 @@
+SCENARIO: S33_hook_default_sanitize_valid
+DESCRIPTION: hook install sanitizes default workflow filename
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs hook install --workflow ../bad workflow --config /tmp/tmp.m5IsEE5n8N/sanitize.config.yaml --skills /tmp/tmp.m5IsEE5n8N/skills --skillboard-bin node bin/skillboard.mjs
+--- stdout/stderr ---
+Installed guard hook: /tmp/tmp.m5IsEE5n8N/.skillboard/hooks/skillboard-guard-bad-workflow.sh
+--- exit_code ---
+0

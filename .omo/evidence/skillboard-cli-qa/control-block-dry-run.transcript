@@ -1,0 +1,7 @@
+Script started on 2026-06-23 21:55:44+09:00 [COMMAND="node bin/skillboard.mjs block wshobson.security-review --workflow large-refactor-workflow --config /tmp/skillboard-cli-qa/dry-run.config.yaml --skills examples/multi-source-skills --dry-run" <not executed on terminal>]
+Dry run: Blocked wshobson.security-review in large-refactor-workflow
+Changed: true
+Changed line positions: 7
+[SKILL-GLOBAL-001] Skill private.workflow-router is global-auto; prefer workflow-auto or router-only.
+
+Script done on 2026-06-23 21:55:45+09:00 [COMMAND_EXIT_CODE="0"]

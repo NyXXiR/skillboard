@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -125,12 +125,891 @@ test("cli init bootstraps config and agent bridge files", async () => {
     assert.match(agents, /skillboard guard use/);
     assert.match(agents, /skillboard can-use/);
     assert.match(agents, /skillboard audit sources/);
+    assert.match(agents, /skillboard doctor/);
+    assert.match(agents, /skillboard status/);
     assert.match(agents, /skillboard hook install/);
+    assert.match(agents, /skillboard add skill/);
+    assert.match(agents, /skillboard activate/);
+    assert.match(agents, /skillboard remove skill/);
     assert.match(claude, /BEGIN SKILLBOARD/);
     assert.match(profilesReadme, /source profiles/);
     assert.match(hooksReadme, /skillboard hook install/);
     assert.equal(agents.match(/BEGIN SKILLBOARD/g).length, 1);
     assert.match(check.stdout, /Policy check passed/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli supports a first-time local skill control flow", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-user-flow-test-"));
+  try {
+    const project = join(root, "project");
+    const configPath = join(project, "skillboard.config.yaml");
+    const skillsRoot = join(project, "skills");
+    const skillPath = join(skillsRoot, "user-helper");
+    const impactPath = join(project, ".skillboard", "reports", "user-helper-impact.md");
+    const baseArgs = ["--config", configPath, "--skills", skillsRoot];
+
+    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", project, "--no-scan-installed"]);
+    await writeSkill(skillPath, "user-helper");
+    await writeFile(
+      configPath,
+      `version: 1
+defaults:
+  invocation_policy: deny-by-default
+  allow_model_invocation: false
+  require_explicit_workflow: true
+skills: {}
+capabilities:
+  task-review:
+    canonical: ""
+    alternatives: []
+    default_policy: manual-only
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - daily-workflow
+workflows:
+  daily-workflow:
+    harness: codex
+    active_skills: []
+    blocked_skills: []
+    required_capabilities:
+      task-review:
+        preferred: ""
+        fallback: []
+        policy: manual-only
+install_units: {}
+`,
+      "utf8"
+    );
+    const beforeAdd = await readFile(configPath, "utf8");
+    const dryAdd = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "add",
+      "skill",
+      "user.helper",
+      "--path",
+      "user-helper",
+      ...baseArgs,
+      "--dry-run",
+      "--json"
+    ]);
+    const dryAddPayload = JSON.parse(dryAdd.stdout);
+
+    assert.equal(dryAddPayload.dryRun, true);
+    assert.equal(await readFile(configPath, "utf8"), beforeAdd);
+    assert.ok(dryAddPayload.plan.semanticChanges.some((change) => change.path === "/skills/user.helper"));
+
+    const add = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "add",
+      "skill",
+      "user.helper",
+      "--path",
+      "user-helper",
+      ...baseArgs
+    ]);
+    const explainCandidate = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "explain",
+      "user.helper",
+      ...baseArgs
+    ]);
+    let deniedBeforeActivation;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "can-use",
+        "user.helper",
+        "--workflow",
+        "daily-workflow",
+        ...baseArgs,
+        "--json"
+      ]);
+    } catch (caught) {
+      deniedBeforeActivation = caught;
+    }
+
+    assert.match(add.stdout, /Added user\.helper/);
+    assert.match(explainCandidate.stdout, /Status: candidate/);
+    assert.match(explainCandidate.stdout, /Source: user/);
+    assert.equal(deniedBeforeActivation.code, 2);
+    assert.match(JSON.parse(deniedBeforeActivation.stdout).reasons.join("\n"), /not active, preferred, or fallback/);
+
+    const activate = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "activate",
+      "user.helper",
+      "--workflow",
+      "daily-workflow",
+      ...baseArgs
+    ]);
+    const allowed = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "can-use",
+      "user.helper",
+      "--workflow",
+      "daily-workflow",
+      ...baseArgs,
+      "--json"
+    ]);
+    const list = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "list",
+      "skills",
+      "--workflow",
+      "daily-workflow",
+      ...baseArgs
+    ]);
+    const impact = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "impact",
+      "disable",
+      "user.helper",
+      ...baseArgs,
+      "--out",
+      impactPath
+    ]);
+    const impactReport = await readFile(impactPath, "utf8");
+
+    assert.match(activate.stdout, /Activated user\.helper/);
+    assert.equal(JSON.parse(allowed.stdout).allowed, true);
+    assert.equal(JSON.parse(allowed.stdout).automaticAllowed, false);
+    assert.match(list.stdout, /user\.helper\tactive\tmanual-only\tuser\towner=direct\troles=active/);
+    assert.match(impact.stdout, /Impact report written/);
+    assert.match(impactReport, /Affected workflows: `daily-workflow`/);
+
+    await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "block",
+      "user.helper",
+      "--workflow",
+      "daily-workflow",
+      ...baseArgs
+    ]);
+    let deniedAfterBlock;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "can-use",
+        "user.helper",
+        "--workflow",
+        "daily-workflow",
+        ...baseArgs,
+        "--json"
+      ]);
+    } catch (caught) {
+      deniedAfterBlock = caught;
+    }
+    let removeWithoutForce;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "remove",
+        "skill",
+        "user.helper",
+        ...baseArgs
+      ]);
+    } catch (caught) {
+      removeWithoutForce = caught;
+    }
+    const beforeRemove = await readFile(configPath, "utf8");
+    const dryRemove = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "remove",
+      "skill",
+      "user.helper",
+      ...baseArgs,
+      "--force",
+      "--dry-run",
+      "--json"
+    ]);
+    const dryRemovePayload = JSON.parse(dryRemove.stdout);
+
+    assert.equal(deniedAfterBlock.code, 2);
+    assert.match(JSON.parse(deniedAfterBlock.stdout).reasons.join("\n"), /blocks skill user\.helper/);
+    assert.equal(removeWithoutForce.code, 1);
+    assert.match(removeWithoutForce.stderr, /still referenced/);
+    assert.equal(dryRemovePayload.dryRun, true);
+    assert.equal(await readFile(configPath, "utf8"), beforeRemove);
+    assert.ok(dryRemovePayload.plan.semanticChanges.some((change) => change.path === "/skills/user.helper"));
+
+    const remove = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "remove",
+      "skill",
+      "user.helper",
+      ...baseArgs,
+      "--force"
+    ]);
+    const configAfterRemove = await readFile(configPath, "utf8");
+    const check = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "check", ...baseArgs]);
+    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "uninstall", "--dir", project]);
+
+    assert.match(remove.stdout, /Removed user\.helper/);
+    assert.doesNotMatch(configAfterRemove, /user\.helper/);
+    assert.equal(await readFile(join(skillPath, "SKILL.md"), "utf8").then((text) => text.includes("user-helper")), true);
+    assert.match(check.stdout, /Policy check passed/);
+    assert.equal(await readFile(join(skillPath, "SKILL.md"), "utf8").then((text) => text.includes("user-helper")), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli add workflow and harness supports manual local growth", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-add-workflow-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    const baseArgs = ["--config", configPath, "--skills", skillsRoot];
+    await writeSkill(join(skillsRoot, "user-helper"), "user-helper");
+    await writeFile(
+      configPath,
+      `version: 1
+defaults:
+  invocation_policy: deny-by-default
+  allow_model_invocation: false
+  require_explicit_workflow: true
+skills:
+  user.helper:
+    path: user-helper
+    status: candidate
+    invocation: manual-only
+    exposure: exported
+    category: user
+capabilities: {}
+harnesses: {}
+workflows: {}
+install_units: {}
+`,
+      "utf8"
+    );
+
+    const addHarness = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "add",
+      "harness",
+      "codex",
+      "--status",
+      "configured",
+      "--command",
+      "$codex",
+      ...baseArgs
+    ]);
+    const addWorkflow = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "add",
+      "workflow",
+      "daily-workflow",
+      "--harness",
+      "codex",
+      "--skill",
+      "user.helper",
+      ...baseArgs
+    ]);
+    const allowed = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "can-use",
+      "user.helper",
+      "--workflow",
+      "daily-workflow",
+      ...baseArgs,
+      "--json"
+    ]);
+    const config = await readFile(configPath, "utf8");
+    const allowedPayload = JSON.parse(allowed.stdout);
+
+    assert.match(addHarness.stdout, /Added harness codex/);
+    assert.match(addWorkflow.stdout, /Added workflow daily-workflow/);
+    assert.match(config, /commands:\n\s+- \$codex/);
+    assert.match(config, /workflows:\n\s+- daily-workflow/);
+    assert.match(config, /user\.helper:\n\s+path: user-helper\n\s+status: active-manual\n\s+invocation: manual-only/);
+    assert.equal(allowedPayload.allowed, true);
+    assert.equal(allowedPayload.automaticAllowed, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli add workflow refuses unreviewed non-user source manual bypass", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-runtime-bypass-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    const baseArgs = ["--config", configPath, "--skills", skillsRoot];
+    await writeSkill(join(skillsRoot, "plugin-helper"), "plugin-helper");
+    await writeFile(
+      configPath,
+      `version: 1
+defaults:
+  invocation_policy: deny-by-default
+  allow_model_invocation: false
+  require_explicit_workflow: true
+skills:
+  plugin.helper:
+    path: plugin-helper
+    status: candidate
+    invocation: manual-only
+    exposure: unit-managed
+    category: plugin
+    owner_install_unit: acme.plugin
+capabilities: {}
+harnesses: {}
+workflows: {}
+install_units:
+  acme.plugin:
+    kind: plugin
+    source: npx acme install
+    scope: user-global
+    enabled: true
+    trust_level: unreviewed
+    permission_risk: high
+    provided_components:
+      - skills
+      - commands
+    components:
+      skills:
+        - plugin.helper
+      commands:
+        - $acme
+`,
+      "utf8"
+    );
+    const before = await readFile(configPath, "utf8");
+
+    let error;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "add",
+        "workflow",
+        "unsafe-workflow",
+        "--harness",
+        "codex",
+        "--skill",
+        "plugin.helper",
+        ...baseArgs
+      ]);
+    } catch (caught) {
+      error = caught;
+    }
+    let denied;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "can-use",
+        "plugin.helper",
+        "--workflow",
+        "unsafe-workflow",
+        ...baseArgs,
+        "--json"
+      ]);
+    } catch (caught) {
+      denied = caught;
+    }
+
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /unreviewed non-user source acme\.plugin/);
+    assert.equal(await readFile(configPath, "utf8"), before);
+    assert.equal(denied.code, 2);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli add workflow refuses medium-risk unreviewed plugin manual bypass", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-plugin-bypass-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    const baseArgs = ["--config", configPath, "--skills", skillsRoot];
+    await writeSkill(join(skillsRoot, "plugin-helper"), "plugin-helper");
+    await writeFile(
+      configPath,
+      `version: 1
+defaults:
+  invocation_policy: deny-by-default
+  allow_model_invocation: false
+  require_explicit_workflow: true
+skills:
+  plugin.helper:
+    path: plugin-helper
+    status: candidate
+    invocation: manual-only
+    exposure: unit-managed
+    category: plugin
+    owner_install_unit: acme.plugin
+capabilities: {}
+harnesses: {}
+workflows: {}
+install_units:
+  acme.plugin:
+    kind: plugin
+    source: npx acme install
+    scope: user-global
+    enabled: true
+    trust_level: unreviewed
+    permission_risk: medium
+    provided_components:
+      - skills
+    components:
+      skills:
+        - plugin.helper
+`,
+      "utf8"
+    );
+    const before = await readFile(configPath, "utf8");
+
+    let error;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "add",
+        "workflow",
+        "unsafe-workflow",
+        "--harness",
+        "codex",
+        "--skill",
+        "plugin.helper",
+        ...baseArgs
+      ]);
+    } catch (caught) {
+      error = caught;
+    }
+
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /unreviewed non-user source acme\.plugin/);
+    assert.equal(await readFile(configPath, "utf8"), before);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli add skill with workflow validates immediate usability", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-add-skill-workflow-validation-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    const baseArgs = ["--config", configPath, "--skills", skillsRoot];
+    await writeSkill(join(skillsRoot, "disabled-helper"), "disabled-helper");
+    await writeFile(
+      configPath,
+      `version: 1
+defaults:
+  invocation_policy: deny-by-default
+  allow_model_invocation: false
+  require_explicit_workflow: true
+skills: {}
+capabilities: {}
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - daily-workflow
+workflows:
+  daily-workflow:
+    harness: codex
+    active_skills: []
+    blocked_skills: []
+install_units:
+  disabled.pack:
+    kind: skill
+    source: local disabled pack
+    scope: local
+    enabled: false
+    trust_level: trusted
+    permission_risk: low
+    provided_components:
+      - skills
+    components:
+      skills:
+        - disabled.helper
+`,
+      "utf8"
+    );
+    const before = await readFile(configPath, "utf8");
+
+    let error;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "add",
+        "skill",
+        "disabled.helper",
+        "--path",
+        "disabled-helper",
+        "--owner-install-unit",
+        "disabled.pack",
+        "--workflow",
+        "daily-workflow",
+        ...baseArgs
+      ]);
+    } catch (caught) {
+      error = caught;
+    }
+
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /Install unit disabled\.pack is disabled/);
+    assert.equal(await readFile(configPath, "utf8"), before);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli add skill rejects paths outside the skills root", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-add-skill-path-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    const baseArgs = ["--config", configPath, "--skills", skillsRoot];
+    await mkdir(skillsRoot, { recursive: true });
+    await writeFile(
+      configPath,
+      `version: 1
+defaults:
+  invocation_policy: deny-by-default
+  allow_model_invocation: false
+  require_explicit_workflow: true
+skills: {}
+capabilities: {}
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - daily-workflow
+workflows:
+  daily-workflow:
+    harness: codex
+    active_skills: []
+    blocked_skills: []
+install_units: {}
+`,
+      "utf8"
+    );
+    const before = await readFile(configPath, "utf8");
+
+    let error;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "add",
+        "skill",
+        "escape.helper",
+        "--path",
+        "../../secret",
+        "--workflow",
+        "daily-workflow",
+        "--invocation",
+        "workflow-auto",
+        ...baseArgs
+      ]);
+    } catch (caught) {
+      error = caught;
+    }
+
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /skill path must stay under the skills root/);
+    assert.equal(await readFile(configPath, "utf8"), before);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli check rejects configured skill paths outside the skills root", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-config-path-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    await writeFile(
+      configPath,
+      `version: 1
+skills:
+  escape.helper:
+    path: ../../secret
+workflows: {}
+harnesses: {}
+install_units: {}
+`,
+      "utf8"
+    );
+
+    let error;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "check",
+        "--config",
+        configPath,
+        "--skills",
+        join(root, "skills")
+      ]);
+    } catch (caught) {
+      error = caught;
+    }
+
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /skills\.escape\.helper\.path must stay under the skills root/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli doctor reports an uninitialized project without mutating it", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-doctor-empty-test-"));
+  try {
+    let error;
+    try {
+      await execFileAsync(process.execPath, ["bin/skillboard.mjs", "doctor", "--dir", root, "--json"]);
+    } catch (caught) {
+      error = caught;
+    }
+    const payload = JSON.parse(error.stdout);
+
+    assert.equal(error.code, 1);
+    assert.equal(payload.ok, false);
+    assert.equal(payload.initialized, false);
+    assert.equal(payload.config.exists, false);
+    assert.equal(payload.workspace.skills.byStatus.quarantined, 0);
+    assert.equal(payload.workspace.skills.byInvocation["workflow-auto"], 0);
+    assert.equal(payload.workspace.installUnits.bySourceClass["runtime-extension"], 0);
+    assert.equal(payload.bridges.every((bridge) => bridge.status === "absent"), true);
+    assert.deepEqual(await readdir(root), []);
+    assert.ok(payload.recommendations.includes("run skillboard init"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli doctor strict fails review-required state without source blocking warnings", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-doctor-strict-review-test-"));
+  try {
+    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", root, "--no-scan-installed"]);
+    await writeFile(
+      join(root, "skillboard.config.yaml"),
+      `version: 1
+skills:
+  local.quarantined:
+    path: local-quarantined
+    status: quarantined
+    invocation: blocked
+    exposure: exported
+    category: user
+workflows: {}
+harnesses: {}
+install_units: {}
+`,
+      "utf8"
+    );
+
+    const doctor = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "doctor", "--dir", root, "--json"]);
+    let strictError;
+    try {
+      await execFileAsync(process.execPath, ["bin/skillboard.mjs", "doctor", "--dir", root, "--strict", "--json"]);
+    } catch (caught) {
+      strictError = caught;
+    }
+    const payload = JSON.parse(doctor.stdout);
+    const strictPayload = JSON.parse(strictError.stdout);
+
+    assert.equal(payload.ok, true);
+    assert.equal(payload.reviewRequired, true);
+    assert.equal(payload.sources.blockingWarnings.length, 0);
+    assert.equal(payload.strictOk, false);
+    assert.equal(strictError.code, 1);
+    assert.equal(strictPayload.mode, "safe-mode");
+    assert.equal(strictPayload.strictOk, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli doctor and status summarize initialized lifecycle health", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-doctor-init-test-"));
+  try {
+    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", root, "--no-scan-installed"]);
+    const doctor = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "doctor", "--dir", root, "--json"]);
+    const status = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "status", "--dir", root]);
+    const statusJson = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "status", "--dir", root, "--json"]);
+    const payload = JSON.parse(doctor.stdout);
+    const statusPayload = JSON.parse(statusJson.stdout);
+
+    assert.equal(payload.ok, true);
+    assert.equal(payload.initialized, true);
+    assert.equal(payload.config.valid, true);
+    assert.equal(payload.workspace.skills.declared, 0);
+    assert.equal(payload.policy.ok, true);
+    assert.equal(payload.sources.ok, true);
+    assert.equal(payload.bridges.every((bridge) => bridge.status === "installed"), true);
+    assert.ok(payload.uninstall.removed.includes("AGENTS.md"));
+    assert.ok(payload.uninstall.preserved.includes("skillboard.config.yaml"));
+    assert.equal(statusPayload.ok, true);
+    assert.equal(statusPayload.config.version, 1);
+    assert.match(status.stdout, /SkillBoard doctor: passed/);
+    assert.match(status.stdout, /Uninstall dry run: remove/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli doctor gives actionable guidance for unmanaged bridge files", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-doctor-unmanaged-bridge-test-"));
+  try {
+    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", root, "--no-scan-installed"]);
+    await writeFile(join(root, "AGENTS.md"), "# Existing unmanaged rules\n", "utf8");
+
+    let error;
+    try {
+      await execFileAsync(process.execPath, ["bin/skillboard.mjs", "doctor", "--dir", root, "--json"]);
+    } catch (caught) {
+      error = caught;
+    }
+    const payload = JSON.parse(error.stdout);
+
+    assert.equal(error.code, 1);
+    assert.equal(payload.ok, false);
+    assert.equal(payload.bridges.find((bridge) => bridge.file === "AGENTS.md").status, "unmanaged");
+    assert.ok(payload.recommendations.includes("run skillboard init to add SkillBoard bridge blocks to unmanaged agent files"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli doctor treats high-risk unreviewed runtime extensions as safe-mode review by default", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-doctor-high-risk-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", root, "--no-scan-installed"]);
+    await writeFile(
+      configPath,
+      `version: 1
+skills: {}
+workflows: {}
+harnesses: {}
+install_units:
+  acme.runtime:
+    kind: plugin
+    source: npx acme-runtime install
+    scope: user-global
+    provided_components:
+      - hook
+    components:
+      hooks:
+        - pre-tool-use
+    enabled: true
+    permission_risk: high
+`,
+      "utf8"
+    );
+
+    const doctor = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "doctor", "--dir", root, "--json"]);
+    let strictError;
+    try {
+      await execFileAsync(process.execPath, ["bin/skillboard.mjs", "doctor", "--dir", root, "--strict", "--json"]);
+    } catch (caught) {
+      strictError = caught;
+    }
+    const payload = JSON.parse(doctor.stdout);
+    const strictPayload = JSON.parse(strictError.stdout);
+
+    assert.equal(payload.ok, true);
+    assert.equal(payload.reviewRequired, true);
+    assert.equal(payload.strictOk, false);
+    assert.equal(payload.mode, "safe-mode");
+    assert.equal(payload.sources.ok, true);
+    assert.equal(payload.sources.blockingWarnings.length > 0, true);
+    assert.ok(payload.recommendations.includes("review high-risk runtime extension warnings before enabling automatic invocation"));
+    assert.equal(strictError.code, 1);
+    assert.equal(strictPayload.strictOk, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli doctor reports standalone runtime extension install units without blocking default status", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-doctor-standalone-runtime-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", root, "--no-scan-installed"]);
+    await writeFile(
+      configPath,
+      `version: 1
+skills: {}
+workflows: {}
+harnesses: {}
+install_units:
+  local.mcp:
+    kind: mcp-server
+    source: npx local-mcp
+    scope: user-global
+    enabled: true
+    permission_risk: medium
+`,
+      "utf8"
+    );
+
+    const doctor = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "doctor", "--dir", root, "--json"]);
+    let strictError;
+    try {
+      await execFileAsync(process.execPath, ["bin/skillboard.mjs", "status", "--dir", root, "--strict", "--json"]);
+    } catch (caught) {
+      strictError = caught;
+    }
+    const payload = JSON.parse(doctor.stdout);
+    const strictPayload = JSON.parse(strictError.stdout);
+
+    assert.equal(payload.ok, true);
+    assert.equal(payload.reviewRequired, true);
+    assert.equal(payload.strictOk, false);
+    assert.deepEqual(payload.workspace.installUnits.runtimeExtensions, ["local.mcp"]);
+    assert.equal(payload.workspace.installUnits.bySourceClass["runtime-extension"], 1);
+    assert.match(payload.sources.blockingWarnings.join("\n"), /runtime extension source is unreviewed/);
+    assert.equal(strictError.code, 1);
+    assert.equal(strictPayload.strictOk, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli doctor verify refuses to hash source paths outside the project root", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-doctor-verify-root-test-"));
+  try {
+    const project = join(root, "project");
+    const outsideSource = join(root, "outside-source");
+    await mkdir(outsideSource, { recursive: true });
+    await writeFile(join(outsideSource, "README.md"), "outside source\n", "utf8");
+    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", project, "--no-scan-installed"]);
+    await writeFile(
+      join(project, "skillboard.config.yaml"),
+      `version: 1
+skills: {}
+workflows: {}
+harnesses: {}
+install_units:
+  local.outside:
+    kind: skill
+    source: ${outsideSource}
+    scope: project
+    enabled: true
+    trust_level: trusted
+    permission_risk: low
+`,
+      "utf8"
+    );
+
+    let error;
+    try {
+      await execFileAsync(process.execPath, ["bin/skillboard.mjs", "doctor", "--dir", project, "--verify", "--json"]);
+    } catch (caught) {
+      error = caught;
+    }
+    const payload = JSON.parse(error.stdout);
+
+    assert.equal(error.code, 1);
+    assert.equal(payload.sources.ok, false);
+    assert.match(payload.sources.errors.join("\n"), /outside the allowed root/);
+    assert.equal(payload.sources.units[0].actualDigest, null);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -164,6 +1043,27 @@ test("cli uninstall removes SkillBoard scaffolding without deleting user content
     await assert.rejects(readFile(join(root, "CLAUDE.md"), "utf8"), /ENOENT/);
     await assert.rejects(readFile(join(root, ".skillboard", "profiles", "README.md"), "utf8"), /ENOENT/);
     assert.equal(await readFile(join(root, ".skillboard", "reports", "user-report.md"), "utf8"), "keep report\n");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli uninstall preserves symlinked bridge files instead of editing targets", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-uninstall-symlink-test-"));
+  try {
+    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", root, "--no-scan-installed"]);
+    const bridgeText = await readFile(join(root, "AGENTS.md"), "utf8");
+    const target = join(root, "external-agents.md");
+    await writeFile(target, bridgeText, "utf8");
+    await rm(join(root, "AGENTS.md"));
+    await symlink(target, join(root, "AGENTS.md"));
+
+    const result = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "uninstall", "--dir", root]);
+    const targetAfter = await readFile(target, "utf8");
+
+    assert.match(result.stdout, /Preserved: .*`AGENTS\.md`/);
+    assert.match(targetAfter, /BEGIN SKILLBOARD/);
+    assert.equal(await readlink(join(root, "AGENTS.md")), target);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -214,7 +1114,7 @@ test("cli impact can write disable reports to a file", async () => {
   }
 });
 
-test("cli init scans installed agent skills into quarantined managed state", async () => {
+test("cli init scans installed local user skills into manual workflow state", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-init-scan-test-"));
   try {
     const home = join(root, "home");
@@ -267,14 +1167,31 @@ test("cli init scans installed agent skills into quarantined managed state", asy
       "--skills",
       join(project, "skills")
     ], { env });
+    const localUse = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "can-use",
+      "local-helper",
+      "--workflow",
+      "codex-local-manual",
+      "--config",
+      configPath,
+      "--skills",
+      join(project, "skills"),
+      "--json"
+    ], { env });
+    const localUsePayload = JSON.parse(localUse.stdout);
 
     assert.match(init.stdout, /Scanned installed agent skills: 3/);
     assert.match(init.stdout, /Managed install units: 3/);
+    assert.match(init.stdout, /Added workflows: `codex-local-manual`/);
+    assert.match(init.stdout, /Added harnesses: `codex`/);
     assert.match(config, /system-helper:/);
     assert.match(config, /local-helper:/);
     assert.match(config, /demo:review:/);
     assert.match(config, /status: quarantined/);
     assert.match(config, /invocation: blocked/);
+    assert.match(config, /local-helper:\n\s+path: local-helper\n\s+status: active-manual\n\s+invocation: manual-only/);
+    assert.match(config, /codex-local-manual:\n\s+harness: codex\n\s+active_skills:\n\s+- local-helper/);
     assert.match(config, /owner_install_unit: codex\.system-skills/);
     assert.match(config, /owner_install_unit: codex\.user-skills/);
     assert.match(config, /owner_install_unit: codex\.plugin\.demo/);
@@ -289,6 +1206,283 @@ test("cli init scans installed agent skills into quarantined managed state", asy
     assert.match(units.stdout, /codex\.system-skills\tagent\truntime-extension/);
     assert.match(units.stdout, /codex\.user-skills\tskill\tuser/);
     assert.match(units.stdout, /codex\.plugin\.demo\tplugin\texternal-package.*risk=high/);
+    assert.equal(localUsePayload.allowed, true);
+    assert.equal(localUsePayload.automaticAllowed, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli inventory refresh rescans installed skills and supports dry-run", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-inventory-refresh-test-"));
+  try {
+    const home = join(root, "home");
+    const project = join(root, "project");
+    const codexHome = join(home, ".codex");
+    await writeSkill(join(codexHome, "skills", "local-helper"), "local-helper");
+    await mkdir(join(codexHome, "skills", "broken-helper"), { recursive: true });
+    await writeFile(join(codexHome, "skills", "broken-helper", "SKILL.md"), "# missing frontmatter\n", "utf8");
+    const env = { ...process.env, HOME: home, CODEX_HOME: codexHome, SKILLBOARD_INIT_SCAN_ROOTS: "" };
+    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", project, "--no-scan-installed"], { env });
+    const before = await readFile(join(project, "skillboard.config.yaml"), "utf8");
+
+    const dryRun = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "inventory",
+      "refresh",
+      "--dir",
+      project,
+      "--dry-run",
+      "--json"
+    ], { env });
+    const afterDryRun = await readFile(join(project, "skillboard.config.yaml"), "utf8");
+    const dryRunPayload = JSON.parse(dryRun.stdout);
+
+    assert.equal(dryRunPayload.dryRun, true);
+    assert.equal(dryRunPayload.changed, true);
+    assert.equal(dryRunPayload.plan.semanticAvailable, true);
+    assert.ok(dryRunPayload.plan.semanticChanges.some((change) => change.path === "/skills/local-helper"));
+    assert.deepEqual(dryRunPayload.scan.addedSkills, ["local-helper"]);
+    assert.deepEqual(dryRunPayload.scan.addedWorkflows, ["codex-local-manual"]);
+    assert.deepEqual(dryRunPayload.scan.addedHarnesses, ["codex"]);
+    assert.match(dryRunPayload.scan.warnings.join("\n"), /broken-helper\/SKILL\.md skipped/);
+    assert.equal(afterDryRun, before);
+
+    const refresh = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "inventory",
+      "refresh",
+      "--dir",
+      project
+    ], { env });
+    const config = await readFile(join(project, "skillboard.config.yaml"), "utf8");
+
+    assert.match(refresh.stdout, /Inventory refreshed/);
+    assert.match(refresh.stdout, /Semantic changes:/);
+    assert.match(refresh.stdout, /Added skills: `local-helper`/);
+    assert.match(refresh.stdout, /Added workflows: `codex-local-manual`/);
+    assert.match(refresh.stdout, /Added harnesses: `codex`/);
+    assert.match(refresh.stdout, /Scan warnings: `.*broken-helper\/SKILL\.md skipped/);
+    assert.match(config, /local-helper:/);
+    assert.match(config, /status: active-manual/);
+    assert.match(config, /invocation: manual-only/);
+    assert.match(config, /codex-local-manual:/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli inventory refresh preserves existing workflows when importing local skills", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-inventory-existing-workflow-test-"));
+  try {
+    const home = join(root, "home");
+    const project = join(root, "project");
+    const codexHome = join(home, ".codex");
+    const configPath = join(project, "skillboard.config.yaml");
+    await mkdir(project, { recursive: true });
+    await writeSkill(join(codexHome, "skills", "local-helper"), "local-helper");
+    await writeFile(
+      configPath,
+      `version: 1
+defaults:
+  invocation_policy: deny-by-default
+  allow_model_invocation: false
+  require_explicit_workflow: true
+skills: {}
+capabilities: {}
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - daily-workflow
+workflows:
+  daily-workflow:
+    harness: codex
+    active_skills: []
+    blocked_skills: []
+install_units: {}
+`,
+      "utf8"
+    );
+    const env = { ...process.env, HOME: home, CODEX_HOME: codexHome, SKILLBOARD_INIT_SCAN_ROOTS: "" };
+    const refresh = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "inventory",
+      "refresh",
+      "--dir",
+      project,
+      "--json"
+    ], { env });
+    const payload = JSON.parse(refresh.stdout);
+    const config = await readFile(configPath, "utf8");
+
+    assert.deepEqual(payload.scan.addedSkills, ["local-helper"]);
+    assert.deepEqual(payload.scan.addedWorkflows, []);
+    assert.deepEqual(payload.scan.addedHarnesses, []);
+    assert.match(payload.scan.reviewNotes.join("\n"), /manual-only candidate/);
+    assert.match(config, /daily-workflow:/);
+    assert.doesNotMatch(config, /codex-local-manual/);
+    assert.match(config, /local-helper:\n\s+path: local-helper\n\s+status: candidate\n\s+invocation: manual-only/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli sources refresh fetches git sources and updates digest pins", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-source-refresh-test-"));
+  try {
+    const project = join(root, "project");
+    const repo = join(root, "remote-repo");
+    await mkdir(project, { recursive: true });
+    await mkdir(repo, { recursive: true });
+    await writeFile(join(repo, "README.md"), "remote source\n", "utf8");
+    await execFileAsync("git", ["-C", repo, "init"]);
+    await execFileAsync("git", ["-C", repo, "add", "README.md"]);
+    await execFileAsync("git", ["-C", repo, "-c", "user.email=test@example.test", "-c", "user.name=SkillBoard Test", "commit", "-m", "init"]);
+    const configPath = join(project, "skillboard.config.yaml");
+    await writeFile(
+      configPath,
+      `version: 1
+skills: {}
+workflows: {}
+harnesses: {}
+install_units:
+  remote.pack:
+    kind: marketplace
+    source: git clone file://${repo}
+    scope: user-global
+    enabled: true
+    permission_risk: low
+`,
+      "utf8"
+    );
+    const before = await readFile(configPath, "utf8");
+
+    const dryRun = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "sources",
+      "refresh",
+      "--dir",
+      project,
+      "--dry-run",
+      "--json"
+    ]);
+    const dryRunPayload = JSON.parse(dryRun.stdout);
+
+    assert.equal(await readFile(configPath, "utf8"), before);
+    assert.equal(dryRunPayload.dryRun, true);
+    assert.equal(dryRunPayload.refreshed[0].id, "remote.pack");
+    assert.ok(dryRunPayload.plan.semanticChanges.some((change) => change.path === "/install_units/remote.pack/source_digest"));
+
+    const refresh = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "sources",
+      "refresh",
+      "--dir",
+      project
+    ]);
+    const config = await readFile(configPath, "utf8");
+    const audit = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "audit",
+      "sources",
+      "--verify",
+      "--config",
+      configPath,
+      "--skills",
+      join(project, "skills"),
+      "--json"
+    ]);
+    const auditPayload = JSON.parse(audit.stdout);
+
+    assert.match(refresh.stdout, /Source pins refreshed/);
+    assert.match(refresh.stdout, /Refreshed units: `remote.pack`/);
+    assert.match(config, /cache_path: \.skillboard\/sources\/remote.pack/);
+    assert.match(config, /source_digest: sha256:/);
+    assert.equal(auditPayload.ok, true);
+    assert.equal(auditPayload.units[0].digestVerified, true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli inventory detect merges installer output and mutated config metadata", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-install-detect-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const installLog = join(root, "install.log");
+    const runtimeConfig = join(root, "config.json");
+    await writeFile(
+      configPath,
+      "version: 1\nskills: {}\nworkflows: {}\nharnesses: {}\ninstall_units: {}\n",
+      "utf8"
+    );
+    await writeFile(
+      installLog,
+      "Installed commands: $acme-run $acme-check\nRegistered hooks: post-tool-use\nConfigured MCP servers: acme_mcp\nUpdated config: config.json\n",
+      "utf8"
+    );
+    await writeFile(
+      runtimeConfig,
+      JSON.stringify({
+        commands: ["$acme-config"],
+        hooks: ["pre-tool-use"],
+        mcpServers: { acme_config_mcp: { command: "node" } }
+      }),
+      "utf8"
+    );
+    const before = await readFile(configPath, "utf8");
+    const dryRun = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "inventory",
+      "detect",
+      "--config",
+      configPath,
+      "--unit",
+      "acme.runtime",
+      "--source",
+      "npx acme install",
+      "--install-output",
+      installLog,
+      "--config-file",
+      runtimeConfig,
+      "--dry-run",
+      "--json"
+    ]);
+    const dryRunPayload = JSON.parse(dryRun.stdout);
+
+    assert.equal(await readFile(configPath, "utf8"), before);
+    assert.equal(dryRunPayload.detected.commands.includes("$acme-run"), true);
+    assert.equal(dryRunPayload.detected.hooks.includes("pre-tool-use"), true);
+    assert.equal(dryRunPayload.detected.mcpServers.includes("acme_config_mcp"), true);
+    assert.ok(dryRunPayload.plan.semanticChanges.some((change) => change.path === "/install_units/acme.runtime"));
+
+    const result = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "inventory",
+      "detect",
+      "--config",
+      configPath,
+      "--unit",
+      "acme.runtime",
+      "--source",
+      "npx acme install",
+      "--install-output",
+      installLog,
+      "--config-file",
+      runtimeConfig
+    ]);
+    const config = await readFile(configPath, "utf8");
+
+    assert.match(result.stdout, /Detected install metadata: acme\.runtime/);
+    assert.match(result.stdout, /MCP servers: .*`acme_config_mcp`/);
+    assert.match(config, /acme\.runtime:/);
+    assert.match(config, /provided_components:\n\s+- commands\n\s+- hook\n\s+- mcp-server/);
+    assert.match(config, /commands:\n\s+- \$acme-check\n\s+- \$acme-config\n\s+- \$acme-run/);
+    assert.match(config, /hooks:\n\s+- post-tool-use\n\s+- pre-tool-use/);
+    assert.match(config, /mcp_servers:\n\s+- acme_config_mcp\n\s+- acme_mcp/);
+    assert.match(config, /modified_config_files:/);
+    assert.match(config, /permission_risk: high/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -1116,6 +2310,8 @@ test("cli dry-run validates a control change without writing config", async () =
     assert.equal(payload.dryRun, true);
     assert.equal(payload.changed, true);
     assert.equal(payload.plan.changedLineCount > 0, true);
+    assert.equal(payload.plan.semanticAvailable, true);
+    assert.ok(payload.plan.semanticChanges.some((change) => change.path.includes("/preferred")));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

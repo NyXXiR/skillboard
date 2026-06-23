@@ -1,0 +1,11 @@
+SCENARIO: S20_lock_write_replace
+DESCRIPTION: lock write replaces existing lockfile with --replace
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs lock write --config examples/multi-source.config.yaml --skills examples/multi-source-skills --out /tmp/tmp.m5IsEE5n8N/skillboard.lock.yaml --replace --json
+--- stdout/stderr ---
+{
+  "path": "/tmp/tmp.m5IsEE5n8N/skillboard.lock.yaml",
+  "bytes": 6027
+}
+--- exit_code ---
+0

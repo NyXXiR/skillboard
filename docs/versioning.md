@@ -59,8 +59,11 @@ must call them out clearly.
 Suggested tags:
 
 - `v0.1.0-alpha`: first public GitHub alpha.
-- `v0.2.0-alpha`: source inventory refresh or richer dry-run diff.
-- `v0.3.0-alpha`: signed remote source verification and pin refresh workflow.
+- `v0.2.0-alpha`: source inventory refresh, doctor/status, source pin refresh,
+  installer/config detection, resilient detector warnings, and richer dry-run
+  plans.
+- `v0.3.0-alpha`: signed remote source verification hardening and migration
+  workflow.
 - `v1.0.0`: config schema and core CLI behavior are stable enough for external
   workflows to rely on.
 
@@ -113,11 +116,13 @@ skillboard import \
   --profile github.mattpocock.skills \
   --source-root /path/to/source \
   --config skillboard.config.yaml \
-  --merge
+  --merge \
+  --dry-run
 ```
 
 `--merge` is append-only by default. `--replace` is required to overwrite
-existing skill or install-unit ids.
+existing skill or install-unit ids. Drop `--dry-run` only after reviewing the
+reported text and YAML semantic change plan.
 
 ## Workflow And Capability Versioning
 
@@ -163,6 +168,9 @@ Users should edit `skillboard.config.yaml`; tools should generate the lockfile.
 Local `source` and `cache_path` entries are digest-verified by `skillboard audit
 sources --verify`. Remote or command-based sources need a configured
 `source_digest` and, when signatures are used, a matching `public_key`.
+Fetchable Git sources can be materialized and pinned with `skillboard sources
+refresh`, which updates `cache_path`, `source_digest`, and `verified_at` in the
+config after cloning into `.skillboard/sources/`.
 Relative local paths are resolved from the config directory first and then from
 the current working directory, so bundled examples can use project-root-relative
 paths while project configs can still keep config-local paths.
@@ -180,12 +188,14 @@ Before tagging a public release:
 - Confirm docs mention any breaking config, profile, or CLI changes.
 - Update package version and release notes.
 
-For alpha releases, include a short "known gaps" section. Current gaps:
+For alpha releases, include a short "completion notes" section. Current
+completion notes:
 
-- source inventory refresh is limited to init-time local agent and plugin
-  manifest discovery;
-- dry-run diff before merge is not implemented;
-- remote source fetching and pin refresh is not implemented;
-- detector plugins for installer command output and non-manifest config
-  mutation are not implemented;
-- unusual YAML trivia may still be normalized during `--merge`.
+- source inventory refresh covers known local agent skill roots, plugin-cache
+  manifests, and user-supplied scan roots;
+- `sources refresh` covers Git-compatible remote sources and digest pin refresh;
+- `inventory detect` covers installer output and explicit mutated config files
+  for commands, hooks, MCP servers, and modified config paths;
+- dry-run plans report a capped YAML semantic change list rather than full patch
+  hunks;
+- unusual YAML trivia may still be normalized during structured config writes.

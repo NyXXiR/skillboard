@@ -1,0 +1,10 @@
+SCENARIO: S04_list_harnesses
+DESCRIPTION: list harnesses
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs list harnesses --config examples/multi-source.config.yaml --skills examples/multi-source-skills
+--- stdout/stderr ---
+claude-code	configured	workflows=document-workflow	commands=none
+codex	primary	workflows=codex-night-workflow,skill-discovery-workflow	commands=none
+lazycodex	fallback	workflows=large-refactor-workflow	commands=$ulw-plan,$start-work
+--- exit_code ---
+0

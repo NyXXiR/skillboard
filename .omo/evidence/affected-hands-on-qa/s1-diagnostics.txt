@@ -1,0 +1,9 @@
+surface: terminal CLI
+invocation: npm run diagnostics
+
+
+> agent-skillboard@0.1.0 diagnostics
+> tsc -p tsconfig.lsp.json
+
+
+exit_code: 0

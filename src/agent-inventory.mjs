@@ -4,21 +4,73 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import YAML from "yaml";
 import { readString, requireRecord } from "./config-helpers.mjs";
 
+export const agentInventoryDetectors = Object.freeze([
+  {
+    id: "codex-plugin-cache",
+    matches(path) {
+      return path.endsWith("/plugins/cache") || path.endsWith("\\plugins\\cache");
+    },
+    async discover(path, home) {
+      return await discoverPluginCache(path, home);
+    }
+  },
+  {
+    id: "codex-system-skills",
+    matches(path) {
+      return path.endsWith("/skills/.system") || path.endsWith("\\skills\\.system");
+    },
+    async discover(path, home) {
+      return await discoverSkillDirectory(path, systemCodexUnit(path, home), { excludeSystem: false });
+    }
+  },
+  {
+    id: "codex-user-skills",
+    matches(path) {
+      return path.endsWith("/.codex/skills") || path.endsWith("\\.codex\\skills");
+    },
+    async discover(path, home) {
+      return await discoverSkillDirectory(path, userCodexUnit(path, home), { excludeSystem: true });
+    }
+  },
+  {
+    id: "claude-user-skills",
+    matches(path) {
+      return path.endsWith("/.claude/skills") || path.endsWith("\\.claude\\skills");
+    },
+    async discover(path, home) {
+      return await discoverSkillDirectory(path, userClaudeUnit(path, home), { excludeSystem: true });
+    }
+  },
+  {
+    id: "custom-user-skill-root",
+    matches() {
+      return true;
+    },
+    async discover(path, home) {
+      return await discoverSkillDirectory(path, customUserUnit(path, home), { excludeSystem: true });
+    }
+  }
+]);
+
 export async function discoverAgentSkillInventory(options = {}) {
   const home = options.home ?? homedir();
   const env = options.env ?? process.env;
+  const detectors = options.detectors ?? agentInventoryDetectors;
   const roots = uniquePaths([
     ...defaultScanRoots(home, env),
     ...readCsv(env.SKILLBOARD_INIT_SCAN_ROOTS),
     ...(options.roots ?? [])
   ], home);
   const groups = [];
+  const warnings = [];
 
   for (const root of roots) {
-    groups.push(...(await discoverRoot(root, home)));
+    const discovered = await discoverRoot(root, home, detectors);
+    groups.push(...discovered.groups);
+    warnings.push(...discovered.warnings);
   }
 
-  return await inventoryFromGroups(groups, home);
+  return await inventoryFromGroups(groups, home, warnings);
 }
 
 export function mergeAgentSkillInventory(configText, inventory) {
@@ -30,18 +82,33 @@ export function mergeAgentSkillInventory(configText, inventory) {
 
   const skillsMap = ensureMap(document, "skills");
   const unitsMap = ensureMap(document, "install_units");
+  const workflowsMap = ensureMap(document, "workflows");
+  const harnessesMap = ensureMap(document, "harnesses");
+  const hadWorkflows = workflowsMap.items.length > 0;
+  const unitById = new Map(inventory.installUnits.map((unit) => [unit.id, unit]));
   const addedSkills = [];
   const addedInstallUnits = [];
   const updatedInstallUnits = [];
+  const addedWorkflows = [];
+  const addedHarnesses = [];
   const skippedSkills = [];
+  const reviewNotes = [];
   const managedSkillsByUnit = new Map();
+  const localWorkflowSkillsByUnit = new Map();
 
   for (const skill of inventory.skills) {
+    const unit = unitById.get(skill.ownerInstallUnit);
+    const defaults = skillDefaultsFor(unit, { attachLocalWorkflow: !hadWorkflows });
     const existing = skillsMap.get(skill.id, true);
     if (existing === undefined) {
-      skillsMap.set(skill.id, document.createNode(skillNode(skill)));
+      skillsMap.set(skill.id, document.createNode(skillNode(skill, defaults)));
       addedSkills.push(skill.id);
       appendManagedSkill(managedSkillsByUnit, skill.ownerInstallUnit, skill.id);
+      if (defaults.attachLocalWorkflow) {
+        appendManagedSkill(localWorkflowSkillsByUnit, skill.ownerInstallUnit, skill.id);
+      } else if (isTrustedLocalUserUnit(unit)) {
+        reviewNotes.push(`Local skill ${skill.id} imported as manual-only candidate; use skillboard add workflow to attach it.`);
+      }
       continue;
     }
     const owner = readYamlMapString(existing, "owner_install_unit", "");
@@ -69,6 +136,23 @@ export function mergeAgentSkillInventory(configText, inventory) {
     }
   }
 
+  for (const [unitId, skills] of localWorkflowSkillsByUnit) {
+    const unit = unitById.get(unitId);
+    const target = localWorkflowTarget(unit);
+    const harnessAdded = ensureHarnessWorkflow(harnessesMap, target.harness, target.workflow, document);
+    const workflowAdded = ensureLocalWorkflow(workflowsMap, target, skills, document);
+    if (harnessAdded) {
+      addedHarnesses.push(target.harness);
+    }
+    if (workflowAdded) {
+      addedWorkflows.push(target.workflow);
+    }
+  }
+
+  if (!hadWorkflows && localWorkflowSkillsByUnit.size === 0 && inventory.installUnits.some((unit) => hasRuntimeComponents(unit))) {
+    reviewNotes.push("Workflow metadata not detected for runtime install units; use skillboard add workflow before activating skills.");
+  }
+
   const text = preserveLineEndings(String(document), configText);
   return {
     text,
@@ -76,8 +160,61 @@ export function mergeAgentSkillInventory(configText, inventory) {
     addedSkills,
     addedInstallUnits,
     updatedInstallUnits,
+    addedWorkflows,
+    addedHarnesses,
+    reviewNotes,
     skippedSkills
   };
+}
+
+function skillDefaultsFor(unit, options) {
+  if (isTrustedLocalUserUnit(unit)) {
+    return options.attachLocalWorkflow
+      ? { status: "active-manual", invocation: "manual-only", attachLocalWorkflow: true }
+      : { status: "candidate", invocation: "manual-only", attachLocalWorkflow: false };
+  }
+  return { status: "quarantined", invocation: "blocked", attachLocalWorkflow: false };
+}
+
+function isTrustedLocalUserUnit(unit) {
+  return unit !== undefined && unit.kind === "skill" && unit.trustLevel === "trusted" && unit.category === "user";
+}
+
+function localWorkflowTarget(unit) {
+  if (unit?.id === "codex.user-skills") {
+    return { harness: "codex", workflow: "codex-local-manual" };
+  }
+  if (unit?.id === "claude.user-skills") {
+    return { harness: "claude", workflow: "claude-local-manual" };
+  }
+  const base = safeSegment(unit?.id ?? "local").replaceAll(".", "-");
+  return { harness: "local", workflow: `${base}-local-manual` };
+}
+
+function ensureHarnessWorkflow(harnessesMap, harnessName, workflowName, document) {
+  const existing = harnessesMap.get(harnessName, true);
+  if (existing === undefined) {
+    harnessesMap.set(harnessName, document.createNode({
+      status: "configured",
+      workflows: [workflowName]
+    }));
+    return true;
+  }
+  const harness = requireYamlMap(existing, `harnesses.${harnessName}`);
+  appendNestedSequenceValues(harness, "workflows", [workflowName], document);
+  return false;
+}
+
+function ensureLocalWorkflow(workflowsMap, target, skills, document) {
+  if (workflowsMap.get(target.workflow, true) !== undefined) {
+    return false;
+  }
+  workflowsMap.set(target.workflow, document.createNode({
+    harness: target.harness,
+    active_skills: skills,
+    blocked_skills: []
+  }));
+  return true;
 }
 
 function defaultScanRoots(home, env) {
@@ -90,24 +227,30 @@ function defaultScanRoots(home, env) {
   ];
 }
 
-async function discoverRoot(root, home) {
+async function discoverRoot(root, home, detectors) {
   const path = resolvePath(root, home);
   if (!(await exists(path))) {
-    return [];
+    return { groups: [], warnings: [] };
   }
-  if (path.endsWith("/plugins/cache") || path.endsWith("\\plugins\\cache")) {
-    return await discoverPluginCache(path, home);
+  const warnings = [];
+  const detector = detectors.find((candidate) => {
+    try {
+      return candidate.matches(path);
+    } catch (error) {
+      warnings.push(`detector ${candidate.id ?? "unknown"} failed while matching ${displayPath(path, home)}: ${errorMessage(error)}`);
+      return false;
+    }
+  });
+  if (detector === undefined) {
+    return { groups: [], warnings };
   }
-  if (path.endsWith("/skills/.system") || path.endsWith("\\skills\\.system")) {
-    return await discoverSkillDirectory(path, systemCodexUnit(path, home), { excludeSystem: false });
+  try {
+    const result = normalizeDiscoveryResult(await detector.discover(path, home));
+    return { groups: result.groups, warnings: [...warnings, ...result.warnings] };
+  } catch (error) {
+    warnings.push(`detector ${detector.id ?? "unknown"} failed while scanning ${displayPath(path, home)}: ${errorMessage(error)}`);
+    return { groups: [], warnings };
   }
-  if (path.endsWith("/.codex/skills") || path.endsWith("\\.codex\\skills")) {
-    return await discoverSkillDirectory(path, userCodexUnit(path, home), { excludeSystem: true });
-  }
-  if (path.endsWith("/.claude/skills") || path.endsWith("\\.claude\\skills")) {
-    return await discoverSkillDirectory(path, userClaudeUnit(path, home), { excludeSystem: true });
-  }
-  return await discoverSkillDirectory(path, customUserUnit(path, home), { excludeSystem: true });
 }
 
 async function discoverSkillDirectory(root, unit, options) {
@@ -118,23 +261,28 @@ async function discoverSkillDirectory(root, unit, options) {
 async function discoverPluginCache(root, home) {
   const manifests = await topLevelPluginManifests(root);
   const groups = [];
+  const warnings = [];
   const codexHome = dirname(dirname(root));
   for (const manifestPath of manifests) {
-    const pluginRoot = dirname(dirname(manifestPath));
-    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    const skillsRoot = resolve(pluginRoot, typeof manifest.skills === "string" ? manifest.skills : "skills");
-    const files = await findSkillFiles(skillsRoot, skillsRoot, { excludeSystem: false });
-    const unit = await pluginUnit(manifest, pluginRoot, manifestPath, { home, codexHome });
-    if (files.length === 0 && !hasRuntimeComponents(unit)) {
-      continue;
+    try {
+      const pluginRoot = dirname(dirname(manifestPath));
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+      const skillsRoot = resolve(pluginRoot, typeof manifest.skills === "string" ? manifest.skills : "skills");
+      const files = await findSkillFiles(skillsRoot, skillsRoot, { excludeSystem: false });
+      const unit = await pluginUnit(manifest, pluginRoot, manifestPath, { home, codexHome });
+      if (files.length === 0 && !hasRuntimeComponents(unit)) {
+        continue;
+      }
+      groups.push({
+        unit,
+        root: pluginRoot,
+        files
+      });
+    } catch (error) {
+      warnings.push(`plugin manifest ${displayPath(manifestPath, home)} skipped: ${errorMessage(error)}`);
     }
-    groups.push({
-      unit,
-      root: pluginRoot,
-      files
-    });
   }
-  return groups;
+  return { groups, warnings };
 }
 
 async function pluginUnit(manifest, pluginRoot, manifestPath, paths) {
@@ -189,15 +337,22 @@ async function findPluginManifests(root) {
   return manifests;
 }
 
-async function inventoryFromGroups(groups, home) {
+async function inventoryFromGroups(groups, home, initialWarnings = []) {
   const skills = [];
   const installUnits = [];
   const usedSkillIds = new Set();
+  const warnings = [...initialWarnings];
 
   for (const group of groups.sort((left, right) => left.unit.id.localeCompare(right.unit.id))) {
     const unitSkills = [];
     for (const file of group.files.sort((left, right) => left.localeCompare(right))) {
-      const frontmatter = parseSkillFrontmatter(await readFile(file, "utf8"));
+      let frontmatter;
+      try {
+        frontmatter = parseSkillFrontmatter(await readFile(file, "utf8"));
+      } catch (error) {
+        warnings.push(`skill file ${displayPath(file, home)} skipped: ${errorMessage(error)}`);
+        continue;
+      }
       const baseId = skillIdFor(group.unit, group.root, file, frontmatter);
       const id = uniqueId(baseId, usedSkillIds);
       usedSkillIds.add(id);
@@ -221,7 +376,20 @@ async function inventoryFromGroups(groups, home) {
     }
   }
 
-  return { skills, installUnits };
+  return { skills, installUnits, warnings };
+}
+
+function normalizeDiscoveryResult(result) {
+  if (Array.isArray(result)) {
+    return { groups: result, warnings: [] };
+  }
+  if (result !== null && typeof result === "object") {
+    return {
+      groups: Array.isArray(result.groups) ? result.groups : [],
+      warnings: Array.isArray(result.warnings) ? result.warnings.filter((warning) => typeof warning === "string") : []
+    };
+  }
+  return { groups: [], warnings: [] };
 }
 
 function installUnitWithSkills(unit, skills, root, home) {
@@ -347,11 +515,11 @@ function skillPath(root, file) {
   return relative(root, dirname(file)).replaceAll("\\", "/");
 }
 
-function skillNode(skill) {
+function skillNode(skill, defaults = {}) {
   return {
     path: skill.path,
-    status: skill.status,
-    invocation: skill.invocation,
+    status: defaults.status ?? skill.status,
+    invocation: defaults.invocation ?? skill.invocation,
     exposure: skill.exposure,
     category: skill.category,
     owner_install_unit: skill.ownerInstallUnit
@@ -506,7 +674,9 @@ function ensureMap(document, key) {
     document.set(key, next);
     return next;
   }
-  return requireYamlMap(existing, key);
+  const map = requireYamlMap(existing, key);
+  map.flow = false;
+  return map;
 }
 
 function ensureNestedMap(parent, key, document) {
@@ -517,7 +687,9 @@ function ensureNestedMap(parent, key, document) {
     parent.set(key, next);
     return next;
   }
-  return requireYamlMap(existing, key);
+  const map = requireYamlMap(existing, key);
+  map.flow = false;
+  return map;
 }
 
 function ensureNestedSeq(parent, key, document) {
@@ -531,6 +703,7 @@ function ensureNestedSeq(parent, key, document) {
   if (!YAML.isSeq(existing)) {
     throw new Error(`${key} must be a sequence`);
   }
+  existing.flow = false;
   return existing;
 }
 
@@ -653,6 +826,10 @@ function uniquePaths(values, home) {
     }
   }
   return result;
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function exists(path) {

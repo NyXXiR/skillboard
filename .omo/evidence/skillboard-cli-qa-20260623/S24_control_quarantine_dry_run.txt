@@ -1,0 +1,23 @@
+SCENARIO: S24_control_quarantine_dry_run
+DESCRIPTION: quarantine dry-run validates global effect
+SURFACE: CLI
+INVOCATION: node bin/skillboard.mjs quarantine matt.tdd --config /tmp/tmp.m5IsEE5n8N/control.config.yaml --skills examples/multi-source-skills --dry-run --json
+--- stdout/stderr ---
+{
+  "message": "Quarantined matt.tdd",
+  "dryRun": true,
+  "changed": true,
+  "plan": {
+    "changed": true,
+    "beforeBytes": 6533,
+    "afterBytes": 6528,
+    "beforeLines": 272,
+    "afterLines": 271,
+    "changedLineCount": 143
+  },
+  "warnings": [
+    "[SKILL-GLOBAL-001] Skill private.workflow-router is global-auto; prefer workflow-auto or router-only."
+  ]
+}
+--- exit_code ---
+0

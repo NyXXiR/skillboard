@@ -4,7 +4,16 @@ import { basename, dirname, join } from "node:path";
 import YAML from "yaml";
 import { checkPolicy } from "./policy.mjs";
 import { loadWorkspace } from "./workspace.mjs";
-import { NON_CALLABLE_WORKFLOW_INVOCATIONS, NON_CALLABLE_WORKFLOW_STATUSES } from "./domain/constants.mjs";
+import { textChangePlan } from "./change-plan.mjs";
+import { normalizeSkillPath } from "./skill-paths.mjs";
+import {
+  EXPOSURE_VALUES,
+  HARNESS_STATUS_VALUES,
+  INVOCATION_VALUES,
+  NON_CALLABLE_WORKFLOW_INVOCATIONS,
+  NON_CALLABLE_WORKFLOW_STATUSES,
+  STATUS_VALUES
+} from "./domain/constants.mjs";
 import {
   hasRuntimeComponents,
   installUnitPriority,
@@ -160,6 +169,111 @@ export async function activateSkill(options) {
   );
 }
 
+export async function addSkill(options) {
+  const { document, originalText } = await loadConfig(options.configPath);
+  const skills = ensureMapAt(document, ["skills"], "skills");
+  if (skills.get(options.skillId, true) !== undefined) {
+    throw new Error(`Skill already exists: ${options.skillId}`);
+  }
+  const skillPath = normalizeSkillPath(options.path, "skill path");
+  const status = options.status ?? (options.workflow === undefined ? "candidate" : "active");
+  const invocation = options.invocation ?? "manual-only";
+  const exposure = options.exposure ?? "exported";
+  validateSkillState(status, invocation, exposure);
+  skills.set(options.skillId, document.createNode(stripUndefined({
+    path: skillPath,
+    status,
+    invocation,
+    exposure,
+    category: options.category ?? "user",
+    owner_install_unit: options.ownerInstallUnit
+  })));
+  if (options.workflow !== undefined) {
+    const workflow = requireConfigWorkflow(document, options.workflow);
+    addUnique(ensureSeq(workflow, "active_skills", document), options.skillId);
+    removeValue(ensureSeq(workflow, "blocked_skills", document), options.skillId);
+  }
+  const validation = options.workflow === undefined
+    ? options
+    : { ...options, validateUse: { skillId: options.skillId, workflow: options.workflow } };
+  return await writeCheckedConfig(document, originalText, validation, `Added ${options.skillId}`);
+}
+
+export async function addHarness(options) {
+  if (options.harness === undefined) {
+    throw new Error("addHarness requires a harness name");
+  }
+  const { document, originalText } = await loadConfig(options.configPath);
+  const harnesses = ensureMapAt(document, ["harnesses"], "harnesses");
+  if (harnesses.get(options.harness, true) !== undefined) {
+    throw new Error(`Harness already exists: ${options.harness}`);
+  }
+  const status = options.status ?? "configured";
+  validateHarnessStatus(status);
+  harnesses.set(options.harness, document.createNode({
+    status,
+    workflows: [],
+    commands: options.commands ?? []
+  }));
+  return await writeCheckedConfig(document, originalText, options, `Added harness ${options.harness}`);
+}
+
+export async function addWorkflow(options) {
+  if (options.workflow === undefined) {
+    throw new Error("addWorkflow requires a workflow name");
+  }
+  if (options.harness === undefined) {
+    throw new Error("addWorkflow requires a harness name");
+  }
+  const { document, originalText } = await loadConfig(options.configPath);
+  const workflows = ensureMapAt(document, ["workflows"], "workflows");
+  const harnesses = ensureMapAt(document, ["harnesses"], "harnesses");
+  if (workflows.get(options.workflow, true) !== undefined) {
+    throw new Error(`Workflow already exists: ${options.workflow}`);
+  }
+  const skillIds = uniqueValues(options.skills ?? []);
+  const activeSkills = [];
+  const validateUses = [];
+  for (const skillId of skillIds) {
+    const skill = requireConfigSkill(document, skillId);
+    ensureCallableWorkflowSkill(skillId, skill);
+    if (readMapString(skill, "status", "vendor") === "candidate" && readMapString(skill, "invocation", "manual-only") === "manual-only") {
+      skill.set("status", "active-manual");
+    }
+    activeSkills.push(skillId);
+    validateUses.push({ skillId, workflow: options.workflow });
+  }
+
+  const harness = harnesses.get(options.harness, true);
+  if (harness === undefined) {
+    if (options.requireExistingHarness === true) {
+      throw new Error(`Unknown harness: ${options.harness}`);
+    }
+    const harnessStatus = options.harnessStatus ?? "configured";
+    validateHarnessStatus(harnessStatus);
+    harnesses.set(options.harness, document.createNode({
+      status: harnessStatus,
+      workflows: [options.workflow],
+      commands: []
+    }));
+  } else {
+    addUnique(ensureSeq(requireYamlMap(harness, `harnesses.${options.harness}`), "workflows", document), options.workflow);
+  }
+
+  workflows.set(options.workflow, document.createNode({
+    harness: options.harness,
+    active_skills: activeSkills,
+    blocked_skills: []
+  }));
+
+  return await writeCheckedConfig(
+    document,
+    originalText,
+    { ...options, validateUses },
+    `Added workflow ${options.workflow}`
+  );
+}
+
 export async function blockSkill(options) {
   const { document, originalText } = await loadConfig(options.configPath);
   requireConfigSkill(document, options.skillId);
@@ -186,6 +300,19 @@ export async function quarantineSkill(options) {
   }
 
   return await writeCheckedConfig(document, originalText, options, `Quarantined ${options.skillId}`);
+}
+
+export async function removeSkill(options) {
+  const { document, originalText } = await loadConfig(options.configPath);
+  const skills = requireMapAt(document, ["skills"], "skills");
+  requireConfigSkill(document, options.skillId);
+  const references = configSkillReferences(document, options.skillId);
+  if (references.length > 0 && options.force !== true) {
+    throw new Error(`Skill ${options.skillId} is still referenced: ${references.join(", ")}. Re-run with --force to remove config references first.`);
+  }
+  removeSkillReferences(document, options.skillId);
+  skills.delete(options.skillId);
+  return await writeCheckedConfig(document, originalText, options, `Removed ${options.skillId}`);
 }
 
 export async function preferSkill(options) {
@@ -368,6 +495,9 @@ function trustUseReasons(workspace, skill) {
   if (trust.level === "blocked") {
     reasons.push(`Install unit ${unit.id} is blocked by source trust policy.`);
   }
+  if (unit.enabled && !isUserControlledSource(unit) && trust.level === "unreviewed") {
+    reasons.push(`Skill ${skill.id} belongs to unreviewed non-user source ${unit.id}.`);
+  }
   if (!isUserControlledSource(unit) && isModelSelectableInvocation(skill.invocation) && trust.level === "unreviewed") {
     reasons.push(`Skill ${skill.id} is model-selectable but source ${unit.id} is unreviewed.`);
   }
@@ -508,7 +638,7 @@ async function loadConfig(path) {
 
 async function writeCheckedConfig(document, originalText, options, message) {
   const nextText = preserveLineEndings(String(document), originalText);
-  const plan = changePlan(originalText, nextText);
+  const plan = textChangePlan(originalText, nextText);
   const tempPath = tempConfigPath(options.configPath);
   await writeFile(tempPath, nextText, { encoding: "utf8", flag: "wx" });
   try {
@@ -517,8 +647,9 @@ async function writeCheckedConfig(document, originalText, options, message) {
     if (!policy.ok) {
       throw new Error(`Policy update would create invalid config:\n${policy.errors.join("\n")}`);
     }
-    if (options.validateUse !== undefined) {
-      const use = canUseSkill(workspace, options.validateUse.skillId, options.validateUse.workflow);
+    const validateUses = options.validateUses ?? (options.validateUse === undefined ? [] : [options.validateUse]);
+    for (const useRequest of validateUses) {
+      const use = canUseSkill(workspace, useRequest.skillId, useRequest.workflow);
       if (!use.allowed) {
         throw new Error(`Control update would not be usable:\n${use.reasons.join("\n")}`);
       }
@@ -537,30 +668,6 @@ async function writeCheckedConfig(document, originalText, options, message) {
 
 function tempConfigPath(configPath) {
   return join(dirname(configPath), `.${basename(configPath)}.${randomUUID()}.tmp`);
-}
-
-function changePlan(before, after) {
-  const beforeLines = before.split(/\r?\n/);
-  const afterLines = after.split(/\r?\n/);
-  return {
-    changed: before !== after,
-    beforeBytes: Buffer.byteLength(before),
-    afterBytes: Buffer.byteLength(after),
-    beforeLines: beforeLines.length,
-    afterLines: afterLines.length,
-    changedLineCount: countChangedLinePositions(beforeLines, afterLines)
-  };
-}
-
-function countChangedLinePositions(beforeLines, afterLines) {
-  const length = Math.max(beforeLines.length, afterLines.length);
-  let count = 0;
-  for (let index = 0; index < length; index += 1) {
-    if (beforeLines[index] !== afterLines[index]) {
-      count += 1;
-    }
-  }
-  return count;
 }
 
 function preserveLineEndings(text, reference) {
@@ -631,6 +738,19 @@ function requireMapAt(document, path, label) {
   return requireYamlMap(document.getIn(path, true), label);
 }
 
+function ensureMapAt(document, path, label) {
+  const existing = document.getIn(path, true);
+  if (existing !== undefined) {
+    const map = requireYamlMap(existing, label);
+    map.flow = false;
+    return map;
+  }
+  const next = document.createNode({});
+  next.flow = false;
+  document.setIn(path, next);
+  return next;
+}
+
 function requireYamlMap(value, label) {
   if (!YAML.isMap(value)) {
     throw new Error(`${label} must be a mapping`);
@@ -642,12 +762,14 @@ function ensureSeq(map, key, document) {
   const existing = map.get(key, true);
   if (existing === undefined) {
     const next = document.createNode([]);
+    next.flow = false;
     map.set(key, next);
     return next;
   }
   if (!YAML.isSeq(existing)) {
     throw new Error(`${key} must be a list`);
   }
+  existing.flow = false;
   return existing;
 }
 
@@ -712,6 +834,165 @@ function removeSkillFromRequiredCapabilities(workflow, skillId, document) {
   }
 }
 
+function configSkillReferences(document, skillId) {
+  return [
+    ...workflowReferences(document, skillId),
+    ...capabilityReferences(document, skillId),
+    ...installUnitReferences(document, skillId)
+  ];
+}
+
+function workflowReferences(document, skillId) {
+  const workflows = optionalRootMap(document, "workflows");
+  if (workflows === undefined) {
+    return [];
+  }
+  const references = [];
+  for (const pair of workflows.items) {
+    const name = nodeScalarValue(pair.key);
+    const workflow = requireYamlMap(pair.value, `workflows.${name}`);
+    const activeSkills = optionalSeq(workflow, "active_skills");
+    const blockedSkills = optionalSeq(workflow, "blocked_skills");
+    if (activeSkills !== undefined && sequenceIncludes(activeSkills, skillId)) {
+      references.push(`workflow ${name}.active_skills`);
+    }
+    if (blockedSkills !== undefined && sequenceIncludes(blockedSkills, skillId)) {
+      references.push(`workflow ${name}.blocked_skills`);
+    }
+    const requiredCapabilities = optionalMap(workflow, "required_capabilities");
+    if (requiredCapabilities === undefined) {
+      continue;
+    }
+    for (const capabilityPair of requiredCapabilities.items) {
+      const capabilityName = nodeScalarValue(capabilityPair.key);
+      const requirement = requireYamlMap(capabilityPair.value, `workflows.${name}.required_capabilities.${capabilityName}`);
+      if (readMapString(requirement, "preferred", "") === skillId) {
+        references.push(`workflow ${name}.required_capabilities.${capabilityName}.preferred`);
+      }
+      const fallback = optionalSeq(requirement, "fallback");
+      if (fallback !== undefined && sequenceIncludes(fallback, skillId)) {
+        references.push(`workflow ${name}.required_capabilities.${capabilityName}.fallback`);
+      }
+    }
+  }
+  return references;
+}
+
+function capabilityReferences(document, skillId) {
+  const capabilities = optionalRootMap(document, "capabilities");
+  if (capabilities === undefined) {
+    return [];
+  }
+  const references = [];
+  for (const pair of capabilities.items) {
+    const name = nodeScalarValue(pair.key);
+    const capability = requireYamlMap(pair.value, `capabilities.${name}`);
+    if (readMapString(capability, "canonical", "") === skillId) {
+      references.push(`capability ${name}.canonical`);
+    }
+    const alternatives = optionalSeq(capability, "alternatives");
+    if (alternatives !== undefined && sequenceIncludes(alternatives, skillId)) {
+      references.push(`capability ${name}.alternatives`);
+    }
+  }
+  return references;
+}
+
+function installUnitReferences(document, skillId) {
+  const installUnits = optionalRootMap(document, "install_units");
+  if (installUnits === undefined) {
+    return [];
+  }
+  const references = [];
+  for (const pair of installUnits.items) {
+    const id = nodeScalarValue(pair.key);
+    const unit = requireYamlMap(pair.value, `install_units.${id}`);
+    const components = optionalMap(unit, "components");
+    const skills = components === undefined ? undefined : optionalSeq(components, "skills");
+    if (skills !== undefined && sequenceIncludes(skills, skillId)) {
+      references.push(`install_unit ${id}.components.skills`);
+    }
+  }
+  return references;
+}
+
+function removeSkillReferences(document, skillId) {
+  const workflows = optionalRootMap(document, "workflows");
+  if (workflows !== undefined) {
+    for (const workflow of mapValues(workflows, "workflow")) {
+      const activeSkills = optionalSeq(workflow, "active_skills");
+      const blockedSkills = optionalSeq(workflow, "blocked_skills");
+      if (activeSkills !== undefined) {
+        removeValue(activeSkills, skillId);
+      }
+      if (blockedSkills !== undefined) {
+        removeValue(blockedSkills, skillId);
+      }
+      removeSkillFromRequiredCapabilities(workflow, skillId, document);
+    }
+  }
+  const capabilities = optionalRootMap(document, "capabilities");
+  if (capabilities !== undefined) {
+    for (const capability of mapValues(capabilities, "capability")) {
+      if (readMapString(capability, "canonical", "") === skillId) {
+        capability.set("canonical", "");
+      }
+      const alternatives = optionalSeq(capability, "alternatives");
+      if (alternatives !== undefined) {
+        removeValue(alternatives, skillId);
+      }
+    }
+  }
+  const installUnits = optionalRootMap(document, "install_units");
+  if (installUnits !== undefined) {
+    for (const unit of mapValues(installUnits, "install_unit")) {
+      const components = optionalMap(unit, "components");
+      const skills = components === undefined ? undefined : optionalSeq(components, "skills");
+      if (skills !== undefined) {
+        removeValue(skills, skillId);
+      }
+    }
+  }
+}
+
+function optionalRootMap(document, key) {
+  const existing = document.get(key, true);
+  return existing === undefined ? undefined : requireYamlMap(existing, key);
+}
+
+function validateSkillState(status, invocation, exposure) {
+  if (!STATUS_VALUES.has(status)) {
+    throw new Error(`Unsupported status: ${status}`);
+  }
+  if (!INVOCATION_VALUES.has(invocation)) {
+    throw new Error(`Unsupported invocation: ${invocation}`);
+  }
+  if (!EXPOSURE_VALUES.has(exposure)) {
+    throw new Error(`Unsupported exposure: ${exposure}`);
+  }
+}
+
+function validateHarnessStatus(status) {
+  if (!HARNESS_STATUS_VALUES.has(status)) {
+    throw new Error(`Unsupported harness status: ${status}`);
+  }
+}
+
+function ensureCallableWorkflowSkill(skillId, skill) {
+  const status = readMapString(skill, "status", "vendor");
+  const invocation = readMapString(skill, "invocation", "manual-only");
+  if (NON_CALLABLE_WORKFLOW_STATUSES.has(status)) {
+    throw new Error(`Cannot attach non-callable skill ${skillId} with status: ${status}`);
+  }
+  if (NON_CALLABLE_WORKFLOW_INVOCATIONS.has(invocation)) {
+    throw new Error(`Cannot attach non-callable skill ${skillId} with invocation: ${invocation}`);
+  }
+}
+
+function stripUndefined(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
+}
+
 function downgradeIfUnscopedWorkflowAuto(document, skillId) {
   const skill = requireConfigSkill(document, skillId);
   if (readMapString(skill, "invocation", "") !== "workflow-auto") {
@@ -743,6 +1024,10 @@ function downgradeIfUnscopedWorkflowAuto(document, skillId) {
 
 function sequenceIncludes(sequence, value) {
   return sequence.items.some((item) => nodeScalarValue(item) === value);
+}
+
+function uniqueValues(values) {
+  return [...new Set(values)];
 }
 
 function nodeScalarValue(node) {

@@ -1,0 +1,10 @@
+# scenario: initialized-init-no-scan
+# cwd: /tmp/skillboard-qa.Higa4F/initialized
+# invocation: node /mnt/i/workspace/skill-control-plane/bin/skillboard.mjs init --no-scan-installed
+# start: 2026-06-23T23:59:45+09:00
+--- stdout+stderr ---
+Initialized SkillBoard: /tmp/skillboard-qa.Higa4F/initialized
+Created: `skillboard.config.yaml`, `.skillboard/profiles/README.md`, `.skillboard/hooks/README.md`, `AGENTS.md`, `CLAUDE.md`
+--- exit-status ---
+0
+# end: 2026-06-23T23:59:45+09:00

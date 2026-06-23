@@ -1,0 +1,361 @@
+$ npm run check
+
+> agent-skillboard@0.1.0 check
+> node --check bin/skillboard.mjs && npm run diagnostics && node --test
+
+
+> agent-skillboard@0.1.0 diagnostics
+> tsc -p tsconfig.lsp.json
+
+TAP version 13
+# Subtest: cli check and dashboard handle the multi-source example
+ok 1 - cli check and dashboard handle the multi-source example
+  ---
+  duration_ms: 661.5429
+  type: 'test'
+  ...
+# Subtest: cli init bootstraps config and agent bridge files
+ok 2 - cli init bootstraps config and agent bridge files
+  ---
+  duration_ms: 773.5765
+  type: 'test'
+  ...
+# Subtest: cli impact can write disable reports to a file
+ok 3 - cli impact can write disable reports to a file
+  ---
+  duration_ms: 268.0792
+  type: 'test'
+  ...
+# Subtest: cli list, explain, and can-use expose source-aware control state
+ok 4 - cli list, explain, and can-use expose source-aware control state
+  ---
+  duration_ms: 1061.8266
+  type: 'test'
+  ...
+# Subtest: cli guard exposes hook-friendly allow and deny decisions
+ok 5 - cli guard exposes hook-friendly allow and deny decisions
+  ---
+  duration_ms: 529.5867
+  type: 'test'
+  ...
+# Subtest: cli audit sources reports trust findings without blocking reviewed sources
+ok 6 - cli audit sources reports trust findings without blocking reviewed sources
+  ---
+  duration_ms: 270.3829
+  type: 'test'
+  ...
+# Subtest: cli hook install emits an executable guard script
+ok 7 - cli hook install emits an executable guard script
+  ---
+  duration_ms: 1243.0021
+  type: 'test'
+  ...
+# Subtest: cli hook install rejects existing paths and sanitizes default workflow filenames
+ok 8 - cli hook install rejects existing paths and sanitizes default workflow filenames
+  ---
+  duration_ms: 507.3365
+  type: 'test'
+  ...
+# Subtest: cli can-use denies model-selectable skills from unreviewed external sources
+ok 9 - cli can-use denies model-selectable skills from unreviewed external sources
+  ---
+  duration_ms: 268.1824
+  type: 'test'
+  ...
+# Subtest: cli can-use denies skills from disabled install units
+ok 10 - cli can-use denies skills from disabled install units
+  ---
+  duration_ms: 253.2007
+  type: 'test'
+  ...
+# Subtest: cli audit treats empty source_digest as unpinned
+ok 11 - cli audit treats empty source_digest as unpinned
+  ---
+  duration_ms: 249.6297
+  type: 'test'
+  ...
+# Subtest: cli audit verify checks local source digests and lock write records verified sources
+ok 12 - cli audit verify checks local source digests and lock write records verified sources
+  ---
+  duration_ms: 740.324
+  type: 'test'
+  ...
+# Subtest: cli audit verify treats slash command sources as metadata sources
+ok 13 - cli audit verify treats slash command sources as metadata sources
+  ---
+  duration_ms: 240.6542
+  type: 'test'
+  ...
+# Subtest: cli lock write refuses verification errors by default
+ok 14 - cli lock write refuses verification errors by default
+  ---
+  duration_ms: 243.6942
+  type: 'test'
+  ...
+# Subtest: cli activate refuses unusable unreviewed automatic external skills
+ok 15 - cli activate refuses unusable unreviewed automatic external skills
+  ---
+  duration_ms: 256.2412
+  type: 'test'
+  ...
+# Subtest: cli prefer lets user skills take workflow capability priority
+ok 16 - cli prefer lets user skills take workflow capability priority
+  ---
+  duration_ms: 565.2265
+  type: 'test'
+  ...
+# Subtest: cli dry-run validates a control change without writing config
+ok 17 - cli dry-run validates a control change without writing config
+  ---
+  duration_ms: 299.5123
+  type: 'test'
+  ...
+# Subtest: cli failed control writes preserve the original config and cleanup temp files
+ok 18 - cli failed control writes preserve the original config and cleanup temp files
+  ---
+  duration_ms: 247.1275
+  type: 'test'
+  ...
+# Subtest: cli block removes a skill from workflow active and capability slots
+ok 19 - cli block removes a skill from workflow active and capability slots
+  ---
+  duration_ms: 572.5322
+  type: 'test'
+  ...
+# Subtest: cli classifies workflow bundles as their own install-unit source
+ok 20 - cli classifies workflow bundles as their own install-unit source
+  ---
+  duration_ms: 254.5925
+  type: 'test'
+  ...
+# Subtest: cli accepts config-driven custom skill source classes
+ok 21 - cli accepts config-driven custom skill source classes
+  ---
+  duration_ms: 477.3408
+  type: 'test'
+  ...
+# Subtest: test/fixtures.mjs
+ok 2 - test/fixtures.mjs
+  ---
+  duration_ms: 130.035
+  type: 'test'
+  ...
+# Subtest: scan records install units for packaged harness and plugin bundles
+ok 23 - scan records install units for packaged harness and plugin bundles
+  ---
+  duration_ms: 41.4786
+  type: 'test'
+  ...
+# Subtest: dashboard shows install units without flattening bundles into skills
+ok 24 - dashboard shows install units without flattening bundles into skills
+  ---
+  duration_ms: 11.2388
+  type: 'test'
+  ...
+# Subtest: workspace consistently manages private skills and five external repositories
+ok 25 - workspace consistently manages private skills and five external repositories
+  ---
+  duration_ms: 78.1056
+  type: 'test'
+  ...
+# Subtest: package manifest excludes internal work artifacts from npm pack
+ok 26 - package manifest excludes internal work artifacts from npm pack
+  ---
+  duration_ms: 11.5179
+  type: 'test'
+  ...
+# Subtest: package manifest is publishable as the SkillBoard CLI
+ok 27 - package manifest is publishable as the SkillBoard CLI
+  ---
+  duration_ms: 2.1397
+  type: 'test'
+  ...
+# Subtest: policy rejects unscoped workflow-auto skills when explicit workflows are required
+ok 28 - policy rejects unscoped workflow-auto skills when explicit workflows are required
+  ---
+  duration_ms: 57.7866
+  type: 'test'
+  ...
+# Subtest: policy rejects semantic drift in canonical_for and conflicts_with
+ok 29 - policy rejects semantic drift in canonical_for and conflicts_with
+  ---
+  duration_ms: 18.2119
+  type: 'test'
+  ...
+# Subtest: policy rejects contradictory status and invocation combinations
+ok 30 - policy rejects contradictory status and invocation combinations
+  ---
+  duration_ms: 17.5616
+  type: 'test'
+  ...
+# Subtest: policy rejects install units that list components they do not provide
+ok 31 - policy rejects install units that list components they do not provide
+  ---
+  duration_ms: 17.6491
+  type: 'test'
+  ...
+# Subtest: policy rejects non-callable skills in workflow active pools
+ok 32 - policy rejects non-callable skills in workflow active pools
+  ---
+  duration_ms: 17.4645
+  type: 'test'
+  ...
+# Subtest: policy rejects non-callable preferred capability skills
+ok 33 - policy rejects non-callable preferred capability skills
+  ---
+  duration_ms: 16.7974
+  type: 'test'
+  ...
+# Subtest: policy rejects undeclared required capability names
+ok 34 - policy rejects undeclared required capability names
+  ---
+  duration_ms: 16.7813
+  type: 'test'
+  ...
+# Subtest: policy rejects unsupported capability policy values
+ok 35 - policy rejects unsupported capability policy values
+  ---
+  duration_ms: 11.8276
+  type: 'test'
+  ...
+# Subtest: policy rejects blocked skills in workflow capability selections
+ok 36 - policy rejects blocked skills in workflow capability selections
+  ---
+  duration_ms: 11.8652
+  type: 'test'
+  ...
+# Subtest: policy rejects non-callable fallback capability skills
+ok 37 - policy rejects non-callable fallback capability skills
+  ---
+  duration_ms: 11.9904
+  type: 'test'
+  ...
+# Subtest: policy rejects spoofed reserved user source class
+ok 38 - policy rejects spoofed reserved user source class
+  ---
+  duration_ms: 12.1488
+  type: 'test'
+  ...
+# Subtest: policy rejects local-id remote source_class user spoofing
+ok 39 - policy rejects local-id remote source_class user spoofing
+  ---
+  duration_ms: 13.3321
+  type: 'test'
+  ...
+# Subtest: policy check passes for the baseline fixture
+ok 40 - policy check passes for the baseline fixture
+  ---
+  duration_ms: 54.5665
+  type: 'test'
+  ...
+# Subtest: policy check rejects workflow references to undeclared skills
+ok 41 - policy check rejects workflow references to undeclared skills
+  ---
+  duration_ms: 19.7325
+  type: 'test'
+  ...
+# Subtest: policy check rejects undeclared capability, harness, and install-unit workflow references
+ok 42 - policy check rejects undeclared capability, harness, and install-unit workflow references
+  ---
+  duration_ms: 23.4558
+  type: 'test'
+  ...
+# Subtest: policy allows global invocation only for explicitly global meta skills
+ok 43 - policy allows global invocation only for explicitly global meta skills
+  ---
+  duration_ms: 19.9808
+  type: 'test'
+  ...
+# Subtest: policy rejects install-unit component ownership drift
+ok 44 - policy rejects install-unit component ownership drift
+  ---
+  duration_ms: 18.3993
+  type: 'test'
+  ...
+# Subtest: dashboard shows workflow-scoped active and blocked skills
+ok 45 - dashboard shows workflow-scoped active and blocked skills
+  ---
+  duration_ms: 56.3574
+  type: 'test'
+  ...
+# Subtest: impact disable reports affected workflows and replacement
+ok 46 - impact disable reports affected workflows and replacement
+  ---
+  duration_ms: 22.621
+  type: 'test'
+  ...
+# Subtest: scan records installed skill metadata from SKILL.md
+ok 47 - scan records installed skill metadata from SKILL.md
+  ---
+  duration_ms: 19.8054
+  type: 'test'
+  ...
+# Subtest: reconcile quarantines newly discovered skills and maps known capabilities
+ok 48 - reconcile quarantines newly discovered skills and maps known capabilities
+  ---
+  duration_ms: 20.8106
+  type: 'test'
+  ...
+# Subtest: scan accepts CRLF skill frontmatter
+ok 49 - scan accepts CRLF skill frontmatter
+  ---
+  duration_ms: 18.4337
+  type: 'test'
+  ...
+# Subtest: reconcile reports removed harnesses with affected workflows and migration hints
+ok 50 - reconcile reports removed harnesses with affected workflows and migration hints
+  ---
+  duration_ms: 16.5827
+  type: 'test'
+  ...
+# Subtest: reconcile disables newly detected harnesses until a workflow opts in
+ok 51 - reconcile disables newly detected harnesses until a workflow opts in
+  ---
+  duration_ms: 15.4157
+  type: 'test'
+  ...
+# Subtest: reconcile warns when actual harness inventory is omitted
+ok 52 - reconcile warns when actual harness inventory is omitted
+  ---
+  duration_ms: 16.3739
+  type: 'test'
+  ...
+# Subtest: impact disable uses capability alternatives, not only replaced_by
+ok 53 - impact disable uses capability alternatives, not only replaced_by
+  ---
+  duration_ms: 17.748
+  type: 'test'
+  ...
+# Subtest: source profiles import skill repositories into install-unit governed skills
+ok 54 - source profiles import skill repositories into install-unit governed skills
+  ---
+  duration_ms: 66.0342
+  type: 'test'
+  ...
+# Subtest: cli import uses built-in source profiles without repo-specific branches
+ok 55 - cli import uses built-in source profiles without repo-specific branches
+  ---
+  duration_ms: 300.4524
+  type: 'test'
+  ...
+# Subtest: cli import can safely merge a profile into config
+ok 56 - cli import can safely merge a profile into config
+  ---
+  duration_ms: 279.0138
+  type: 'test'
+  ...
+# Subtest: cli import merge refuses duplicate ids unless replace is explicit
+ok 57 - cli import merge refuses duplicate ids unless replace is explicit
+  ---
+  duration_ms: 550.2356
+  type: 'test'
+  ...
+1..57
+# tests 57
+# suites 0
+# pass 57
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 10098.7688

@@ -1,0 +1,51 @@
+surface: terminal CLI
+fixture_root: /tmp/skillboard-qa-hook-Wc9NIn
+out: /tmp/skillboard-qa-hook-Wc9NIn/codex-night-workflow-guard.sh
+invocation: node bin/skillboard.mjs hook install --workflow codex-night-workflow --config examples/multi-source.config.yaml --skills examples/multi-source-skills --out /tmp/skillboard-qa-hook-Wc9NIn/codex-night-workflow-guard.sh --skillboard-bin 'node bin/skillboard.mjs' --json
+
+command_output:
+{
+  "path": "/tmp/skillboard-qa-hook-Wc9NIn/codex-night-workflow-guard.sh",
+  "workflow": "codex-night-workflow",
+  "executable": true
+}
+
+exit_code: 0
+hook_exists_executable: yes
+generated_hook_head:
+#!/usr/bin/env sh
+set -eu
+
+SKILLBOARD_BIN=${SKILLBOARD_BIN:-'node bin/skillboard.mjs'}
+SKILLBOARD_CONFIG=${SKILLBOARD_CONFIG:-'examples/multi-source.config.yaml'}
+SKILLBOARD_SKILLS=${SKILLBOARD_SKILLS:-'examples/multi-source-skills'}
+SKILLBOARD_WORKFLOW=${SKILLBOARD_WORKFLOW:-'codex-night-workflow'}
+
+if [ "${SKILLBOARD_SKILL_ID:-}" != "" ]; then
+  skill_id="$SKILLBOARD_SKILL_ID"
+elif [ "${1:-}" != "" ]; then
+  skill_id="$1"
+else
+  echo "SKILLBOARD_SKILL_ID or first argument is required" >&2
+  exit 64
+fi
+
+# Split SKILLBOARD_BIN so local hook configs can use commands like:
+#   SKILLBOARD_BIN="node bin/skillboard.mjs"
+# Paths containing spaces should be provided through an environment wrapper.
+set -- $SKILLBOARD_BIN
+exec "$@" guard use "$skill_id" --workflow "$SKILLBOARD_WORKFLOW" --config "$SKILLBOARD_CONFIG" --skills "$SKILLBOARD_SKILLS"
+
+secondary_surface: generated terminal hook
+secondary_invocation: /tmp/skillboard-qa-hook-Wc9NIn/codex-night-workflow-guard.sh < /tmp/skillboard-qa-hook-Wc9NIn/payload.json
+secondary_output:
+SKILLBOARD_SKILL_ID or first argument is required
+
+secondary_exit_code: 64
+
+corrected_secondary_surface: generated terminal hook
+corrected_secondary_invocation: /tmp/skillboard-qa-hook-Wc9NIn/codex-night-workflow-guard.sh matt.tdd
+corrected_secondary_output:
+allow
+
+corrected_secondary_exit_code: 0

@@ -86,6 +86,103 @@ test("scan accepts CRLF skill frontmatter", async () => {
   });
 });
 
+test("agent inventory accepts injected detector registry entries", async () => {
+  const { mkdir, mkdtemp, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { discoverAgentSkillInventory } = await import("../src/index.mjs");
+  const root = await mkdtemp(join(tmpdir(), "skillboard-detector-registry-test-"));
+  try {
+    const sourceRoot = join(root, "custom-source");
+    await mkdir(sourceRoot, { recursive: true });
+    const inventory = await discoverAgentSkillInventory({
+      env: { SKILLBOARD_INIT_SCAN_ROOTS: "" },
+      home: root,
+      roots: [sourceRoot],
+      detectors: [
+        {
+          id: "test-runtime-detector",
+          matches(path) {
+            return path === sourceRoot;
+          },
+          async discover(path) {
+            return [{
+              unit: {
+                id: "test.runtime",
+                kind: "mcp-server",
+                trustLevel: "unreviewed",
+                source: path,
+                scope: "project",
+                category: "runtime",
+                commands: [],
+                hooks: [],
+                mcpServers: ["test-mcp"],
+                modifiedConfigFiles: [],
+                permissionRisk: "high"
+              },
+              root: path,
+              files: []
+            }];
+          }
+        }
+      ]
+    });
+
+    assert.deepEqual(inventory.installUnits.map((unit) => unit.id), ["test.runtime"]);
+    assert.deepEqual(inventory.installUnits[0].mcpServers, ["test-mcp"]);
+    assert.deepEqual(inventory.skills, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("agent inventory isolates detector and skill parse failures as warnings", async () => {
+  const { mkdir, mkdtemp, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { discoverAgentSkillInventory } = await import("../src/index.mjs");
+  const root = await mkdtemp(join(tmpdir(), "skillboard-detector-warning-test-"));
+  try {
+    const throwingRoot = join(root, "throwing-source");
+    await mkdir(throwingRoot, { recursive: true });
+    const throwingInventory = await discoverAgentSkillInventory({
+      env: { SKILLBOARD_INIT_SCAN_ROOTS: "" },
+      home: root,
+      roots: [throwingRoot],
+      detectors: [
+        {
+          id: "throwing-detector",
+          matches() {
+            return true;
+          },
+          async discover() {
+            throw new Error("detector unavailable");
+          }
+        }
+      ]
+    });
+
+    assert.deepEqual(throwingInventory.skills, []);
+    assert.match(throwingInventory.warnings.join("\n"), /throwing-detector failed while scanning/);
+
+    const skillsRoot = join(root, "skills");
+    await mkdir(join(skillsRoot, "bad"), { recursive: true });
+    await writeFile(join(skillsRoot, "bad", "SKILL.md"), "# missing frontmatter\n", "utf8");
+    await mkdir(join(skillsRoot, "good"), { recursive: true });
+    await writeFile(join(skillsRoot, "good", "SKILL.md"), "---\nname: good\n---\n# Good\n", "utf8");
+    const parsedInventory = await discoverAgentSkillInventory({
+      env: { SKILLBOARD_INIT_SCAN_ROOTS: "" },
+      home: root,
+      roots: [skillsRoot]
+    });
+
+    assert.deepEqual(parsedInventory.skills.map((skill) => skill.id), ["good"]);
+    assert.match(parsedInventory.warnings.join("\n"), /bad\/SKILL\.md skipped/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("reconcile reports removed harnesses with affected workflows and migration hints", async () => {
   await withFixture(async ({ configPath, skillsRoot }) => {
     const workspace = await loadWorkspace({ configPath, skillsRoot });

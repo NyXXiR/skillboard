@@ -1,0 +1,5 @@
+Script started on 2026-06-23 21:55:17+09:00 [COMMAND="SKILLBOARD_BIN=/mnt/i/workspace/skill-control-plane/bin/skillboard.mjs /tmp/skillboard-cli-qa/codex-night-guard-default.sh matt.grill-me" <not executed on terminal>]
+deny
+- Workflow codex-night-workflow blocks skill matt.grill-me.
+
+Script done on 2026-06-23 21:55:17+09:00 [COMMAND_EXIT_CODE="2"]

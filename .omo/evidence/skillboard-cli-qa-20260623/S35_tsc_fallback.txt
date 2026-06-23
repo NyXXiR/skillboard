@@ -1,0 +1,7 @@
+SCENARIO: S35_tsc_fallback
+DESCRIPTION: project-local TypeScript fallback diagnostics
+SURFACE: CLI
+INVOCATION: ./node_modules/.bin/tsc --allowJs --noEmit --module NodeNext --moduleResolution NodeNext --target ES2022 --skipLibCheck bin/skillboard.mjs src/cli.mjs src/config-helpers.mjs src/control.mjs src/impact.mjs src/index.mjs src/init.mjs src/install-units.mjs src/policy.mjs src/reconcile.mjs src/report.mjs src/source-profile-loader.mjs src/source-profiles.mjs src/source-verification.mjs src/workspace.mjs src/domain/constants.mjs src/domain/indexes.mjs src/domain/source-classes.mjs src/domain/rules/capabilities.mjs src/domain/rules/harnesses.mjs src/domain/rules/install-units.mjs src/domain/rules/skills.mjs src/domain/rules/workflows.mjs test/cli.test.mjs test/fixtures.mjs test/install-units.test.mjs test/multi-source-integration.test.mjs test/package.test.mjs test/policy-hardening.test.mjs test/policy.test.mjs test/skillboard.test.mjs test/source-profiles.test.mjs
+--- stdout/stderr ---
+--- exit_code ---
+0

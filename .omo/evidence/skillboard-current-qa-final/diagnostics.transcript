@@ -1,0 +1,5 @@
+$ npm run diagnostics
+
+> agent-skillboard@0.1.0 diagnostics
+> tsc -p tsconfig.lsp.json
+

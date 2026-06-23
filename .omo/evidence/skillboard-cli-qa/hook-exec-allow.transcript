@@ -1,0 +1,4 @@
+Script started on 2026-06-23 21:55:01+09:00 [COMMAND="/tmp/skillboard-cli-qa/codex-night-guard.sh matt.tdd" <not executed on terminal>]
+/tmp/skillboard-cli-qa/codex-night-guard.sh: 18: exec: node bin/skillboard.mjs: not found
+
+Script done on 2026-06-23 21:55:01+09:00 [COMMAND_EXIT_CODE="127"]

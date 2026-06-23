@@ -1,0 +1,8 @@
+Script started on 2026-06-23 21:55:06+09:00 [COMMAND="node bin/skillboard.mjs hook install --workflow codex-night-workflow --config examples/multi-source.config.yaml --skills examples/multi-source-skills --out /tmp/skillboard-cli-qa/codex-night-guard-default.sh --json" <not executed on terminal>]
+{
+  "path": "/tmp/skillboard-cli-qa/codex-night-guard-default.sh",
+  "workflow": "codex-night-workflow",
+  "executable": true
+}
+
+Script done on 2026-06-23 21:55:07+09:00 [COMMAND_EXIT_CODE="0"]

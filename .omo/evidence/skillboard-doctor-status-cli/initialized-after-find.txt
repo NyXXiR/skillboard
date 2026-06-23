@@ -1,0 +1,13 @@
+# initialized directory listing
+# cwd: /tmp/skillboard-qa.Higa4F/initialized
+# invocation: find . -mindepth 1 -maxdepth 5 -print | sort
+./.skillboard
+./.skillboard/hooks
+./.skillboard/hooks/README.md
+./.skillboard/profiles
+./.skillboard/profiles/README.md
+./.skillboard/reports
+./AGENTS.md
+./CLAUDE.md
+./skillboard.config.yaml
+./skills

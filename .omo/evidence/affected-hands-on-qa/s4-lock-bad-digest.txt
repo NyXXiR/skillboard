@@ -1,0 +1,27 @@
+surface: terminal CLI
+fixture_root: /tmp/skillboard-qa-lock-bad-3mfHm5
+config: /tmp/skillboard-qa-lock-bad-3mfHm5/skillboard.config.yaml
+skills: /tmp/skillboard-qa-lock-bad-3mfHm5/skills
+lock: /tmp/skillboard-qa-lock-bad-3mfHm5/skillboard.lock.yaml
+invocation: node bin/skillboard.mjs lock write --config /tmp/skillboard-qa-lock-bad-3mfHm5/skillboard.config.yaml --skills /tmp/skillboard-qa-lock-bad-3mfHm5/skills --out /tmp/skillboard-qa-lock-bad-3mfHm5/skillboard.lock.yaml
+
+config_before:
+version: 1
+skills: {}
+workflows: {}
+install_units:
+  local.bad-digest:
+    kind: skill
+    source: /tmp/skillboard-qa-lock-bad-3mfHm5/source
+    scope: project
+    source_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    enabled: true
+    trust_level: trusted
+    permission_risk: low
+
+command_output:
+Cannot write lockfile because source verification failed:
+local.bad-digest: source_digest mismatch: expected sha256:0000000000000000000000000000000000000000000000000000000000000000, got sha256:ae60b3043917df1c89cceed3e2315a9c035f753488497ba0cf42c54a6c5f3c84
+
+exit_code: 1
+lock_exists_after: no

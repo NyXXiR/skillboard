@@ -1,0 +1,32 @@
+Control update would not be usable:
+Skill plugin.helper belongs to unreviewed non-user source acme.plugin.
+Added workflow daily
+Changed: true
+Changed line positions: 27
+Semantic changes: 3
+- added /harnesses/codex: absent -> mapping(3)
+- changed /skills/user.helper/status: "candidate" -> "active-manual"
+- added /workflows/daily: absent -> mapping(3)
+{
+  "allowed": true,
+  "automaticAllowed": false,
+  "skill": "user.helper",
+  "workflow": "daily",
+  "invocation": "manual-only",
+  "status": "active-manual",
+  "workflowKnown": true,
+  "trust": {
+    "level": "trusted",
+    "reviewed": true,
+    "signed": false,
+    "pinned": false,
+    "ownerInstallUnit": null,
+    "reason": "declared directly in workspace policy"
+  },
+  "roles": [
+    "active"
+  ],
+  "capabilityRoles": [],
+  "reasons": []
+}
+manual medium-risk bypass QA passed: /tmp/tmp.4c28s68JHV/project

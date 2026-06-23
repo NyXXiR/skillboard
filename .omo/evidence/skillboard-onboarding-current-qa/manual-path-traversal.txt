@@ -1,0 +1,37 @@
+Manual QA: first-time local adoption, manual growth, and path traversal guard
+Date: 2026-06-24
+Status: PASS
+
+Command shape:
+- Create a temporary HOME with .codex/skills/local-helper, .codex/skills/.system/system-helper,
+  and one enabled plugin skill.
+- Run `skillboard init --dir <project>` with that HOME.
+- Run `skillboard check`.
+- Run `skillboard can-use local-helper --workflow codex-local-manual --json`.
+- Add a new local skill, harness, and workflow.
+- Run `skillboard can-use user.helper --workflow daily-workflow --json`.
+- Attempt `skillboard add skill escape.helper --path ../../secret --workflow daily-workflow`.
+- Compare the config to the pre-attempt copy.
+
+Observed transcript:
+
+INIT_EXIT=0
+Initialized SkillBoard: /tmp/tmp.YlW6nnJCIw/project
+Created: `skillboard.config.yaml`, `.skillboard/profiles/README.md`, `.skillboard/hooks/README.md`, `AGENTS.md`, `CLAUDE.md`
+Scanned installed agent skills: 3
+Managed install units: 3
+Added managed skills: `demo:review`, `system-helper`, `local-helper`
+Added install units: `codex.plugin.demo`, `codex.system-skills`, `codex.user-skills`
+Added workflows: `codex-local-manual`
+Added harnesses: `codex`
+CHECK_EXIT=0
+LOCAL_CAN_USE_ALLOWED=true;AUTOMATIC=false
+ADD_FLOW_EXIT=0
+Added workflow daily-workflow
+Changed: true
+Changed line positions: 78
+Semantic changes: 3
+NEW_SKILL_ALLOWED=true;AUTOMATIC=false
+PATH_TRAVERSAL_EXIT=1
+skill path must stay under the skills root
+PATH_TRAVERSAL_CONFIG_UNCHANGED=1

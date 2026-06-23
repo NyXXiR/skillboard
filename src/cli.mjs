@@ -2,10 +2,15 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
   activateSkill,
+  addHarness,
+  addSkill,
+  addWorkflow,
   auditSources,
   blockSkill,
   canUseSkill,
   checkPolicy,
+  detectInstallOutput,
+  doctorProject,
   explainSkill,
   importSource,
   installGuardHook,
@@ -19,7 +24,10 @@ import {
   mergeImportFragment,
   preferSkill,
   quarantineSkill,
+  removeSkill,
   reconcileWorkspace,
+  refreshAgentInventory,
+  refreshSourcePins,
   renderDashboard,
   renderImportFragment,
   renderReconcilePlan,
@@ -45,12 +53,19 @@ async function run(argv, stdout, stderr) {
       return await runInitCommand(options, stdout);
     case "uninstall":
       return await runUninstallCommand(options, stdout);
+    case "inventory":
+      return await inventory(argv.slice(1), options, stdout);
+    case "sources":
+      return await sources(argv.slice(1), options, stdout);
     case "import":
       return await importProfile(options, stdout);
     case "scan":
       return await scan(options, stdout);
     case "check":
       return await check(options, stdout, stderr);
+    case "doctor":
+    case "status":
+      return await doctor(options, stdout);
     case "list":
       return await list(argv.slice(1), options, stdout);
     case "explain":
@@ -67,12 +82,16 @@ async function run(argv, stdout, stderr) {
       return await lock(argv.slice(1), options, stdout);
     case "activate":
       return await activate(argv.slice(1), options, stdout);
+    case "add":
+      return await add(argv.slice(1), options, stdout);
     case "block":
       return await block(argv.slice(1), options, stdout);
     case "quarantine":
       return await quarantine(argv.slice(1), options, stdout);
     case "prefer":
       return await prefer(argv.slice(1), options, stdout);
+    case "remove":
+      return await remove(argv.slice(1), options, stdout);
     case "dashboard":
       return await dashboard(options, stdout);
     case "reconcile":
@@ -120,14 +139,70 @@ async function mergeImport(options, imported, stdout) {
     throw new Error("Usage: skillboard import --profile <id-or-path> --source-root <dir> --config <path> --merge");
   }
   const merged = mergeImportFragment(await readFile(path, "utf8"), imported, { replace: options.get("replace") === "true" });
-  await writeFile(path, merged.text, "utf8");
-  stdout.write(`Import merged: ${path}\n`);
-  stdout.write(`Skills: ${formatList(merged.addedSkills)}\n`);
-  stdout.write(`Install units: ${formatList(merged.addedInstallUnits)}\n`);
-  if (merged.replacedSkills.length > 0 || merged.replacedInstallUnits.length > 0) {
-    stdout.write(`Replaced skills: ${formatList(merged.replacedSkills)}\n`);
-    stdout.write(`Replaced install units: ${formatList(merged.replacedInstallUnits)}\n`);
+  const result = {
+    message: `Import merged: ${path}`,
+    dryRun: options.get("dry-run") === "true",
+    changed: merged.changed,
+    plan: merged.plan,
+    addedSkills: merged.addedSkills,
+    addedInstallUnits: merged.addedInstallUnits,
+    replacedSkills: merged.replacedSkills,
+    replacedInstallUnits: merged.replacedInstallUnits
+  };
+  if (result.changed && !result.dryRun) {
+    await writeFile(path, merged.text, "utf8");
   }
+  writeOutput(stdout, result, options, () => renderImportMerge(result));
+  return 0;
+}
+
+async function inventory(argv, options, stdout) {
+  const args = positionalArgs(argv);
+  if (args[0] === "detect") {
+    return await inventoryDetect(options, stdout);
+  }
+  if (args[0] !== "refresh") {
+    throw new Error("Usage: skillboard inventory refresh|detect ...");
+  }
+  const result = await refreshAgentInventory({
+    root: options.get("dir") ?? ".",
+    configPath: options.get("config"),
+    roots: readCsv(options.get("scan-root")),
+    dryRun: options.get("dry-run") === "true"
+  });
+  writeOutput(stdout, result, options, () => renderInventoryRefresh(result));
+  return 0;
+}
+
+async function inventoryDetect(options, stdout) {
+  const result = await detectInstallOutput({
+    root: options.get("dir") ?? ".",
+    configPath: options.get("config"),
+    unitId: options.get("unit"),
+    installOutputPath: options.get("install-output"),
+    configFiles: readCsv(options.get("config-file")),
+    kind: options.get("kind"),
+    source: options.get("source"),
+    scope: options.get("scope"),
+    dryRun: options.get("dry-run") === "true"
+  });
+  writeOutput(stdout, result, options, () => renderInstallDetection(result));
+  return 0;
+}
+
+async function sources(argv, options, stdout) {
+  const args = positionalArgs(argv);
+  if (args[0] !== "refresh") {
+    throw new Error("Usage: skillboard sources refresh [--dir <path>] [--config <path>] [--unit <id>[,<id>]] [--cache-dir <dir>] [--dry-run] [--json]");
+  }
+  const result = await refreshSourcePins({
+    root: options.get("dir") ?? ".",
+    configPath: options.get("config"),
+    cacheDir: options.get("cache-dir"),
+    units: readCsv(options.get("unit")),
+    dryRun: options.get("dry-run") === "true"
+  });
+  writeOutput(stdout, result, options, () => renderSourceRefresh(result));
   return 0;
 }
 
@@ -146,6 +221,17 @@ async function check(options, stdout, stderr) {
   }
   stdout.write(result.ok ? "Policy check passed\n" : "Policy check failed\n");
   return result.ok ? 0 : 1;
+}
+
+async function doctor(options, stdout) {
+  const result = await doctorProject({
+    root: options.get("dir") ?? ".",
+    configPath: options.get("config"),
+    skillsRoot: options.get("skills"),
+    verifySources: options.get("verify") === "true"
+  });
+  writeOutput(stdout, result, options, () => renderDoctor(result));
+  return (options.get("strict") === "true" ? result.strictOk : result.ok) ? 0 : 1;
 }
 
 async function list(argv, options, stdout) {
@@ -276,6 +362,71 @@ async function activate(argv, options, stdout) {
   return 0;
 }
 
+async function add(argv, options, stdout) {
+  const args = positionalArgs(argv);
+  if (args[0] === "workflow") {
+    return await addWorkflowCommand(args, options, stdout);
+  }
+  if (args[0] === "harness") {
+    return await addHarnessCommand(args, options, stdout);
+  }
+  if (args[0] !== "skill" || args[1] === undefined || options.get("path") === undefined) {
+    throw new Error("Usage: skillboard add skill <skill-id> --path <relative-skill-path> --config <path> --skills <dir> [--workflow <name>] [--dry-run] [--json]");
+  }
+  const result = await addSkill({
+    skillId: args[1],
+    path: options.get("path"),
+    status: options.get("status"),
+    invocation: options.get("invocation"),
+    exposure: options.get("exposure"),
+    category: options.get("category"),
+    ownerInstallUnit: options.get("owner-install-unit"),
+    workflow: options.get("workflow"),
+    configPath: configPath(options),
+    skillsRoot: skillsRoot(options),
+    dryRun: options.get("dry-run") === "true"
+  });
+  writeControlResult(stdout, result, options);
+  return 0;
+}
+
+async function addWorkflowCommand(args, options, stdout) {
+  const workflow = args[1];
+  const harness = options.get("harness");
+  if (workflow === undefined || harness === undefined) {
+    throw new Error("Usage: skillboard add workflow <workflow-name> --harness <harness-name> --config <path> --skills <dir> [--skill <id>[,<id>]] [--harness-status <status>] [--require-existing-harness] [--dry-run] [--json]");
+  }
+  const result = await addWorkflow({
+    workflow,
+    harness,
+    skills: readCsv(options.get("skill")),
+    harnessStatus: options.get("harness-status"),
+    requireExistingHarness: options.get("require-existing-harness") === "true",
+    configPath: configPath(options),
+    skillsRoot: skillsRoot(options),
+    dryRun: options.get("dry-run") === "true"
+  });
+  writeControlResult(stdout, result, options);
+  return 0;
+}
+
+async function addHarnessCommand(args, options, stdout) {
+  const harness = args[1];
+  if (harness === undefined) {
+    throw new Error("Usage: skillboard add harness <harness-name> --config <path> --skills <dir> [--status <status>] [--command <cmd>[,<cmd>]] [--dry-run] [--json]");
+  }
+  const result = await addHarness({
+    harness,
+    status: options.get("status"),
+    commands: readCsv(options.get("command")),
+    configPath: configPath(options),
+    skillsRoot: skillsRoot(options),
+    dryRun: options.get("dry-run") === "true"
+  });
+  writeControlResult(stdout, result, options);
+  return 0;
+}
+
 async function block(argv, options, stdout) {
   const skillId = positionalArgs(argv)[0];
   const workflow = options.get("workflow");
@@ -319,6 +470,22 @@ async function prefer(argv, options, stdout) {
     skillId,
     workflow,
     capability,
+    configPath: configPath(options),
+    skillsRoot: skillsRoot(options),
+    dryRun: options.get("dry-run") === "true"
+  });
+  writeControlResult(stdout, result, options);
+  return 0;
+}
+
+async function remove(argv, options, stdout) {
+  const args = positionalArgs(argv);
+  if (args[0] !== "skill" || args[1] === undefined) {
+    throw new Error("Usage: skillboard remove skill <skill-id> --config <path> --skills <dir> [--force] [--dry-run] [--json]");
+  }
+  const result = await removeSkill({
+    skillId: args[1],
+    force: options.get("force") === "true",
     configPath: configPath(options),
     skillsRoot: skillsRoot(options),
     dryRun: options.get("dry-run") === "true"
@@ -425,6 +592,82 @@ function readCsv(value) {
   return value.split(",").map((item) => item.trim()).filter((item) => item.length > 0);
 }
 
+function renderImportMerge(result) {
+  const lines = [
+    `${result.dryRun ? "Dry run: " : ""}${result.message}`,
+    renderChangePlan(result.plan).trimEnd(),
+    `Skills: ${formatList(result.addedSkills)}`,
+    `Install units: ${formatList(result.addedInstallUnits)}`
+  ];
+  if (result.replacedSkills.length > 0 || result.replacedInstallUnits.length > 0) {
+    lines.push(`Replaced skills: ${formatList(result.replacedSkills)}`);
+    lines.push(`Replaced install units: ${formatList(result.replacedInstallUnits)}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+function renderInventoryRefresh(result) {
+  return [
+    `${result.dryRun ? "Dry run: " : ""}Inventory refreshed: ${result.configPath}`,
+    renderChangePlan(result.plan).trimEnd(),
+    `Scanned skills: ${result.scan.scannedSkills}`,
+    `Scanned install units: ${result.scan.scannedInstallUnits}`,
+    `Added skills: ${formatList(result.scan.addedSkills)}`,
+    `Added install units: ${formatList(result.scan.addedInstallUnits)}`,
+    `Updated install units: ${formatList(result.scan.updatedInstallUnits)}`,
+    `Added workflows: ${formatList(result.scan.addedWorkflows ?? [])}`,
+    `Added harnesses: ${formatList(result.scan.addedHarnesses ?? [])}`,
+    `Skipped existing skills: ${formatList(result.scan.skippedSkills)}`,
+    `Review notes: ${formatList(result.scan.reviewNotes ?? [])}`,
+    `Scan warnings: ${formatList(result.scan.warnings ?? [])}`,
+    ""
+  ].join("\n");
+}
+
+function renderInstallDetection(result) {
+  return [
+    `${result.dryRun ? "Dry run: " : ""}Detected install metadata: ${result.unitId}`,
+    renderChangePlan(result.plan).trimEnd(),
+    `Commands: ${formatList(result.detected.commands)}`,
+    `Hooks: ${formatList(result.detected.hooks)}`,
+    `MCP servers: ${formatList(result.detected.mcpServers)}`,
+    `Modified config files: ${formatList(result.detected.modifiedConfigFiles)}`,
+    `Changed fields: ${formatList(result.changedFields)}`,
+    ""
+  ].join("\n");
+}
+
+function renderSourceRefresh(result) {
+  const lines = [
+    `${result.dryRun ? "Dry run: " : ""}Source pins refreshed: ${result.configPath}`,
+    renderChangePlan(result.plan).trimEnd(),
+    `Refreshed units: ${formatList(result.refreshed.map((unit) => unit.id))}`
+  ];
+  if (result.skipped.length > 0) {
+    lines.push(`Skipped units: ${formatList(result.skipped.map((unit) => `${unit.id}:${unit.reason}`))}`);
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+function renderChangePlan(plan) {
+  const lines = [
+    `Changed: ${plan.changed}`,
+    `Changed line positions: ${plan.changedLineCount}`
+  ];
+  if (plan.semanticAvailable) {
+    const suffix = plan.semanticTruncated ? " (truncated)" : "";
+    lines.push(`Semantic changes: ${plan.semanticChangeCount}${suffix}`);
+    for (const change of plan.semanticChanges.slice(0, 10)) {
+      lines.push(`- ${change.type} ${change.path}: ${change.before} -> ${change.after}`);
+    }
+  } else {
+    lines.push(`Semantic changes: unavailable (${plan.semanticError})`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 function positionalArgs(args) {
   const values = [];
   for (let index = 0; index < args.length; index += 1) {
@@ -462,8 +705,7 @@ function writeControlResult(stdout, result, options) {
     return;
   }
   stdout.write(`${result.dryRun ? "Dry run: " : ""}${result.message}\n`);
-  stdout.write(`Changed: ${result.changed}\n`);
-  stdout.write(`Changed line positions: ${result.plan.changedLineCount}\n`);
+  stdout.write(renderChangePlan(result.plan));
   if (warnings.length > 0) {
     stdout.write(`${warnings.join("\n")}\n`);
   }
@@ -555,6 +797,44 @@ function renderSourceAudit(result) {
   return lines.join("\n");
 }
 
+function renderDoctor(result) {
+  const bridges = result.bridges.map((bridge) => `${bridge.file}=${bridge.status}`).join(", ");
+  const sourceMode = result.sources.verified ? "verified" : "audit";
+  const status = result.ok ? result.reviewRequired ? "safe mode, review needed" : "passed" : "needs attention";
+  const lines = [
+    `SkillBoard doctor: ${status}`,
+    `Root: ${result.root}`,
+    `Config: ${result.config.exists ? result.config.valid ? `valid v${result.config.version}` : `invalid (${result.config.error})` : "missing"}`,
+    `Bridge: ${bridges}`,
+    `Workspace: ${result.workspace.skills.declared} declared skills, ${result.workspace.skills.installed} installed skills, ${result.workspace.workflows} workflows, ${result.workspace.harnesses} harnesses, ${result.workspace.installUnits.total} install units`,
+    `Skill states: ${renderCounts(result.workspace.skills.byStatus)}`,
+    `Invocations: ${renderCounts(result.workspace.skills.byInvocation)}`,
+    `Source classes: ${renderCounts(result.workspace.installUnits.bySourceClass)}`,
+    `Source ${sourceMode}: ${result.sources.ok ? "passed" : "failed"} (${result.sources.errors.length} errors, ${result.sources.warnings.length} warnings, ${result.sources.blockingWarnings.length} blocking warnings)`,
+    `Policy: ${result.policy.ok ? "passed" : "failed"} (${result.policy.errors.length} errors, ${result.policy.warnings.length} warnings)`,
+    `Strict gate: ${result.strictOk ? "passed" : "review needed"}`,
+    `Review required: ${result.reviewRequired}`,
+    `High-risk install units: ${formatList(result.workspace.installUnits.highRisk)}`,
+    `Runtime extension units: ${formatList(result.workspace.installUnits.runtimeExtensions)}`,
+    `Uninstall dry run: remove ${result.uninstall.removed.length}, update ${result.uninstall.updated.length}, preserve ${result.uninstall.preserved.length}`
+  ];
+  if (result.recommendations.length > 0) {
+    lines.push("Recommendations:");
+    for (const recommendation of result.recommendations) {
+      lines.push(`- ${recommendation}`);
+    }
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+function renderCounts(counts) {
+  const entries = Object.entries(counts).filter(([, count]) => count > 0);
+  return entries.length === 0
+    ? "none"
+    : entries.map(([key, count]) => `${key}=${count}`).join(", ");
+}
+
 function helpText() {
   return [
     "SkillBoard - workflow-scoped agent skill policy",
@@ -562,8 +842,13 @@ function helpText() {
     "Commands:",
     "  init [--dir <path>] [--scan-root <dir>[,<dir>]] [--no-scan-installed]",
     "  uninstall [--dir <path>] [--dry-run] [--remove-config] [--keep-empty-dirs]",
+    "  inventory refresh [--dir <path>] [--config <path>] [--scan-root <dir>[,<dir>]] [--dry-run] [--json]",
+    "  inventory detect --unit <id> --config <path> [--install-output <path>] [--config-file a,b] [--source <value>] [--kind <kind>] [--scope <scope>] [--dry-run] [--json]",
+    "  sources refresh [--dir <path>] [--config <path>] [--unit <id>[,<id>]] [--cache-dir <dir>] [--dry-run] [--json]",
+    "  doctor [--dir <path>] [--config <path>] [--skills <dir>] [--verify] [--strict] [--json]",
+    "  status [--dir <path>] [--config <path>] [--skills <dir>] [--verify] [--strict] [--json]",
     "  import --profile <id-or-path> --source-root <dir> [--profile-dirs a,b] [--out <path>]",
-    "  import --profile <id-or-path> --source-root <dir> --config <path> --merge [--replace]",
+    "  import --profile <id-or-path> --source-root <dir> --config <path> --merge [--replace] [--dry-run]",
     "  scan --config <path>",
     "  check --config <path> --skills <dir>",
     "  list [skills|workflows|harnesses|install-units] --config <path> --skills <dir> [--workflow <name>] [--json]",
@@ -573,10 +858,14 @@ function helpText() {
     "  audit sources --config <path> --skills <dir> [--verify] [--json]",
     "  hook install --workflow <name> --config <path> --skills <dir> [--out <path>] [--skillboard-bin <path>] [--json]",
     "  lock write --config <path> --skills <dir> [--out <path>] [--replace] [--allow-unverified] [--json]",
+    "  add skill <skill-id> --path <relative-skill-path> --config <path> --skills <dir> [--status <status>] [--invocation <mode>] [--exposure <exposure>] [--category <name>] [--workflow <name>] [--dry-run] [--json]",
+    "  add workflow <workflow-name> --harness <harness-name> --config <path> --skills <dir> [--skill <id>[,<id>]] [--harness-status <status>] [--require-existing-harness] [--dry-run] [--json]",
+    "  add harness <harness-name> --config <path> --skills <dir> [--status <status>] [--command <cmd>[,<cmd>]] [--dry-run] [--json]",
     "  activate <skill-id> --workflow <name> [--mode manual-only|router-only|workflow-auto] --config <path> --skills <dir> [--dry-run] [--json]",
     "  block <skill-id> --workflow <name> --config <path> --skills <dir> [--dry-run] [--json]",
     "  quarantine <skill-id> --config <path> --skills <dir> [--dry-run] [--json]",
     "  prefer <skill-id> --workflow <name> --capability <name> --config <path> --skills <dir> [--dry-run] [--json]",
+    "  remove skill <skill-id> --config <path> --skills <dir> [--force] [--dry-run] [--json]",
     "  dashboard --config <path> --skills <dir> [--out <path>]",
     "  reconcile --config <path> --skills <dir> [--actual-harnesses a,b] [--out <path>]",
     "  impact disable <skill-id> --config <path> --skills <dir> [--out <path>]",

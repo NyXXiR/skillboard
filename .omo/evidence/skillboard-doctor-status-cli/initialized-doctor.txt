@@ -1,0 +1,21 @@
+# scenario: initialized-doctor
+# cwd: /tmp/skillboard-qa.Higa4F/initialized
+# invocation: node /mnt/i/workspace/skill-control-plane/bin/skillboard.mjs doctor
+# start: 2026-06-23T23:59:45+09:00
+--- stdout+stderr ---
+SkillBoard doctor: passed
+Root: /tmp/skillboard-qa.Higa4F/initialized
+Config: valid v1
+Bridge: AGENTS.md=installed, CLAUDE.md=installed
+Workspace: 0 declared skills, 0 installed skills, 0 workflows, 0 harnesses, 0 install units
+Skill states: none
+Invocations: none
+Source classes: none
+Source audit: passed (0 errors, 0 warnings)
+Policy: passed (0 errors, 0 warnings)
+High-risk install units: none
+Runtime extension units: none
+Uninstall dry run: remove 9, update 0, preserve 1
+--- exit-status ---
+0
+# end: 2026-06-23T23:59:45+09:00
