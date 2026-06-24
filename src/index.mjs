@@ -12,6 +12,7 @@ import { importSource, loadSourceProfile, mergeImportFragment, renderImportFragm
 import { verifySources, writeLockfile } from "./source-verification.mjs";
 import { refreshSourcePins } from "./source-cache.mjs";
 import { detectInstallOutput } from "./install-output-detector.mjs";
+import { rolloutApply, rolloutAudit, rolloutPlan, rolloutReport, rolloutRollback } from "./rollout.mjs";
 import {
   activateSkill,
   addHarness,
@@ -64,6 +65,11 @@ export {
   refreshAgentInventory,
   refreshSourcePins,
   renderDashboard,
+  rolloutApply,
+  rolloutAudit,
+  rolloutPlan,
+  rolloutReport,
+  rolloutRollback,
   renderImportFragment,
   renderReconcilePlan,
   uninstallProject,

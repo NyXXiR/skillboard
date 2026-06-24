@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
@@ -22,6 +22,22 @@ test("package manifest is publishable as the SkillBoard CLI", async () => {
   assert.equal(manifest.publishConfig.access, "public");
 });
 
+test("source-tree SkillBoard CLI entrypoint is executable for generated hooks", async () => {
+  const stats = await stat(resolve("bin/skillboard.mjs"));
+
+  assert.equal(stats.mode & 0o111, 0o111);
+});
+
+test("package manifest includes the rollout operator runbook", async () => {
+  const readme = await readFile(resolve("README.md"), "utf8");
+  const runbook = await readFile(resolve("docs/rollout-runbook.md"), "utf8");
+
+  assert.match(readme, /skillboard rollout \[audit\|plan\|apply\|rollback\|report\]/);
+  assert.match(runbook, /## Emergency rollback/);
+  assert.match(runbook, /healthy.*0/s);
+  assert.match(runbook, /rollback-needed.*4/s);
+});
+
 test("npm pack dry-run includes public runtime files and excludes work artifacts", async () => {
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
   const result = await execFileAsync(npm, ["pack", "--dry-run", "--json"]);
@@ -33,6 +49,7 @@ test("npm pack dry-run includes public runtime files and excludes work artifacts
   assert.ok(paths.includes("src/source-cache.mjs"));
   assert.ok(paths.includes("src/install-output-detector.mjs"));
   assert.ok(paths.includes("docs/install.md"));
+  assert.ok(paths.includes("docs/rollout-runbook.md"));
   assert.equal(paths.some((path) => path.startsWith(".omo/")), false);
   assert.equal(paths.some((path) => path.startsWith("test/")), false);
   assert.equal(paths.includes("package-lock.json"), false);

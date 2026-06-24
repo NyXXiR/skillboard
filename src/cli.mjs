@@ -31,6 +31,11 @@ import {
   renderDashboard,
   renderImportFragment,
   renderReconcilePlan,
+  rolloutApply,
+  rolloutAudit,
+  rolloutPlan,
+  rolloutReport,
+  rolloutRollback,
   verifySources,
   writeLockfile
 } from "./index.mjs";
@@ -80,6 +85,8 @@ async function run(argv, stdout, stderr) {
       return await hook(argv.slice(1), options, stdout);
     case "lock":
       return await lock(argv.slice(1), options, stdout);
+    case "rollout":
+      return await rollout(argv.slice(1), options, stdout);
     case "activate":
       return await activate(argv.slice(1), options, stdout);
     case "add":
@@ -304,6 +311,33 @@ async function audit(argv, options, stdout) {
     : auditSources(workspace);
   writeOutput(stdout, result, options, () => renderSourceAudit(result));
   return result.ok ? 0 : 1;
+}
+
+async function rollout(argv, options, stdout) {
+  const action = positionalArgs(argv)[0] ?? "audit";
+  const rolloutOptions = {
+    root: options.get("dir") ?? ".",
+    configPath: options.get("config"),
+    skillsRoot: options.get("skills"),
+    rolloutsDir: options.get("rollouts-dir"),
+    transaction: options.get("transaction")
+  };
+  let result;
+  if (action === "audit") {
+    result = await rolloutAudit(rolloutOptions);
+  } else if (action === "plan") {
+    result = await rolloutPlan(rolloutOptions);
+  } else if (action === "apply") {
+    result = await rolloutApply(rolloutOptions);
+  } else if (action === "rollback") {
+    result = await rolloutRollback(rolloutOptions);
+  } else if (action === "report") {
+    result = await rolloutReport(rolloutOptions);
+  } else {
+    throw new Error("Usage: skillboard rollout [audit|plan|apply|rollback|report] [--dir <path>] [--config <path>] [--skills <dir>] [--json]");
+  }
+  writeOutput(stdout, result, options, () => renderRollout(result));
+  return result.exitCode;
 }
 
 async function hook(argv, options, stdout) {
@@ -797,6 +831,28 @@ function renderSourceAudit(result) {
   return lines.join("\n");
 }
 
+function renderRollout(result) {
+  const lines = [
+    `SkillBoard rollout: ${result.status}`,
+    `Command: ${result.command}`,
+    `Exit code: ${result.exitCode}`,
+    `Non-interactive: ${result.nonInteractive}`,
+    `Summary: policyErrors=${result.summary.policyErrors}, sourceErrors=${result.summary.sourceErrors}, sourceWarnings=${result.summary.sourceWarnings}, blockingWarnings=${result.summary.blockingWarnings}`,
+    `Fleet: healthy=${result.fleet.byStatus.healthy}, safe-mode=${result.fleet.byStatus["safe-mode"]}, strict-failed=${result.fleet.byStatus["strict-failed"]}, apply-failed=${result.fleet.byStatus["apply-failed"]}, rollback-needed=${result.fleet.byStatus["rollback-needed"]}`
+  ];
+  if (result.transaction !== undefined) {
+    lines.push(`Transaction: ${result.transaction.state}${result.transaction.id === undefined ? "" : ` ${result.transaction.id}`}`);
+  }
+  if (result.errors.length > 0) {
+    lines.push("Errors:");
+    for (const error of result.errors) {
+      lines.push(`- ${error}`);
+    }
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
 function renderDoctor(result) {
   const bridges = result.bridges.map((bridge) => `${bridge.file}=${bridge.status}`).join(", ");
   const sourceMode = result.sources.verified ? "verified" : "audit";
@@ -856,6 +912,7 @@ function helpText() {
     "  can-use <skill-id> --workflow <name> --config <path> --skills <dir> [--json]",
     "  guard use <skill-id> --workflow <name> --config <path> --skills <dir> [--json]",
     "  audit sources --config <path> --skills <dir> [--verify] [--json]",
+    "  rollout [audit|plan|apply|rollback|report] [--dir <path>] [--config <path>] [--skills <dir>] [--transaction <id>] [--json]",
     "  hook install --workflow <name> --config <path> --skills <dir> [--out <path>] [--skillboard-bin <path>] [--json]",
     "  lock write --config <path> --skills <dir> [--out <path>] [--replace] [--allow-unverified] [--json]",
     "  add skill <skill-id> --path <relative-skill-path> --config <path> --skills <dir> [--status <status>] [--invocation <mode>] [--exposure <exposure>] [--category <name>] [--workflow <name>] [--dry-run] [--json]",

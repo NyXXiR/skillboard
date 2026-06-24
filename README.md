@@ -70,6 +70,8 @@ skillboard inventory refresh --dry-run
 skillboard import --profile github.mattpocock.skills --source-root /path/to/mattpocock-skills
 skillboard import --profile github.mattpocock.skills --source-root /path/to/mattpocock-skills --config skillboard.config.yaml --merge --dry-run
 skillboard check --config skillboard.config.yaml --skills skills
+skillboard rollout audit --config skillboard.config.yaml --skills skills --json
+skillboard rollout plan --config skillboard.config.yaml --skills skills --json
 ```
 
 Install from a clone:
@@ -380,6 +382,7 @@ node bin/skillboard.mjs explain <skill-id> --config <path> --skills <dir>
 node bin/skillboard.mjs can-use <skill-id> --workflow <name> --config <path> --skills <dir>
 node bin/skillboard.mjs guard use <skill-id> --workflow <name> --config <path> --skills <dir>
 node bin/skillboard.mjs audit sources --config <path> --skills <dir> [--verify]
+skillboard rollout [audit|plan|apply|rollback|report] [--dir <path>] [--config <path>] [--skills <dir>] [--transaction <id>] [--json]
 node bin/skillboard.mjs hook install --workflow <name> --config <path> --skills <dir> [--out <path>]
 node bin/skillboard.mjs lock write --config <path> --skills <dir> [--out <path>] [--replace] [--allow-unverified]
 node bin/skillboard.mjs add skill <skill-id> --path <relative-skill-path> --config <path> --skills <dir>

@@ -2399,6 +2399,218 @@ test("cli block removes a skill from workflow active and capability slots", asyn
   }
 });
 
+test("cli help documents the rollout operator command surface", async () => {
+  const result = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "--help"]);
+
+  assert.match(result.stdout, /rollout \[audit\|plan\|apply\|rollback\|report\]/);
+  assert.match(result.stdout, /--json/);
+});
+
+test("cli rollout audit and plan expose non-interactive deterministic JSON without mutating files", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-rollout-readiness-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    await writeFile(configPath, await readFile("examples/multi-source.config.yaml", "utf8"), "utf8");
+    const before = await readFile(configPath, "utf8");
+    const baseArgs = ["--dir", root, "--config", configPath, "--skills", "examples/multi-source-skills", "--json"];
+
+    const audit = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "rollout", "audit", ...baseArgs]);
+    const plan = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "rollout", "plan", ...baseArgs]);
+    const auditPayload = JSON.parse(audit.stdout);
+    const planPayload = JSON.parse(plan.stdout);
+
+    assert.equal(await readFile(configPath, "utf8"), before);
+    assert.equal(auditPayload.command, "rollout audit");
+    assert.equal(auditPayload.status, "healthy");
+    assert.equal(auditPayload.exitCode, 0);
+    assert.equal(auditPayload.nonInteractive, true);
+    assert.deepEqual(Object.keys(auditPayload.summary).sort(), ["blockingWarnings", "policyErrors", "sourceErrors", "sourceWarnings"].sort());
+    assert.equal(planPayload.command, "rollout plan");
+    assert.equal(planPayload.status, "healthy");
+    assert.equal(planPayload.mutation.planned, false);
+    assert.equal(planPayload.transaction.required, true);
+    assert.equal(planPayload.paths.root, "[REDACTED]");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli rollout apply creates a transaction manifest and rollback restores exact config bytes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-rollout-transaction-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    await writeFile(configPath, await readFile("examples/multi-source.config.yaml", "utf8"), "utf8");
+    const before = await readFile(configPath, "utf8");
+    const baseArgs = ["--dir", root, "--config", configPath, "--skills", "examples/multi-source-skills", "--json"];
+
+    const apply = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "rollout", "apply", ...baseArgs]);
+    const applyPayload = JSON.parse(apply.stdout);
+    const manifestPath = join(root, ".skillboard", "rollouts", applyPayload.transaction.id, "manifest.json");
+    await writeFile(configPath, `${before}
+# accidental operator edit
+`, "utf8");
+    const rollback = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "rollout", "rollback", ...baseArgs, "--transaction", applyPayload.transaction.id]);
+    const rollbackPayload = JSON.parse(rollback.stdout);
+
+    assert.equal(applyPayload.command, "rollout apply");
+    assert.equal(applyPayload.status, "healthy");
+    assert.equal(applyPayload.transaction.required, true);
+    assert.equal(applyPayload.transaction.state, "committed");
+    assert.match(applyPayload.transaction.id, /^rollout-/);
+    assert.equal(JSON.stringify(applyPayload).includes(root), false);
+    assert.equal(JSON.stringify(rollbackPayload).includes(root), false);
+    assert.equal(await readFile(manifestPath, "utf8").then((payload) => JSON.parse(payload).files.length), 3);
+    assert.equal(rollbackPayload.command, "rollout rollback");
+    assert.equal(rollbackPayload.status, "healthy");
+    assert.equal(rollbackPayload.transaction.state, "rolled-back");
+    assert.equal(await readFile(configPath, "utf8"), before);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli rollout report classifies strict failures and redacts paths", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-rollout-report-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    await writeFile(
+      configPath,
+      `version: 1
+skills:
+  vendor.router:
+    path: vendor/router
+    status: active
+    invocation: workflow-auto
+    exposure: exported
+    owner_install_unit: github.vendor.skills
+workflows:
+  review-workflow:
+    harness: codex
+    active_skills:
+      - vendor.router
+    blocked_skills: []
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - review-workflow
+install_units:
+  github.vendor.skills:
+    kind: plugin
+    source: https://github.com/vendor/skills?token=***
+    scope: project
+    enabled: true
+    trust_level: unreviewed
+    permission_risk: high
+`,
+      "utf8"
+    );
+
+    let failure;
+    try {
+      await execFileAsync(process.execPath, ["bin/skillboard.mjs", "rollout", "report", "--dir", root, "--config", configPath, "--skills", join(root, "skills"), "--json"]);
+    } catch (caught) {
+      failure = caught;
+    }
+    const payload = JSON.parse(failure.stdout);
+
+    assert.equal(failure.code, 2);
+    assert.equal(payload.command, "rollout report");
+    assert.equal(payload.status, "strict-failed");
+    assert.equal(payload.fleet.total, 1);
+    assert.equal(payload.fleet.byStatus["strict-failed"], 1);
+    assert.equal(payload.paths.root, "[REDACTED]");
+    assert.equal(JSON.stringify(payload).includes(root), false);
+    assert.equal(JSON.stringify(payload).includes("SECRET"), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli rollout apply keeps status and fleet counters consistent when strict gates block apply", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-rollout-apply-failed-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    await writeFile(configPath, strictRolloutFixture(), "utf8");
+
+    let failure;
+    try {
+      await execFileAsync(process.execPath, ["bin/skillboard.mjs", "rollout", "apply", "--dir", root, "--config", configPath, "--skills", join(root, "skills"), "--json"]);
+    } catch (caught) {
+      failure = caught;
+    }
+    const payload = JSON.parse(failure.stdout);
+
+    assert.equal(failure.code, 3);
+    assert.equal(payload.status, "apply-failed");
+    assert.equal(payload.exitCode, 3);
+    assert.equal(payload.fleet.byStatus["apply-failed"], 1);
+    assert.equal(payload.fleet.byStatus["strict-failed"], 0);
+    assert.equal(JSON.stringify(payload).includes(root), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli rollout rollback missing transaction returns redacted JSON failure", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-rollout-missing-rollback-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    await writeFile(configPath, await readFile("examples/multi-source.config.yaml", "utf8"), "utf8");
+
+    let failure;
+    try {
+      await execFileAsync(process.execPath, ["bin/skillboard.mjs", "rollout", "rollback", "--dir", root, "--config", configPath, "--skills", "examples/multi-source-skills", "--transaction", "rollout-missing", "--json"]);
+    } catch (caught) {
+      failure = caught;
+    }
+    const payload = JSON.parse(failure.stdout);
+
+    assert.equal(failure.code, 4);
+    assert.equal(failure.stderr, "");
+    assert.equal(payload.command, "rollout rollback");
+    assert.equal(payload.status, "rollback-needed");
+    assert.equal(payload.exitCode, 4);
+    assert.equal(payload.transaction.state, "rollback-needed");
+    assert.equal(JSON.stringify(payload).includes(root), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli rollout rollback rejects tampered manifests that point outside the transaction", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-rollout-tamper-test-"));
+  const victimPath = join(root, "..", `skillboard-rollout-victim-${Date.now()}.txt`);
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    await writeFile(configPath, await readFile("examples/multi-source.config.yaml", "utf8"), "utf8");
+    await writeFile(victimPath, "do not overwrite", "utf8");
+    const baseArgs = ["--dir", root, "--config", configPath, "--skills", "examples/multi-source-skills", "--json"];
+    const apply = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "rollout", "apply", ...baseArgs]);
+    const applyPayload = JSON.parse(apply.stdout);
+    const manifestPath = join(root, ".skillboard", "rollouts", applyPayload.transaction.id, "manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.files[0].path = victimPath;
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+    let failure;
+    try {
+      await execFileAsync(process.execPath, ["bin/skillboard.mjs", "rollout", "rollback", ...baseArgs, "--transaction", applyPayload.transaction.id]);
+    } catch (caught) {
+      failure = caught;
+    }
+    const payload = JSON.parse(failure.stdout);
+
+    assert.equal(failure.code, 4);
+    assert.equal(payload.status, "rollback-needed");
+    assert.match(payload.errors.join("\n"), /manifest/i);
+    assert.equal(await readFile(victimPath, "utf8"), "do not overwrite");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(victimPath, { force: true });
+  }
+});
+
 test("cli classifies workflow bundles as their own install-unit source", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-workflow-unit-test-"));
   try {
@@ -2512,6 +2724,37 @@ install_units:
     await rm(root, { recursive: true, force: true });
   }
 });
+
+function strictRolloutFixture() {
+  return `version: 1
+skills:
+  vendor.router:
+    path: vendor/router
+    status: active
+    invocation: workflow-auto
+    exposure: exported
+    owner_install_unit: github.vendor.skills
+workflows:
+  review-workflow:
+    harness: codex
+    active_skills:
+      - vendor.router
+    blocked_skills: []
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - review-workflow
+install_units:
+  github.vendor.skills:
+    kind: plugin
+    source: https://github.com/vendor/skills?token=***
+    scope: project
+    enabled: true
+    trust_level: unreviewed
+    permission_risk: high
+`;
+}
 
 async function writeSkill(root, name) {
   await mkdir(root, { recursive: true });
