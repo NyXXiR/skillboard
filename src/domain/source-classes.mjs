@@ -1,3 +1,5 @@
+import { isAbsolute } from "node:path";
+
 export function installUnitSourceClass(unit) {
   if (unit.sourceClass !== undefined && unit.sourceClass.length > 0 && !RESERVED_SOURCE_CLASSES.has(unit.sourceClass)) {
     return unit.sourceClass;
@@ -94,4 +96,3 @@ export function isModelSelectableInvocation(invocation) {
 }
 
 export const RESERVED_SOURCE_CLASSES = new Set(["user"]);
-import { isAbsolute } from "node:path";
