@@ -1,25 +1,43 @@
 # SkillBoard
 
-Workflow-scoped control and reconciliation for AI agent skills.
+Know which agent skills can run before they run.
 
-SkillBoard is a small policy layer for people who already have skill installers,
-plugin marketplaces, skill folders, or package managers, but still cannot answer
-the operational question that matters most:
+SkillBoard is a policy and visibility layer for AI coding-agent skills. It is
+for developers who already have skill folders, plugins, MCP tools, hooks, or
+marketplaces, but still cannot answer the operational question that matters
+most:
 
 > Which skills can run in this workflow, why, and what breaks if I remove one?
 
-It treats installed skills and active skills as different states. A skill can be
-present in a repository without being eligible for model invocation. Workflows
-choose the active pool, invocation modes make automatic use explicit, and the
-reconciler turns skill or harness drift into safe defaults plus a short list of
-decisions that actually need user approval.
+SkillBoard separates "installed" from "allowed". A skill can be present in a
+repository without being eligible for model invocation. Workflows choose the
+active pool, automatic invocation is denied by default, and the reconciler turns
+skill or harness drift into safe defaults plus a short list of decisions that
+actually need user approval.
 
-## What You Get In 30 Seconds
+## The Problem
 
-- See which skills are installed vs active.
-- Block automatic invocation by default.
-- Attach skills to specific workflows.
-- Generate impact reports before disabling a skill.
+You installed a few agent skill packs.
+
+Now every repository has a growing pile of `SKILL.md` files, plugin-provided
+tools, hooks, MCP servers, and workflow rules. Before an agent starts working,
+you still need to know:
+
+- Which skills are merely installed?
+- Which skills are allowed to run in this workflow?
+- Which skills can be invoked automatically?
+- What changes if I disable one?
+- Did a plugin or runtime update silently add new capabilities?
+
+SkillBoard turns that mess into an explicit skill map.
+
+## What SkillBoard Gives You
+
+- A skill inventory that separates installed from active.
+- Workflow-scoped allowlists for automatic invocation.
+- Quarantine for newly discovered skills.
+- Impact reports before disabling or migrating skills.
+- Agent bridge files so Codex and Claude Code follow the same policy.
 
 ## Demo
 
@@ -95,8 +113,8 @@ This repository is an early CLI-first foundation. It currently supports:
 Use it from a clone today:
 
 ```bash
-git clone https://github.com/NyXXiR/skill-control-plane.git
-cd skill-control-plane
+git clone https://github.com/NyXXiR/skillboard.git
+cd skillboard
 npm install
 npm test
 npm link

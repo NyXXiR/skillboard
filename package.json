@@ -1,7 +1,7 @@
 {
   "name": "agent-skillboard",
   "version": "0.1.0",
-  "description": "Workflow-scoped control plane for AI agent skills.",
+  "description": "Policy and visibility layer for AI agent skills.",
   "type": "module",
   "files": [
     "bin",
