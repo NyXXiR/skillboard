@@ -11,7 +11,7 @@ default_category: uncategorized
 provided_components:
   - skills
 skill_paths:
-  - "skills/*/SKILL.md"
+  - "skills/**/SKILL.md"
   - "*/SKILL.md"
 permission_risk: medium
 rollback: plugin uninstall

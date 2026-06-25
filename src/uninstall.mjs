@@ -27,7 +27,14 @@ export async function uninstallProject(options) {
     recordFileResult(entry.label, result, { removed, updated, preserved });
   }
 
-  if (options.removeConfig === true) {
+  if (options.resetConfig === true) {
+    const path = join(root, "skillboard.config.yaml");
+    const result = await removeConfigFile(path, dryRun);
+    if (result === "removed") {
+      plannedRemovedPaths.add(path);
+    }
+    recordFileResult("skillboard.config.yaml", result, { removed, updated, preserved });
+  } else if (options.removeConfig === true) {
     const path = join(root, "skillboard.config.yaml");
     const result = await removeGeneratedFile(path, defaultConfig(), dryRun);
     if (result === "removed") {
@@ -38,8 +45,29 @@ export async function uninstallProject(options) {
     preserved.push("skillboard.config.yaml");
   }
 
+  if (options.removeReports === true) {
+    const path = join(root, ".skillboard", "reports");
+    const result = await removeGeneratedDir(path, dryRun);
+    if (result === "removed") {
+      plannedRemovedPaths.add(path);
+    }
+    recordFileResult(".skillboard/reports", result, { removed, updated, preserved });
+  }
+
+  if (options.removeHooks === true) {
+    const path = join(root, ".skillboard", "hooks");
+    const result = await removeGeneratedDir(path, dryRun);
+    if (result === "removed") {
+      plannedRemovedPaths.add(path);
+    }
+    recordFileResult(".skillboard/hooks", result, { removed, updated, preserved });
+  }
+
   if (options.removeEmptyDirs !== false) {
-    for (const dir of emptyDirs(root)) {
+    for (const dir of emptyDirs(root, {
+      skipReports: options.removeReports === true,
+      skipHooks: options.removeHooks === true
+    })) {
       const result = await removeEmptyDir(dir.path, dryRun, plannedRemovedPaths);
       if (result === "removed") {
         plannedRemovedPaths.add(dir.path);
@@ -66,14 +94,23 @@ function generatedFiles(root) {
   ];
 }
 
-function emptyDirs(root) {
-  return [
+function emptyDirs(root, options = {}) {
+  const dirs = [
     { label: ".skillboard/profiles", path: join(root, ".skillboard", "profiles") },
     { label: ".skillboard/hooks", path: join(root, ".skillboard", "hooks") },
     { label: ".skillboard/reports", path: join(root, ".skillboard", "reports") },
     { label: ".skillboard", path: join(root, ".skillboard") },
     { label: "skills", path: join(root, "skills") }
   ];
+  return dirs.filter((dir) => {
+    if (options.skipReports === true && dir.label === ".skillboard/reports") {
+      return false;
+    }
+    if (options.skipHooks === true && dir.label === ".skillboard/hooks") {
+      return false;
+    }
+    return true;
+  });
 }
 
 async function removeBridge(path, dryRun) {
@@ -141,6 +178,34 @@ async function removeGeneratedFile(path, expected, dryRun) {
   }
   if (!dryRun) {
     await rm(path);
+  }
+  return "removed";
+}
+
+async function removeConfigFile(path, dryRun) {
+  const stats = await pathStats(path);
+  if (stats === null) {
+    return "absent";
+  }
+  if (stats.isSymbolicLink() || !stats.isFile()) {
+    return "preserved";
+  }
+  if (!dryRun) {
+    await rm(path);
+  }
+  return "removed";
+}
+
+async function removeGeneratedDir(path, dryRun) {
+  const stats = await pathStats(path);
+  if (stats === null) {
+    return "absent";
+  }
+  if (stats.isSymbolicLink() || !stats.isDirectory()) {
+    return "preserved";
+  }
+  if (!dryRun) {
+    await rm(path, { recursive: true });
   }
   return "removed";
 }

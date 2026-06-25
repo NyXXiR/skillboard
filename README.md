@@ -38,12 +38,15 @@ SkillBoard turns that mess into an explicit skill map.
 - Quarantine for newly discovered skills.
 - Impact reports before disabling or migrating skills.
 - Agent bridge files so Codex and Claude Code follow the same policy.
+- An AI-facing brief so agents can explain availability without guessing from
+  raw `SKILL.md` files.
 
 ## Demo
 
 ```bash
 skillboard init
 skillboard doctor
+skillboard brief --json --workflow codex-night-workflow
 skillboard list skills --workflow codex-night-workflow
 skillboard can-use matt.tdd --workflow codex-night-workflow
 skillboard impact disable matt.tdd
@@ -152,6 +155,16 @@ unit for review. The agent bridge files tell Codex-style and Claude Code agents
 to use `skillboard.config.yaml` as the control-plane source of truth instead of
 treating every installed `SKILL.md` as active.
 
+When you ask an agent "what skills can you use?", the bridge tells it to run
+`skillboard brief --json` before answering. The brief is designed for
+AI-mediated use without becoming another policy engine: it summarizes "What
+your AI can use now", what needs review, what is blocked for safety, and which
+change suggestions are available as action cards. Before an agent applies a
+risk-bearing action card, it should ask for user confirmation; after any
+mutating apply, it should rerun `skillboard brief --json` before answering the
+next availability question or applying another action. Immediately before a
+skill is actually invoked, `skillboard guard use ...` remains the final gate.
+
 Run `skillboard doctor` after init to see config health, bridge status, managed
 skill/install-unit counts, policy/source audit summaries, and the default
 uninstall dry-run plan. The default doctor command passes when the workspace is
@@ -198,6 +211,13 @@ skillboard sources refresh --config skillboard.config.yaml --unit github.mattpoc
 skillboard sources refresh --config skillboard.config.yaml --unit github.mattpocock.skills
 ```
 
+After reviewing an imported install unit, record that decision before activating
+model-selectable skills from it:
+
+```bash
+skillboard review install-unit github.mattpocock.skills --trust-level reviewed --config skillboard.config.yaml --skills skills
+```
+
 To remove the project bridge safely:
 
 ```bash
@@ -208,7 +228,15 @@ skillboard uninstall
 `skillboard uninstall` removes only SkillBoard bridge blocks and unchanged
 generated helper files by default. It preserves `skillboard.config.yaml`, local
 skills, reports, and any user content in `AGENTS.md` or `CLAUDE.md`. Add
-`--remove-config` only when you want to delete an untouched default config.
+`--remove-config` only when you want to delete an untouched default config. Use
+`--reset-config` when you intentionally want to discard the current
+`skillboard.config.yaml` and re-run `skillboard init` from a fresh policy
+lifecycle; local skill files, reports, and generated guard hooks are still
+preserved. Add `--remove-reports` with `--reset-config` when a test reset should
+also discard generated dashboard and impact reports. Add
+`--remove-hooks` with the same reset when you also want to discard the entire
+`.skillboard/hooks/` directory contents and remove the `.skillboard/` directory
+if it has no other content.
 
 Run the bundled examples from the repository root:
 
@@ -243,9 +271,18 @@ node bin/skillboard.mjs hook install \
   --config examples/multi-source.config.yaml \
   --skills examples/multi-source-skills \
   --out .skillboard/reports/codex-night-guard.sh \
+  --skillboard-bin "node bin/skillboard.mjs" \
+  --dry-run --json
+node bin/skillboard.mjs hook install \
+  --workflow codex-night-workflow \
+  --config examples/multi-source.config.yaml \
+  --skills examples/multi-source-skills \
+  --out .skillboard/reports/codex-night-guard.sh \
   --skillboard-bin "node bin/skillboard.mjs"
 ```
 
+Preview hook installs with `--dry-run --json` and inspect
+`planned.preview.shell` before applying the same command without those flags.
 The multi-source example intentionally uses project-root-relative local paths,
 such as `./examples/multi-source-skills/private`, so a fresh clone can run these
 commands without editing machine-specific paths.
@@ -420,12 +457,13 @@ pinned with `skillboard sources refresh`.
 
 ```bash
 skillboard init [--dir <path>] [--scan-root <dir>[,<dir>]] [--no-scan-installed]
-skillboard uninstall [--dir <path>] [--dry-run] [--remove-config] [--keep-empty-dirs]
+skillboard uninstall [--dir <path>] [--dry-run] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs]
 skillboard inventory refresh [--dir <path>] [--config <path>] [--scan-root <dir>[,<dir>]] [--dry-run] [--json]
 skillboard inventory detect --unit <id> --config <path> [--install-output <path>] [--config-file a,b] [--source <value>] [--kind <kind>] [--scope <scope>] [--dry-run] [--json]
 skillboard sources refresh [--dir <path>] [--config <path>] [--unit <id>[,<id>]] [--cache-dir <dir>] [--dry-run] [--json]
 skillboard doctor [--dir <path>] [--config <path>] [--skills <dir>] [--verify] [--strict] [--json]
 skillboard status [--dir <path>] [--config <path>] [--skills <dir>] [--verify] [--strict] [--json]
+skillboard brief [--workflow <name>] [--dir <path>] [--config <path>] [--skills <dir>] [--include-actions] [--json]
 skillboard import --profile <id-or-path> --source-root <dir> [--profile-dirs a,b] [--out <path>]
 skillboard import --profile <id-or-path> --source-root <dir> --config <path> --merge [--replace] [--dry-run]
 node bin/skillboard.mjs scan --config <path> --skills <dir>
@@ -436,8 +474,9 @@ node bin/skillboard.mjs can-use <skill-id> --workflow <name> --config <path> --s
 node bin/skillboard.mjs guard use <skill-id> --workflow <name> --config <path> --skills <dir>
 node bin/skillboard.mjs audit sources --config <path> --skills <dir> [--verify]
 skillboard rollout [audit|plan|apply|rollback|report] [--dir <path>] [--config <path>] [--skills <dir>] [--transaction <id>] [--json]
-node bin/skillboard.mjs hook install --workflow <name> --config <path> --skills <dir> [--out <path>]
+node bin/skillboard.mjs hook install --workflow <name> --config <path> --skills <dir> [--out <path>] [--skillboard-bin <path>] [--dry-run] [--json]
 node bin/skillboard.mjs lock write --config <path> --skills <dir> [--out <path>] [--replace] [--allow-unverified]
+node bin/skillboard.mjs review install-unit <unit-id> [--trust-level trusted|reviewed|unreviewed|blocked] --config <path> --skills <dir>
 node bin/skillboard.mjs add skill <skill-id> --path <relative-skill-path> --config <path> --skills <dir>
 node bin/skillboard.mjs add workflow <workflow-name> --harness <harness-name> --config <path> --skills <dir> [--skill <id>[,<id>]]
 node bin/skillboard.mjs add harness <harness-name> --config <path> --skills <dir> [--status <status>] [--command <cmd>[,<cmd>]]

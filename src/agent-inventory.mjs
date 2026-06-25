@@ -1,4 +1,4 @@
-import { access, readdir, readFile } from "node:fs/promises";
+import { access, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import YAML from "yaml";
@@ -470,8 +470,13 @@ function customUserUnit(path, home) {
   };
 }
 
-async function findSkillFiles(root, base, options) {
+async function findSkillFiles(root, base, options, seen = new Set()) {
   const files = [];
+  const resolvedRoot = await realpath(root).catch(() => root);
+  if (seen.has(resolvedRoot)) {
+    return files;
+  }
+  seen.add(resolvedRoot);
   const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
     const path = join(root, entry.name);
@@ -480,7 +485,14 @@ async function findSkillFiles(root, base, options) {
       continue;
     }
     if (entry.isDirectory()) {
-      files.push(...(await findSkillFiles(path, base, options)));
+      files.push(...(await findSkillFiles(path, base, options, seen)));
+    } else if (entry.isSymbolicLink()) {
+      const target = await stat(path).catch(() => undefined);
+      if (target?.isDirectory()) {
+        files.push(...(await findSkillFiles(path, base, options, seen)));
+      } else if (target?.isFile() && entry.name === "SKILL.md") {
+        files.push(path);
+      }
     } else if (entry.isFile() && entry.name === "SKILL.md") {
       files.push(path);
     }

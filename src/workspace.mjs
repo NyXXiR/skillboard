@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import YAML from "yaml";
 import {
@@ -55,13 +55,25 @@ async function discoverInstalledSkills(skillsRoot, declaredSkills) {
   return installed.sort((left, right) => left.path.localeCompare(right.path));
 }
 
-async function findSkillFiles(root) {
+async function findSkillFiles(root, seen = new Set()) {
   const files = [];
+  const resolvedRoot = await realpath(root).catch(() => root);
+  if (seen.has(resolvedRoot)) {
+    return files;
+  }
+  seen.add(resolvedRoot);
   const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
     const path = join(root, entry.name);
     if (entry.isDirectory()) {
-      files.push(...(await findSkillFiles(path)));
+      files.push(...(await findSkillFiles(path, seen)));
+    } else if (entry.isSymbolicLink()) {
+      const target = await stat(path).catch(() => undefined);
+      if (target?.isDirectory()) {
+        files.push(...(await findSkillFiles(path, seen)));
+      } else if (target?.isFile() && entry.name === "SKILL.md") {
+        files.push(path);
+      }
     } else if (entry.isFile() && entry.name === "SKILL.md") {
       files.push(path);
     }

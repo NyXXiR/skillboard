@@ -56,8 +56,8 @@ rollback: git
 test("cli import uses built-in source profiles without repo-specific branches", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-builtin-profile-test-"));
   try {
-    await writeSkill(join(root, "skills", "tdd", "SKILL.md"), "tdd", "Run test-driven development.");
-    await writeSkill(join(root, "skills", "grill-me", "SKILL.md"), "grill-me", "Clarify vague requests.");
+    await writeSkill(join(root, "skills", "engineering", "tdd", "SKILL.md"), "tdd", "Run test-driven development.");
+    await writeSkill(join(root, "skills", "productivity", "grill-me", "SKILL.md"), "grill-me", "Clarify vague requests.");
 
     const result = await execFileAsync(process.execPath, [
       "bin/skillboard.mjs",
@@ -72,7 +72,38 @@ test("cli import uses built-in source profiles without repo-specific branches", 
     assert.deepEqual(Object.keys(fragment.skills).sort(), ["matt.grill-me", "matt.tdd"]);
     assert.equal(fragment.skills["matt.tdd"].owner_install_unit, "github.mattpocock.skills");
     assert.equal(fragment.skills["matt.tdd"].status, "vendor");
-    assert.deepEqual(fragment.install_units["github.mattpocock.skills"].components.skills, ["matt.grill-me", "matt.tdd"]);
+    assert.deepEqual(fragment.install_units["github.mattpocock.skills"].components.skills.sort(), ["matt.grill-me", "matt.tdd"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("built-in source profiles can derive category and lifecycle from repository paths", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-profile-path-rules-test-"));
+  try {
+    await writeSkill(join(root, "skills", "engineering", "tdd", "SKILL.md"), "tdd", "Run test-driven development.");
+    await writeSkill(join(root, "skills", "deprecated", "qa", "SKILL.md"), "qa", "Legacy QA flow.");
+    await writeSkill(join(root, "skills", "in-progress", "review", "SKILL.md"), "review", "Experimental review flow.");
+
+    const result = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "import",
+      "--profile",
+      "github.mattpocock.skills",
+      "--source-root",
+      root
+    ]);
+    const fragment = YAML.parse(result.stdout);
+
+    assert.equal(fragment.skills["matt.tdd"].category, "engineering");
+    assert.equal(fragment.skills["matt.tdd"].status, "vendor");
+    assert.equal(fragment.skills["matt.tdd"].invocation, "manual-only");
+    assert.equal(fragment.skills["matt.qa"].category, "deprecated");
+    assert.equal(fragment.skills["matt.qa"].status, "deprecated");
+    assert.equal(fragment.skills["matt.qa"].invocation, "deprecated");
+    assert.equal(fragment.skills["matt.review"].category, "in-progress");
+    assert.equal(fragment.skills["matt.review"].status, "candidate");
+    assert.equal(fragment.skills["matt.review"].invocation, "manual-only");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

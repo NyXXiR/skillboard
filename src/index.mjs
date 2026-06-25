@@ -13,6 +13,8 @@ import { verifySources, writeLockfile } from "./source-verification.mjs";
 import { refreshSourcePins } from "./source-cache.mjs";
 import { detectInstallOutput } from "./install-output-detector.mjs";
 import { rolloutApply, rolloutAudit, rolloutPlan, rolloutReport, rolloutRollback } from "./rollout.mjs";
+import { reviewInstallUnit } from "./review.mjs";
+import { buildSkillBrief } from "./advisor.mjs";
 import {
   activateSkill,
   addHarness,
@@ -40,6 +42,7 @@ export {
   agentInventoryDetectors,
   auditSources,
   blockSkill,
+  buildSkillBrief,
   canUseSkill,
   checkPolicy,
   discoverAgentSkillInventory,
@@ -65,6 +68,7 @@ export {
   refreshAgentInventory,
   refreshSourcePins,
   renderDashboard,
+  reviewInstallUnit,
   rolloutApply,
   rolloutAudit,
   rolloutPlan,

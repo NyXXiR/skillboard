@@ -52,6 +52,51 @@ test("scan records installed skill metadata from SKILL.md", async () => {
   });
 });
 
+test("scan follows symlinked installed skill directories", async () => {
+  const { mkdir, mkdtemp, rm, symlink, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const root = await mkdtemp(join(tmpdir(), "skillboard-symlink-scan-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    const sourceSkill = join(root, "source-skills", "external-helper");
+    await mkdir(sourceSkill, { recursive: true });
+    await mkdir(skillsRoot, { recursive: true });
+    await writeFile(
+      join(sourceSkill, "SKILL.md"),
+      "---\nname: external-helper\ndescription: Symlinked helper skill.\n---\n# External Helper\n",
+      "utf8"
+    );
+    await symlink(sourceSkill, join(skillsRoot, "external-helper"), "dir");
+    await writeFile(
+      configPath,
+      `version: 1
+skills:
+  external.helper:
+    path: external-helper
+    status: active
+    invocation: manual-only
+    exposure: exported
+`,
+      "utf8"
+    );
+
+    const workspace = await loadWorkspace({ configPath, skillsRoot });
+
+    assert.deepEqual(workspace.installedSkills, [
+      {
+        description: "Symlinked helper skill.",
+        id: "external.helper",
+        name: "external-helper",
+        path: "external-helper"
+      }
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("reconcile quarantines newly discovered skills and maps known capabilities", async () => {
   await withFixture(async ({ configPath, skillsRoot }) => {
     const workspace = await loadWorkspace({ configPath, skillsRoot });

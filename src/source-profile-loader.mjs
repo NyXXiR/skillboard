@@ -67,6 +67,8 @@ function parseSourceProfile(raw, path) {
     defaultInvocation: readString(raw, "default_invocation", "manual-only"),
     defaultExposure: readString(raw, "default_exposure", "exported"),
     defaultCategory: readString(raw, "default_category", "uncategorized"),
+    categoryPathSegment: readOptionalNumber(raw, "category_path_segment"),
+    pathRules: parsePathRules(raw.path_rules, `source profile ${path}.path_rules`),
     providedComponents: readStringList(raw, "provided_components"),
     skillPaths: readStringList(raw, "skill_paths"),
     components: parseProfileComponents(raw.components, `source profile ${path}.components`),
@@ -93,6 +95,29 @@ function parseProfileComponents(value, label) {
   };
 }
 
+function parsePathRules(value, label) {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} must be a list of mappings`);
+  }
+  return value.map((entry, index) => {
+    const raw = requireRecord(entry, `${label}[${index}]`);
+    const rule = {
+      pattern: readString(raw, "pattern", ""),
+      status: readOptionalString(raw, "status"),
+      invocation: readOptionalString(raw, "invocation"),
+      exposure: readOptionalString(raw, "exposure"),
+      category: readOptionalString(raw, "category")
+    };
+    if (rule.pattern.trim() === "") {
+      throw new Error(`${label}[${index}].pattern must be a non-empty string`);
+    }
+    return rule;
+  });
+}
+
 function validateProfileValues(profile) {
   if (!INSTALL_UNIT_KIND_VALUES.has(profile.kind)) {
     throw new Error(`Unsupported source profile kind for ${profile.id}: ${profile.kind}`);
@@ -111,6 +136,23 @@ function validateProfileValues(profile) {
   }
   if (!TRUST_LEVEL_VALUES.has(profile.trustLevel)) {
     throw new Error(`Unsupported source profile trust_level for ${profile.id}: ${profile.trustLevel}`);
+  }
+  if (
+    profile.categoryPathSegment !== undefined
+    && (!Number.isInteger(profile.categoryPathSegment) || profile.categoryPathSegment < 0)
+  ) {
+    throw new Error(`Source profile ${profile.id} category_path_segment must be a non-negative integer`);
+  }
+  for (const rule of profile.pathRules) {
+    if (rule.status !== undefined && !STATUS_VALUES.has(rule.status)) {
+      throw new Error(`Unsupported source profile path_rules status for ${profile.id}: ${rule.status}`);
+    }
+    if (rule.invocation !== undefined && !INVOCATION_VALUES.has(rule.invocation)) {
+      throw new Error(`Unsupported source profile path_rules invocation for ${profile.id}: ${rule.invocation}`);
+    }
+    if (rule.exposure !== undefined && !EXPOSURE_VALUES.has(rule.exposure)) {
+      throw new Error(`Unsupported source profile path_rules exposure for ${profile.id}: ${rule.exposure}`);
+    }
   }
   if (profile.defaultInvocation === "global-auto" && profile.defaultExposure !== "global-meta") {
     throw new Error(`Source profile ${profile.id} cannot grant global-auto to non-global-meta skills`);

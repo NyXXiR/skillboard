@@ -13,7 +13,7 @@ provided_components:
   - agents
   - commands
 skill_paths:
-  - "skills/*/SKILL.md"
+  - "skills/**/SKILL.md"
   - "*/SKILL.md"
 permission_risk: medium
 rollback: plugin uninstall

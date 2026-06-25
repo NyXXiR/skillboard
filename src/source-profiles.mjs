@@ -23,16 +23,17 @@ export async function importSource(options) {
 
   for (const entry of matchedFiles) {
     const frontmatter = parseSkillFrontmatter(await readFile(entry.file, "utf8"));
+    const pathRule = matchingPathRule(entry.relativeFile, profile);
     const slug = skillSlug(entry.relativeFile, frontmatter, profile);
     const id = skillId(slug, frontmatter, profile);
     const path = skillTargetPath(slug, profile);
     skills.push({
       id,
       path,
-      status: profile.defaultStatus,
-      invocation: safeDefaultInvocation(profile.defaultInvocation),
-      exposure: profile.defaultExposure,
-      category: profile.defaultCategory,
+      status: pathRule?.status ?? profile.defaultStatus,
+      invocation: safeDefaultInvocation(pathRule?.invocation ?? profile.defaultInvocation),
+      exposure: pathRule?.exposure ?? profile.defaultExposure,
+      category: pathRule?.category ?? categoryFromPath(entry.relativeFile, profile) ?? profile.defaultCategory,
       ownerInstallUnit: profile.id,
       description: frontmatter.description
     });
@@ -230,6 +231,10 @@ function matchesAnyProfilePattern(file, patterns) {
   return activePatterns.some((pattern) => patternToRegExp(pattern).test(file));
 }
 
+function matchingPathRule(file, profile) {
+  return (profile.pathRules ?? []).find((rule) => patternToRegExp(rule.pattern).test(file));
+}
+
 function patternToRegExp(pattern) {
   const escaped = pattern
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
@@ -255,6 +260,18 @@ function skillId(slug, frontmatter, profile) {
 
 function skillTargetPath(slug, profile) {
   return profile.targetPathPrefix.length === 0 ? slug : `${profile.targetPathPrefix}/${slug}`;
+}
+
+function categoryFromPath(relativeFile, profile) {
+  if (profile.categoryPathSegment === undefined) {
+    return undefined;
+  }
+  const segment = relativeFile.split("/")[profile.categoryPathSegment];
+  if (segment === undefined || segment.endsWith(".md")) {
+    return undefined;
+  }
+  const category = normalizeSlug(segment);
+  return category.length === 0 ? undefined : category;
 }
 
 function normalizeSlug(value) {

@@ -76,6 +76,22 @@ requirement. `allow_model_invocation: false` is not a blanket ban on
 workflow-scoped automation; it means automatic invocation must come from an
 explicit policy decision rather than installation.
 
+## AI-Mediated Availability
+
+`skillboard brief --json` is the AI-facing availability contract. It lets an
+agent answer "What your AI can use now" with grouped facts from the control
+plane instead of trusting installed `SKILL.md` text or inventing policy from the
+filesystem. The brief may include action cards when requested, but an action
+card is only a suggestion. It does not authorize invocation and it does not make
+unreviewed external skills safe for automatic use.
+
+Risk-bearing action cards require user confirmation before apply. Any apply
+that mutates policy, trust, hooks, reset state, or skill references makes the
+previous brief stale, so the agent should rerun `skillboard brief --json` before
+answering another availability question or applying another action card. The
+runtime boundary remains `skillboard guard use ...`, run immediately before the
+actual skill invocation.
+
 ## Workflow Activation
 
 Workflows own active skill pools:

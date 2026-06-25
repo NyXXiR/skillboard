@@ -31,12 +31,24 @@ data-driven source profiles wherever possible.
    default_invocation: manual-only
    default_exposure: exported
    skill_paths:
-     - "skills/*/SKILL.md"
+     - "skills/**/SKILL.md"
      - "*/SKILL.md"
+   category_path_segment: 1
+   path_rules:
+     - pattern: "skills/deprecated/**/SKILL.md"
+       status: deprecated
+       invocation: deprecated
+       category: deprecated
    ```
 
    A profile can set namespace, default policy, component mapping, known manifest
-   paths, and risk hints without requiring code changes.
+   paths, category extraction, lifecycle overrides, and risk hints without
+   requiring code changes.
+
+   `category_path_segment` reads a slash-separated path segment from the matched
+   `SKILL.md` path. For example, `skills/engineering/tdd/SKILL.md` with segment
+   `1` becomes category `engineering`. `path_rules` apply first-match overrides
+   for repository conventions such as `deprecated` or `in-progress` folders.
 
 3. Detector plugins
 

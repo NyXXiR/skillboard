@@ -75,6 +75,21 @@ CI or automation gate. Use `--json` for an agent-readable health payload, or
 `--verify` when local source/cache digests should be checked as part of the
 report. `skillboard status` is the same report under a shorter command name.
 
+For AI-mediated use, the generated bridge tells agents to answer availability
+questions from `skillboard brief --json`, not from memory or from raw
+`SKILL.md` bodies. The brief is read-only and organizes the response around
+"What your AI can use now", review needs, safety blocks, inactive installed
+skills, and suggested action cards. Agents should still run
+`skillboard guard use ...` immediately before an actual skill invocation.
+
+Action cards are change suggestions. Before an agent applies one that changes
+policy, trust, hooks, reset state, or skill references, it should request user
+confirmation. After any mutating apply, it should rerun `skillboard brief --json`
+before answering another availability question or applying another action card.
+For hook action cards specifically, run `skillboard hook install ... --dry-run
+--json` first and inspect the preview before applying the same command without
+the dry-run flags.
+
 After installing a new local agent skill pack, plugin, workflow bundle, or
 harness, rescan before enabling anything:
 
@@ -156,12 +171,30 @@ Default uninstall behavior is conservative:
 - deletes `.skillboard/profiles/README.md` and `.skillboard/hooks/README.md`
   only when they still exactly match the generated text;
 - removes empty generated directories;
-- preserves `skillboard.config.yaml`, local skill files, reports, and modified
-  files by default. Empty generated directories can be removed.
+- preserves `skillboard.config.yaml`, local skill files, reports, generated guard
+  hooks, and modified files by default. Empty generated directories can be
+  removed.
 
 Use `--remove-config` to delete `skillboard.config.yaml` only when it still
 matches the untouched default config. If the config contains scanned skills or
 user edits, uninstall preserves it and reports it under `Preserved`.
+
+Use `--reset-config` only when you intentionally want to discard the current
+SkillBoard policy state and run `skillboard init` again from a fresh lifecycle.
+This removes `skillboard.config.yaml` even when it contains imported skills or
+workflow edits, but it still preserves local `skills/` files, reports, and
+user-authored bridge content.
+
+Add `--remove-reports` when a test reset should also delete generated
+`.skillboard/reports/` output. This flag is explicit because reports may contain
+review notes or other user-authored context. Local `skills/` files are still
+preserved.
+
+Add `--remove-hooks` only when a reset should also delete the entire
+`.skillboard/hooks/` directory contents. This is explicit because hook scripts
+may be wired into local agent/runtime configuration. Combine `--reset-config`,
+`--remove-reports`, and `--remove-hooks` for a clean test reset that removes
+SkillBoard-owned lifecycle scaffolding while preserving local `skills/`.
 
 ## Upper-Layer Control
 
@@ -196,6 +229,20 @@ replace those entries. The merge uses a structured YAML writer that keeps normal
 comments and ordering where possible, but review the diff before committing
 hand-edited formatting. Drop `--dry-run` only after the reported text and YAML
 semantic change plan is acceptable.
+
+After reviewing source ownership, expected components, and risk, record the
+install-unit trust decision without editing YAML by hand:
+
+```bash
+skillboard review install-unit github.mattpocock.skills \
+  --trust-level reviewed \
+  --config skillboard.config.yaml \
+  --skills skills
+```
+
+Automatic invocation remains blocked for unreviewed non-user sources; reviewing
+the install unit makes later `activate --mode workflow-auto` checks explicit and
+auditable.
 
 ```yaml
 install_units:

@@ -8,10 +8,19 @@ default_status: vendor
 default_invocation: manual-only
 default_exposure: exported
 default_category: uncategorized
+category_path_segment: 1
+path_rules:
+  - pattern: "skills/deprecated/**/SKILL.md"
+    status: deprecated
+    invocation: deprecated
+    category: deprecated
+  - pattern: "skills/in-progress/**/SKILL.md"
+    status: candidate
+    category: in-progress
 provided_components:
   - skills
 skill_paths:
-  - "skills/*/SKILL.md"
+  - "skills/**/SKILL.md"
   - "*/SKILL.md"
 permission_risk: medium
 rollback: reinstall

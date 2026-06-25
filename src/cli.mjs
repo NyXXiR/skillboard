@@ -31,6 +31,7 @@ import {
   renderDashboard,
   renderImportFragment,
   renderReconcilePlan,
+  reviewInstallUnit,
   rolloutApply,
   rolloutAudit,
   rolloutPlan,
@@ -39,6 +40,9 @@ import {
   verifySources,
   writeLockfile
 } from "./index.mjs";
+// SIZE_OK: src/cli.mjs is pre-existing command-router debt; brief behavior delegates to src/brief-cli.mjs and hook planning delegates through src/hook-plan.mjs until a broader router split.
+import { runBriefCommand } from "./brief-cli.mjs";
+import { planGuardHookInstall } from "./control.mjs";
 import { runInitCommand, runUninstallCommand } from "./lifecycle-cli.mjs";
 
 export async function main(argv, stdout, stderr) {
@@ -71,6 +75,11 @@ async function run(argv, stdout, stderr) {
     case "doctor":
     case "status":
       return await doctor(options, stdout);
+    case "brief":
+      return await runBriefCommand(options, stdout, {
+        configPath: configPath(options),
+        skillsRoot: skillsRoot(options)
+      });
     case "list":
       return await list(argv.slice(1), options, stdout);
     case "explain":
@@ -85,6 +94,8 @@ async function run(argv, stdout, stderr) {
       return await hook(argv.slice(1), options, stdout);
     case "lock":
       return await lock(argv.slice(1), options, stdout);
+    case "review":
+      return await review(argv.slice(1), options, stdout);
     case "rollout":
       return await rollout(argv.slice(1), options, stdout);
     case "activate":
@@ -343,21 +354,59 @@ async function rollout(argv, options, stdout) {
 async function hook(argv, options, stdout) {
   const args = positionalArgs(argv);
   if (args[0] !== "install") {
-    throw new Error("Usage: skillboard hook install --workflow <name> [--out <path>] [--skillboard-bin <path>]");
+    throw new Error("Usage: skillboard hook install --workflow <name> [--out <path>] [--skillboard-bin <path>] [--dry-run]");
   }
   const workflow = options.get("workflow");
   if (workflow === undefined) {
-    throw new Error("Usage: skillboard hook install --workflow <name> [--out <path>] [--skillboard-bin <path>]");
+    throw new Error("Usage: skillboard hook install --workflow <name> [--out <path>] [--skillboard-bin <path>] [--dry-run]");
   }
-  const result = await installGuardHook({
+  const hookOptions = {
     workflow,
     out: options.get("out"),
     command: options.get("skillboard-bin"),
     configPath: configPath(options),
     skillsRoot: skillsRoot(options)
-  });
-  writeOutput(stdout, result, options, () => `Installed guard hook: ${result.path}\n`);
+  };
+  if (options.get("dry-run") === "true") {
+    return await dryRunHookInstall(hookOptions, options, stdout);
+  }
+  return await applyHookInstall(hookOptions, options, stdout);
+}
+
+async function dryRunHookInstall(hookOptions, options, stdout) {
+  let planned;
+  try {
+    planned = await planGuardHookInstall(hookOptions);
+  } catch (error) {
+    return writeHookInstallError(stdout, options, hookInstallError(error));
+  }
+  if (planned.target_exists) {
+    return writeHookInstallError(stdout, options, {
+      code: "hook_path_exists",
+      message: `Refusing to overwrite existing hook path: ${planned.path}`
+    }, planned);
+  }
+  const result = { ok: true, planned };
+  writeOutput(stdout, result, options, () => renderHookInstallDryRun(result));
   return 0;
+}
+
+async function applyHookInstall(hookOptions, options, stdout) {
+  let planned;
+  try {
+    planned = await planGuardHookInstall(hookOptions);
+    if (planned.target_exists) {
+      return writeHookInstallError(stdout, options, {
+        code: "hook_path_exists",
+        message: `Refusing to overwrite existing hook path: ${planned.path}`
+      }, planned);
+    }
+    const result = await installGuardHook(hookOptions);
+    writeOutput(stdout, result, options, () => `Installed guard hook: ${result.path}\n`);
+    return 0;
+  } catch (error) {
+    return writeHookInstallError(stdout, options, hookInstallError(error), planned);
+  }
 }
 
 async function lock(argv, options, stdout) {
@@ -375,6 +424,22 @@ async function lock(argv, options, stdout) {
     allowUnverified: options.get("allow-unverified") === "true"
   });
   writeOutput(stdout, result, options, () => `Lockfile written: ${result.path}\n`);
+  return 0;
+}
+
+async function review(argv, options, stdout) {
+  const args = positionalArgs(argv);
+  if (args[0] !== "install-unit" || args[1] === undefined) {
+    throw new Error("Usage: skillboard review install-unit <unit-id> [--trust-level trusted|reviewed|unreviewed|blocked] --config <path> --skills <dir> [--dry-run] [--json]");
+  }
+  const result = await reviewInstallUnit({
+    unitId: args[1],
+    trustLevel: options.get("trust-level"),
+    configPath: configPath(options),
+    skillsRoot: skillsRoot(options),
+    dryRun: options.get("dry-run") === "true"
+  });
+  writeControlResult(stdout, result, options);
   return 0;
 }
 
@@ -745,6 +810,52 @@ function writeControlResult(stdout, result, options) {
   }
 }
 
+function writeHookInstallError(stdout, options, error, planned) {
+  if (options.get("json") === "true") {
+    stdout.write(`${JSON.stringify({
+      ok: false,
+      error,
+      ...(planned === undefined ? {} : { planned })
+    }, null, 2)}\n`);
+    return 1;
+  }
+  throw new Error(error.message);
+}
+
+function hookInstallError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.startsWith("Unknown workflow:")) {
+    return { code: "unknown_workflow", message };
+  }
+  if (message.startsWith("Refusing to overwrite existing hook path:")) {
+    return { code: "hook_path_exists", message };
+  }
+  if (message.startsWith("Unsupported config version:")
+    || message.includes("config root")
+    || message.includes("must be a")
+    || message.includes("Invalid YAML")) {
+    return { code: "invalid_config", message };
+  }
+  if (error?.code === "ENOENT") {
+    return { code: "missing_config", message };
+  }
+  return { code: "hook_install_failed", message };
+}
+
+function renderHookInstallDryRun(result) {
+  return [
+    "Dry run: would install guard hook",
+    `Path: ${result.planned.path}`,
+    `Workflow: ${result.planned.workflow}`,
+    `Command: ${result.planned.command}`,
+    `Target exists: ${result.planned.target_exists}`,
+    `Planned mode: ${result.planned.planned_mode} (${result.planned.permissions})`,
+    `Would be executable: ${result.planned.would_be_executable}`,
+    `Preview: ${result.planned.preview.display}`,
+    ""
+  ].join("\n");
+}
+
 function renderList(kind, values) {
   if (values.length === 0) {
     return `${kind}: none\n`;
@@ -897,12 +1008,13 @@ function helpText() {
     "",
     "Commands:",
     "  init [--dir <path>] [--scan-root <dir>[,<dir>]] [--no-scan-installed]",
-    "  uninstall [--dir <path>] [--dry-run] [--remove-config] [--keep-empty-dirs]",
+    "  uninstall [--dir <path>] [--dry-run] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs]",
     "  inventory refresh [--dir <path>] [--config <path>] [--scan-root <dir>[,<dir>]] [--dry-run] [--json]",
     "  inventory detect --unit <id> --config <path> [--install-output <path>] [--config-file a,b] [--source <value>] [--kind <kind>] [--scope <scope>] [--dry-run] [--json]",
     "  sources refresh [--dir <path>] [--config <path>] [--unit <id>[,<id>]] [--cache-dir <dir>] [--dry-run] [--json]",
     "  doctor [--dir <path>] [--config <path>] [--skills <dir>] [--verify] [--strict] [--json]",
     "  status [--dir <path>] [--config <path>] [--skills <dir>] [--verify] [--strict] [--json]",
+    "  brief [--workflow <name>] [--dir <path>] [--config <path>] [--skills <dir>] [--include-actions] [--json]",
     "  import --profile <id-or-path> --source-root <dir> [--profile-dirs a,b] [--out <path>]",
     "  import --profile <id-or-path> --source-root <dir> --config <path> --merge [--replace] [--dry-run]",
     "  scan --config <path>",
@@ -913,8 +1025,9 @@ function helpText() {
     "  guard use <skill-id> --workflow <name> --config <path> --skills <dir> [--json]",
     "  audit sources --config <path> --skills <dir> [--verify] [--json]",
     "  rollout [audit|plan|apply|rollback|report] [--dir <path>] [--config <path>] [--skills <dir>] [--transaction <id>] [--json]",
-    "  hook install --workflow <name> --config <path> --skills <dir> [--out <path>] [--skillboard-bin <path>] [--json]",
+    "  hook install --workflow <name> --config <path> --skills <dir> [--out <path>] [--skillboard-bin <path>] [--dry-run] [--json]",
     "  lock write --config <path> --skills <dir> [--out <path>] [--replace] [--allow-unverified] [--json]",
+    "  review install-unit <unit-id> [--trust-level trusted|reviewed|unreviewed|blocked] --config <path> --skills <dir> [--dry-run] [--json]",
     "  add skill <skill-id> --path <relative-skill-path> --config <path> --skills <dir> [--status <status>] [--invocation <mode>] [--exposure <exposure>] [--category <name>] [--workflow <name>] [--dry-run] [--json]",
     "  add workflow <workflow-name> --harness <harness-name> --config <path> --skills <dir> [--skill <id>[,<id>]] [--harness-status <status>] [--require-existing-harness] [--dry-run] [--json]",
     "  add harness <harness-name> --config <path> --skills <dir> [--status <status>] [--command <cmd>[,<cmd>]] [--dry-run] [--json]",

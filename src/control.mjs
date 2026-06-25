@@ -21,6 +21,13 @@ import {
   isModelSelectableInvocation,
   isUserControlledSource
 } from "./domain/source-classes.mjs";
+import {
+  GUARD_HOOK_MODE,
+  assertGuardHookPlanIsInstallable,
+  buildGuardHookInstallPlan
+} from "./hook-plan.mjs";
+
+export { planGuardHookInstall } from "./hook-plan.mjs";
 
 const WRITABLE_INVOCATIONS = new Set(["manual-only", "router-only", "workflow-auto", "global-auto"]);
 
@@ -446,22 +453,15 @@ export function auditSources(workspace) {
 }
 
 export async function installGuardHook(options) {
-  const workspace = await loadWorkspace({ configPath: options.configPath, skillsRoot: options.skillsRoot });
-  workflowByName(workspace, options.workflow);
-  const out = options.out ?? join(dirname(options.configPath), ".skillboard", "hooks", `skillboard-guard-${safeHookFilePart(options.workflow)}.sh`);
-  const script = renderGuardHookScript({
-    command: options.command ?? "skillboard",
-    workflow: options.workflow,
-    configPath: options.configPath,
-    skillsRoot: options.skillsRoot ?? "skills"
-  });
+  const { plan, script } = await buildGuardHookInstallPlan(options);
+  assertGuardHookPlanIsInstallable(plan);
 
-  await mkdir(dirname(out), { recursive: true });
-  await assertNewNonSymlinkPath(out);
-  await writeFile(out, script, { encoding: "utf8", flag: "wx", mode: 0o755 });
-  await assertRegularFile(out);
-  await chmod(out, 0o755);
-  return { path: out, workflow: options.workflow, executable: true };
+  await mkdir(dirname(plan.path), { recursive: true });
+  await assertNewNonSymlinkPath(plan.path);
+  await writeFile(plan.path, script, { encoding: "utf8", flag: "wx", mode: GUARD_HOOK_MODE });
+  await assertRegularFile(plan.path);
+  await chmod(plan.path, GUARD_HOOK_MODE);
+  return { path: plan.path, workflow: plan.workflow, executable: true };
 }
 
 function skillSummary(workspace, skill, workflow) {
@@ -528,41 +528,6 @@ function sourceAuditFindings(unit, sourceClass, automaticSkills) {
     findings.push({ severity: "warning", message: "source is not pinned by digest or signature" });
   }
   return findings;
-}
-
-function renderGuardHookScript(options) {
-  return `#!/usr/bin/env sh
-set -eu
-
-SKILLBOARD_BIN=\${SKILLBOARD_BIN:-${shellQuote(options.command)}}
-SKILLBOARD_CONFIG=\${SKILLBOARD_CONFIG:-${shellQuote(options.configPath)}}
-SKILLBOARD_SKILLS=\${SKILLBOARD_SKILLS:-${shellQuote(options.skillsRoot)}}
-SKILLBOARD_WORKFLOW=\${SKILLBOARD_WORKFLOW:-${shellQuote(options.workflow)}}
-
-if [ "\${SKILLBOARD_SKILL_ID:-}" != "" ]; then
-  skill_id="$SKILLBOARD_SKILL_ID"
-elif [ "\${1:-}" != "" ]; then
-  skill_id="$1"
-else
-  echo "SKILLBOARD_SKILL_ID or first argument is required" >&2
-  exit 64
-fi
-
-# Split SKILLBOARD_BIN so local hook configs can use commands like:
-#   SKILLBOARD_BIN="node bin/skillboard.mjs"
-# Paths containing spaces should be provided through an environment wrapper.
-set -- $SKILLBOARD_BIN
-exec "$@" guard use "$skill_id" --workflow "$SKILLBOARD_WORKFLOW" --config "$SKILLBOARD_CONFIG" --skills "$SKILLBOARD_SKILLS"
-`;
-}
-
-function shellQuote(value) {
-  return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-function safeHookFilePart(value) {
-  const cleaned = value.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-  return cleaned.length === 0 ? "workflow" : cleaned;
 }
 
 async function assertNewNonSymlinkPath(path) {

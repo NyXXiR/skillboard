@@ -19,6 +19,15 @@ Runtime-supplied or external skills are quarantined and blocked until a workflow
 explicitly enables them. Use `skillboard doctor --strict` when review-needed
 safe-mode warnings should fail automation.
 
+When the user asks the agent what it can use, the agent should run
+`skillboard brief --json` first and answer from the brief rather than reading
+skill files directly. The user-facing text output uses sections such as "What
+your AI can use now", "Needs review", and "Blocked for safety";
+the JSON form gives agents the same facts plus optional action cards. Those
+action cards are suggestions only: the agent should request confirmation before
+applying risk-bearing changes, and after any mutating apply it should rerun
+`skillboard brief --json` before making the next availability claim.
+
 Run this again after installing agent packages, plugins, workflow bundles, or
 harnesses:
 
@@ -95,6 +104,19 @@ capability roles. `can-use` is the machine-readable gate for agents. `impact`
 shows which workflows and required outputs would be affected before disabling or
 removing a skill.
 
+For an actual invocation, `brief` is not the final permission check. Agents
+should run `skillboard guard use ...` immediately before calling a skill so
+state changes made after the brief cannot slip through.
+
+When wiring a guard hook, preview the generated command first:
+
+```bash
+skillboard hook install --workflow daily-workflow --config skillboard.config.yaml --skills skills --out .skillboard/hooks/daily-workflow-guard.sh --dry-run --json
+skillboard hook install --workflow daily-workflow --config skillboard.config.yaml --skills skills --out .skillboard/hooks/daily-workflow-guard.sh
+```
+
+Inspect the JSON `planned.preview.shell` before applying the second command.
+
 ## 4. Enable, Disable, Or Prefer
 
 Enable the skill only for the workflow that should see it:
@@ -169,3 +191,18 @@ skillboard uninstall
 Uninstall removes generated bridge blocks and unchanged helper files. It
 preserves `skillboard.config.yaml`, `skills/`, reports, and user-authored
 content in bridge files.
+
+For a fresh policy lifecycle during testing, use:
+
+```bash
+skillboard uninstall --reset-config --remove-reports --remove-hooks --dry-run
+skillboard uninstall --reset-config --remove-reports --remove-hooks
+skillboard init
+```
+
+`--reset-config` discards the current SkillBoard config even if it contains
+imported skills or workflow edits. `--remove-reports` also discards generated
+dashboard and impact reports. `--remove-hooks` discards the entire
+`.skillboard/hooks/` directory contents when you explicitly want a full test or
+test reset, so `.skillboard/` can disappear when no other SkillBoard state
+remains. These reset flags do not delete local `skills/` files.

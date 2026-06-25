@@ -31,11 +31,17 @@ export async function runInitCommand(options, stdout) {
 }
 
 export async function runUninstallCommand(options, stdout) {
+  if (options.get("remove-config") === "true" && options.get("reset-config") === "true") {
+    throw new Error("--remove-config and --reset-config are mutually exclusive");
+  }
   const root = resolve(options.get("dir") ?? ".");
   const result = await uninstallProject({
     root,
     dryRun: options.get("dry-run") === "true",
     removeConfig: options.get("remove-config") === "true",
+    resetConfig: options.get("reset-config") === "true",
+    removeReports: options.get("remove-reports") === "true",
+    removeHooks: options.get("remove-hooks") === "true",
     removeEmptyDirs: options.get("keep-empty-dirs") !== "true"
   });
   stdout.write(`${result.dryRun ? "Dry run: " : ""}Uninstalled SkillBoard: ${root}\n`);

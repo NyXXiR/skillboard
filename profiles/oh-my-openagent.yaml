@@ -14,8 +14,8 @@ provided_components:
   - hooks
   - mcp-server
 skill_paths:
-  - "skills/*/SKILL.md"
-  - "plugins/*/skills/*/SKILL.md"
+  - "skills/**/SKILL.md"
+  - "plugins/*/skills/**/SKILL.md"
 components:
   commands:
     - $ulw-plan
