@@ -8,7 +8,7 @@ source profiles, and the generated lockfile.
 
 ## Status
 
-Current package version: `0.1.0`
+Current package version: `0.1.1`
 
 Current config schema version:
 
@@ -211,3 +211,12 @@ completion notes:
 - dry-run plans report a capped YAML semantic change list rather than full patch
   hunks;
 - unusual YAML trivia may still be normalized during structured config writes.
+
+## 0.1.1 Completion Notes
+
+- duplicate installed skill IDs are consolidated into one canonical skill entry
+  with duplicate source locations preserved as metadata;
+- canonical duplicate skills can be shared by Codex and Hermes local workflows
+  without generating user-visible `-2` suffixes;
+- README and install docs include a Hermes system prompt bridge for profiles
+  that do not automatically read `AGENTS.md` or `CLAUDE.md`.

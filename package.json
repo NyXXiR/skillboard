@@ -1,6 +1,6 @@
 {
   "name": "agent-skillboard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Policy and visibility layer for AI agent skills.",
   "keywords": [
     "ai-agent",
