@@ -59,6 +59,20 @@ test("package manifest includes the rollout operator runbook", async () => {
   assert.match(runbook, /rollback-needed.*4/s);
 });
 
+test("GitHub Actions publish workflow releases npm package from version tags", async () => {
+  const workflow = await readFile(resolve(".github/workflows/publish.yml"), "utf8");
+
+  assert.match(workflow, /name: publish/);
+  assert.match(workflow, /tags:\s*\n\s+- 'v\*'/);
+  assert.match(workflow, /id-token: write/);
+  assert.match(workflow, /contents: read/);
+  assert.match(workflow, /node-version: 24/);
+  assert.match(workflow, /registry-url: https:\/\/registry\.npmjs\.org/);
+  assert.match(workflow, /npm ci/);
+  assert.match(workflow, /npm run check/);
+  assert.match(workflow, /npm publish --access public/);
+});
+
 test("npm pack dry-run includes public runtime files and excludes work artifacts", async () => {
   const result = process.env.npm_execpath === undefined
     ? await execFileAsync(process.platform === "win32" ? "npm.cmd" : "npm", ["pack", "--dry-run", "--json"], { shell: process.platform === "win32" })
