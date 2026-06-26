@@ -118,7 +118,8 @@ function readCsv(value) {
 function defaultRuntime() {
   return {
     cwd: process.cwd(),
-    entrypointPath: process.argv[1]
+    entrypointPath: process.argv[1],
+    packageSpec: process.env.npm_config_package
   };
 }
 
@@ -126,6 +127,9 @@ function commandPrefix(runtime) {
   const entrypoint = runtime.entrypointPath ?? "";
   const normalized = entrypoint.replaceAll("\\", "/");
   if (normalized.includes("/_npx/")) {
+    if (runtime.packageSpec !== undefined && runtime.packageSpec !== "agent-skillboard") {
+      return `npm exec --yes --package ${shellQuote(runtime.packageSpec)} -- skillboard`;
+    }
     return "npx agent-skillboard";
   }
   if (isSourceTreeEntrypoint(entrypoint)) {

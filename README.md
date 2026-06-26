@@ -117,7 +117,29 @@ This repository is an early CLI-first foundation. It currently supports:
 
 ## 5-Minute Quick Start
 
-Run SkillBoard in the project you want to manage:
+Until the npm registry publish is complete, run SkillBoard directly from GitHub
+with npx:
+
+```bash
+npx --yes --package github:NyXXiR/skillboard skillboard init
+npx --yes --package github:NyXXiR/skillboard skillboard brief
+npx --yes --package github:NyXXiR/skillboard skillboard doctor --summary
+```
+
+The first command creates the local control-plane files for the current
+directory. To manage another project from elsewhere, pass `--dir`:
+
+```bash
+npx --yes --package github:NyXXiR/skillboard skillboard init --dir /path/to/your/project
+npx --yes --package github:NyXXiR/skillboard skillboard brief --dir /path/to/your/project
+npx --yes --package github:NyXXiR/skillboard skillboard doctor --dir /path/to/your/project --summary
+```
+
+SkillBoard does not make installed skills automatically callable. It imports
+trusted local skills as manual-only and keeps runtime/plugin skills quarantined
+until reviewed.
+
+After npm registry publish, the shorter package name works:
 
 ```bash
 npx agent-skillboard init
@@ -125,29 +147,11 @@ npx agent-skillboard brief
 npx agent-skillboard doctor --summary
 ```
 
-The first command creates the local control-plane files for the current
-directory. To manage another project from elsewhere, pass `--dir`:
-
-```bash
-npx agent-skillboard init --dir /path/to/your/project
-npx agent-skillboard brief --dir /path/to/your/project
-npx agent-skillboard doctor --dir /path/to/your/project --summary
-```
-
-SkillBoard does not make installed skills automatically callable. It imports
-trusted local skills as manual-only and keeps runtime/plugin skills quarantined
-until reviewed.
-
-For CI or scripts, the explicit package form avoids ambiguity about the binary
-name:
+For CI or scripts after registry publish, the explicit package form avoids
+ambiguity about the binary name:
 
 ```bash
 npx --yes --package agent-skillboard skillboard init
-```
-
-The equivalent npm exec spelling:
-
-```bash
 npm exec --yes --package agent-skillboard -- skillboard init
 ```
 
@@ -157,7 +161,7 @@ Then check the project:
 npx --yes --package agent-skillboard skillboard doctor
 ```
 
-For repeated local use, install the CLI globally:
+For repeated local use after registry publish, install the CLI globally:
 
 ```bash
 npm install -g agent-skillboard

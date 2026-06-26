@@ -5,8 +5,36 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
+import { runInitCommand } from "../src/lifecycle-cli.mjs";
 
 const execFileAsync = promisify(execFile);
+
+test("init next commands preserve GitHub npx package specs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-init-npx-github-test-"));
+  try {
+    let stdout = "";
+    const code = await runInitCommand(new Map([
+      ["dir", root],
+      ["no-scan-installed", "true"]
+    ]), {
+      write(chunk) {
+        stdout += chunk;
+      }
+    }, {
+      cwd: process.cwd(),
+      entrypointPath: "/tmp/_npx/demo/node_modules/agent-skillboard/bin/skillboard.mjs",
+      packageSpec: "github:NyXXiR/skillboard"
+    });
+
+    assert.equal(code, 0);
+    assert.match(stdout, /Next:/);
+    assert.match(stdout, /npm exec --yes --package github:NyXXiR\/skillboard -- skillboard doctor/);
+    assert.match(stdout, /npm exec --yes --package github:NyXXiR\/skillboard -- skillboard brief/);
+    assert.doesNotMatch(stdout, /npx agent-skillboard/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("cli uninstall removes SkillBoard scaffolding without deleting user content", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-uninstall-test-"));

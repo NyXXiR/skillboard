@@ -64,21 +64,25 @@ test("README shows the architecture diagram from a GitHub-hosted asset", async (
   assert.match(text, /https:\/\/raw\.githubusercontent\.com\/NyXXiR\/skillboard\/main\/skillboard\.png/);
 });
 
-test("README and install docs lead with npm quick start after publish", async () => {
+test("README and install docs lead with GitHub npx until registry publish", async () => {
   const readme = await readFile(resolve("README.md"), "utf8");
   const install = await readFile(resolve("docs/install.md"), "utf8");
 
   assert.match(readme, /## 5-Minute Quick Start/);
+  assert.match(readme, /npx --yes --package github:NyXXiR\/skillboard skillboard init/);
+  assert.match(readme, /npx --yes --package github:NyXXiR\/skillboard skillboard brief/);
+  assert.match(readme, /npx --yes --package github:NyXXiR\/skillboard skillboard doctor --summary/);
+  assert.match(readme, /npx --yes --package github:NyXXiR\/skillboard skillboard init --dir \/path\/to\/your\/project/);
+  assert.match(readme, /After npm registry publish/);
   assert.match(readme, /npx agent-skillboard init/);
-  assert.match(readme, /npx agent-skillboard brief/);
-  assert.match(readme, /npx agent-skillboard doctor --summary/);
-  assert.match(readme, /npx agent-skillboard init --dir \/path\/to\/your\/project/);
   assert.match(readme, /git clone https:\/\/github\.com\/NyXXiR\/skillboard\.git/);
   assert.match(readme, /node bin\/skillboard\.mjs init --dir \/path\/to\/your\/project/);
   assert.match(readme, /node bin\/skillboard\.mjs brief --dir \/path\/to\/your\/project/);
   assert.match(readme, /node bin\/skillboard\.mjs doctor --dir \/path\/to\/your\/project --summary/);
-  assert.doesNotMatch(readme, /npm package is not published yet/i);
 
+  assert.match(install, /## Run With npx From GitHub/);
+  assert.match(install, /npx --yes --package github:NyXXiR\/skillboard skillboard init/);
+  assert.match(install, /npm exec --yes --package github:NyXXiR\/skillboard -- skillboard init/);
   assert.match(install, /## Install From npm/);
   assert.match(install, /npx agent-skillboard init/);
   assert.match(install, /npx agent-skillboard brief/);

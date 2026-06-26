@@ -3,10 +3,32 @@
 SkillBoard sits one layer above skill installers, plugin marketplaces, harness
 bundles, and local skill repositories.
 
+## Run With npx From GitHub
+
+Until the npm registry publish is complete, run SkillBoard directly from GitHub
+without keeping a global SkillBoard binary installed:
+
+```bash
+npx --yes --package github:NyXXiR/skillboard skillboard init
+npx --yes --package github:NyXXiR/skillboard skillboard brief
+npx --yes --package github:NyXXiR/skillboard skillboard doctor --summary
+```
+
+SkillBoard does not make installed skills automatically callable. It imports
+trusted local skills as manual-only and keeps runtime/plugin skills quarantined
+until reviewed.
+
+The equivalent `npm exec` spelling is explicit about the package and binary,
+which is useful in scripts and CI:
+
+```bash
+npm exec --yes --package github:NyXXiR/skillboard -- skillboard init
+npm exec --yes --package github:NyXXiR/skillboard -- skillboard doctor --summary
+```
+
 ## Install From npm
 
-Use npx when you want to bootstrap a project without keeping a global
-SkillBoard binary installed:
+After npm registry publish, the short npx path is:
 
 ```bash
 npx agent-skillboard init
@@ -14,26 +36,17 @@ npx agent-skillboard brief
 npx agent-skillboard doctor --summary
 ```
 
-SkillBoard does not make installed skills automatically callable. It imports
-trusted local skills as manual-only and keeps runtime/plugin skills quarantined
-until reviewed.
-
-In CI or scripts, use the explicit package/binary spelling:
+In CI or scripts after registry publish, use the explicit package/binary
+spelling:
 
 ```bash
 npx --yes --package agent-skillboard skillboard init
 npx --yes --package agent-skillboard skillboard doctor --summary
-```
-
-The equivalent `npm exec` spelling is explicit about the package and binary,
-which is useful in scripts and CI:
-
-```bash
 npm exec --yes --package agent-skillboard -- skillboard init
 npm exec --yes --package agent-skillboard -- skillboard doctor --summary
 ```
 
-For repeated local use, install the CLI globally:
+For repeated local use after registry publish, install the CLI globally:
 
 ```bash
 npm install -g agent-skillboard
