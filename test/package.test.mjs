@@ -68,9 +68,16 @@ test("GitHub Actions publish workflow releases npm package from version tags", a
   assert.match(workflow, /contents: read/);
   assert.match(workflow, /node-version: 24/);
   assert.match(workflow, /registry-url: https:\/\/registry\.npmjs\.org/);
+  assert.doesNotMatch(workflow, /cache: npm/);
   assert.match(workflow, /npm ci/);
   assert.match(workflow, /npm run check/);
+  assert.match(workflow, /Validate release tag/);
+  assert.match(workflow, /GITHUB_REF_NAME/);
+  assert.match(workflow, /Check npm registry/);
+  assert.match(workflow, /published=true/);
+  assert.match(workflow, /already published; skipping npm publish/);
   assert.match(workflow, /npm publish --access public/);
+  assert.match(workflow, /if: steps\.registry\.outputs\.published != 'true'/);
 });
 
 test("npm pack dry-run includes public runtime files and excludes work artifacts", async () => {

@@ -187,6 +187,18 @@ Before tagging a public release:
 - Run at least one CLI smoke test through the public surface.
 - Confirm docs mention any breaking config, profile, or CLI changes.
 - Update package version and release notes.
+- Confirm npm Trusted Publisher is configured for package `agent-skillboard`,
+  repository `NyXXiR/skillboard`, workflow filename `publish.yml`, and allowed
+  action `npm publish`.
+  - If `npm trust github agent-skillboard --repo NyXXiR/skillboard --file
+    publish.yml --allow-publish` cannot configure it from the CLI, use the npm
+    package settings page and add a GitHub Actions trusted publisher with the
+    same repository, workflow filename, and allowed action.
+- Push a version tag that exactly matches `package.json`, for example `v0.1.1`
+  for package version `0.1.1`.
+- Let `.github/workflows/publish.yml` publish from the tag. The workflow runs
+  the full check suite, validates that the tag matches the package version, and
+  skips `npm publish` only when that exact version already exists on npm.
 
 For alpha releases, include a short "completion notes" section. Current
 completion notes:

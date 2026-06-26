@@ -49,6 +49,22 @@ test("docs/capabilities.md exists and explains global vs workflow-scoped capabil
   assert.match(text, /required_capabilities/);
 });
 
+test("docs/versioning.md documents tag-based npm release automation", async () => {
+  const text = await readFile(resolve("docs/versioning.md"), "utf8");
+
+  assert.match(text, /Release Checklist/);
+  assert.match(text, /npm Trusted Publisher/);
+  assert.match(text, /agent-skillboard/);
+  assert.match(text, /NyXXiR\/skillboard/);
+  assert.match(text, /publish\.yml/);
+  assert.match(text, /npm publish/);
+  assert.match(text, /npm trust github agent-skillboard/);
+  assert.match(text, /package settings page/);
+  assert.match(text, /GitHub Actions trusted publisher/);
+  assert.match(text, /exactly matches `package\.json`/);
+  assert.match(text, /skips `npm publish` only when that exact version already exists on npm/);
+});
+
 test("README distinguishes global and source-tree command forms", async () => {
   const text = await readFile(resolve("README.md"), "utf8");
 
