@@ -26,7 +26,7 @@ export async function refreshAgentInventory(options = {}) {
     changed: plan.changed,
     plan,
     scan: {
-      scannedSkills: inventory.skills.length,
+      scannedSkills: inventory.scannedSkills ?? inventory.skills.length,
       scannedInstallUnits: inventory.installUnits.length,
       addedSkills: merged.addedSkills,
       addedInstallUnits: merged.addedInstallUnits,

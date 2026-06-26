@@ -232,6 +232,29 @@ top categories, next safe action, short section previews, and short action
 summaries. Use `skillboard brief --verbose` when you need the full list or
 full copyable command details.
 
+### Hermes System Prompt Bridge
+
+Hermes does not automatically read `AGENTS.md` or `CLAUDE.md`. To make Hermes
+follow the same SkillBoard policy, add a small bridge instruction to the Hermes
+profile or system prompt for the project:
+
+```text
+Use SkillBoard as the source of truth for agent skill availability.
+Before answering what skills can be used, run:
+skillboard brief --json --dir /path/to/your/project
+
+Do not infer availability from installed SKILL.md files. Immediately before
+invoking a skill, run:
+skillboard guard use <skill-id> --workflow <workflow-name> --dir /path/to/your/project
+
+For suggested policy changes, ask the user to approve one current action id,
+then run:
+skillboard apply-action <action-id> --dir /path/to/your/project --yes --json
+```
+
+Replace `/path/to/your/project` and `<workflow-name>` with the project and
+workflow Hermes should operate inside.
+
 Example: overloaded local agent profile
 
 ```text

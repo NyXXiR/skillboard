@@ -1303,6 +1303,43 @@ test("cli init scans Hermes profile skills into canonical manual workflow state"
   }
 });
 
+test("cli init keeps duplicate skill ids canonical and records source aliases", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-duplicate-skill-alias-test-"));
+  try {
+    const home = join(root, "home");
+    const project = join(root, "project");
+    const codexHome = join(home, ".codex");
+    const hermesHome = join(home, ".hermes");
+    await writeSkill(join(codexHome, "skills", "airtable"), "airtable");
+    await writeSkill(join(hermesHome, "profiles", "codex", "skills", "airtable"), "airtable");
+
+    const env = testAgentEnv(home, { CODEX_HOME: codexHome, HERMES_HOME: hermesHome });
+    const init = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", project], { env });
+    const configPath = join(project, "skillboard.config.yaml");
+    const config = await readFile(configPath, "utf8");
+    const check = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "check",
+      "--config",
+      configPath,
+      "--skills",
+      join(project, "skills")
+    ], { env });
+
+    assert.match(init.stdout, /Scanned installed agent skills: 2/);
+    assert.match(init.stdout, /Added managed skills: 1/);
+    assert.match(config, /^  airtable:\n\s+path: airtable\n\s+status: active\n\s+invocation: manual-only/m);
+    assert.match(config, /owner_install_unit: codex\.user-skills/);
+    assert.match(config, /source_aliases:\n\s+- owner_install_unit: hermes\.profile\.codex\.skills\n\s+path: airtable/);
+    assert.doesNotMatch(config, /airtable-2:/);
+    assert.match(config, /codex-local-manual:\n\s+harness: codex\n\s+active_skills:\n\s+- airtable/);
+    assert.match(config, /hermes-codex-local-manual:\n\s+harness: hermes\n\s+active_skills:\n\s+- airtable/);
+    assert.match(check.stdout, /Policy check passed/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("cli inventory refresh preserves existing workflows when importing local skills", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-inventory-existing-workflow-test-"));
   try {

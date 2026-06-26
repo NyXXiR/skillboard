@@ -109,6 +109,18 @@ test("README and install docs lead with npm quick start after registry publish",
   assert.doesNotMatch(install, /not published yet/i);
 });
 
+test("README and install docs include a Hermes system prompt bridge guide", async () => {
+  const readme = await readFile(resolve("README.md"), "utf8");
+  const install = await readFile(resolve("docs/install.md"), "utf8");
+  const combined = `${readme}\n${install}`;
+
+  assert.match(combined, /Hermes System Prompt Bridge/);
+  assert.match(combined, /Hermes does not automatically read `AGENTS\.md` or `CLAUDE\.md`/);
+  assert.match(combined, /skillboard brief --json --dir \/path\/to\/your\/project/);
+  assert.match(combined, /skillboard guard use <skill-id> --workflow <workflow-name> --dir \/path\/to\/your\/project/);
+  assert.match(combined, /skillboard apply-action <action-id> --dir \/path\/to\/your\/project --yes --json/);
+});
+
 test("project dogfoods AGENTS.md and CLAUDE.md bridge files", async () => {
   const agents = await readFile(resolve("AGENTS.md"), "utf8");
   const claude = await readFile(resolve("CLAUDE.md"), "utf8");

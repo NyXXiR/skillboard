@@ -125,6 +125,7 @@ export function mergeAgentSkillInventory(configText, inventory) {
   const reviewNotes = [];
   const managedSkillsByUnit = new Map();
   const localWorkflowSkillsByUnit = new Map();
+  const aliasSkillsByUnit = new Map();
 
   for (const skill of inventory.skills) {
     const unit = unitById.get(skill.ownerInstallUnit);
@@ -134,8 +135,10 @@ export function mergeAgentSkillInventory(configText, inventory) {
       skillsMap.set(skill.id, document.createNode(skillNode(skill, defaults)));
       addedSkills.push(skill.id);
       appendManagedSkill(managedSkillsByUnit, skill.ownerInstallUnit, skill.id);
+      appendSourceAliasSkills(aliasSkillsByUnit, skill.sourceAliases ?? [], skill.id);
       if (defaults.attachLocalWorkflow) {
         appendManagedSkill(localWorkflowSkillsByUnit, skill.ownerInstallUnit, skill.id);
+        appendLocalWorkflowAliasSkills(localWorkflowSkillsByUnit, skill.sourceAliases ?? [], skill.id);
       } else if (isTrustedLocalUserUnit(unit)) {
         reviewNotes.push(`Local skill ${skill.id} imported as manual-only candidate; use skillboard add workflow to attach it.`);
       }
@@ -144,24 +147,36 @@ export function mergeAgentSkillInventory(configText, inventory) {
     const owner = readYamlMapString(existing, "owner_install_unit", "");
     if (owner === skill.ownerInstallUnit) {
       appendManagedSkill(managedSkillsByUnit, skill.ownerInstallUnit, skill.id);
+      appendSourceAliases(existing, skill.sourceAliases ?? [], document);
+      appendSourceAliasSkills(aliasSkillsByUnit, skill.sourceAliases ?? [], skill.id);
+      if (defaults.attachLocalWorkflow) {
+        appendManagedSkill(localWorkflowSkillsByUnit, skill.ownerInstallUnit, skill.id);
+        appendLocalWorkflowAliasSkills(localWorkflowSkillsByUnit, skill.sourceAliases ?? [], skill.id);
+      }
     } else {
-      skippedSkills.push(skill.id);
+      const alias = sourceAliasForSkill(skill);
+      appendSourceAliases(existing, [alias], document);
+      appendManagedSkill(aliasSkillsByUnit, skill.ownerInstallUnit, skill.id);
+      if (defaults.attachLocalWorkflow) {
+        appendManagedSkill(localWorkflowSkillsByUnit, skill.ownerInstallUnit, skill.id);
+      }
     }
   }
 
   for (const unit of inventory.installUnits) {
     const managedSkills = managedSkillsByUnit.get(unit.id) ?? [];
-    if (managedSkills.length === 0 && !hasRuntimeComponents(unit)) {
+    const aliasSkills = aliasSkillsByUnit.get(unit.id) ?? [];
+    if (managedSkills.length === 0 && aliasSkills.length === 0 && !hasRuntimeComponents(unit)) {
       continue;
     }
     const existing = unitsMap.get(unit.id, true);
     if (existing === undefined) {
-      unitsMap.set(unit.id, document.createNode(installUnitNode(unit, managedSkills)));
+      unitsMap.set(unit.id, document.createNode(installUnitNode(unit, managedSkills, aliasSkills)));
       addedInstallUnits.push(unit.id);
       continue;
     }
     const unitMap = requireYamlMap(existing, `install_units.${unit.id}`);
-    if (mergeInstallUnitNode(unitMap, unit, managedSkills, document)) {
+    if (mergeInstallUnitNode(unitMap, unit, managedSkills, aliasSkills, document)) {
       updatedInstallUnits.push(unit.id);
     }
   }
@@ -367,11 +382,13 @@ async function findPluginManifests(root) {
 async function inventoryFromGroups(groups, home, initialWarnings = []) {
   const skills = [];
   const installUnits = [];
-  const usedSkillIds = new Set();
+  const skillById = new Map();
   const warnings = [...initialWarnings];
+  let scannedSkills = 0;
 
-  for (const group of groups.sort((left, right) => left.unit.id.localeCompare(right.unit.id))) {
+  for (const group of groups.sort(compareInventoryGroups)) {
     const unitSkills = [];
+    const aliasSkills = [];
     for (const file of group.files.sort((left, right) => left.localeCompare(right))) {
       let frontmatter;
       try {
@@ -380,30 +397,57 @@ async function inventoryFromGroups(groups, home, initialWarnings = []) {
         warnings.push(`skill file ${displayPath(file, home)} skipped: ${errorMessage(error)}`);
         continue;
       }
-      const baseId = skillIdFor(group.unit, group.root, file, frontmatter);
-      const id = uniqueId(baseId, usedSkillIds);
-      usedSkillIds.add(id);
+      scannedSkills += 1;
+      const id = skillIdFor(group.unit, group.root, file, frontmatter);
+      const sourceAlias = {
+        ownerInstallUnit: group.unit.id,
+        path: skillPath(group.root, file)
+      };
+      const existing = skillById.get(id);
+      if (existing !== undefined) {
+        existing.sourceAliases.push(sourceAlias);
+        aliasSkills.push(id);
+        continue;
+      }
       unitSkills.push(id);
-      skills.push({
+      const skill = {
         id,
-        path: skillPath(group.root, file),
+        path: sourceAlias.path,
         status: "quarantined",
         invocation: "blocked",
         exposure: "exported",
         category: group.unit.category,
         ownerInstallUnit: group.unit.id,
-        description: frontmatter.description
-      });
+        description: frontmatter.description,
+        sourceAliases: []
+      };
+      skillById.set(id, skill);
+      skills.push(skill);
     }
     if (unitSkills.length > 0) {
       group.unit.providedComponents = providedComponentList({ ...group.unit, skills: unitSkills });
     }
-    if (unitSkills.length > 0 || hasRuntimeComponents(group.unit)) {
-      installUnits.push(installUnitWithSkills(group.unit, unitSkills, group.root, home));
+    if (unitSkills.length > 0 || aliasSkills.length > 0 || hasRuntimeComponents(group.unit)) {
+      installUnits.push(installUnitWithSkills(group.unit, unitSkills, aliasSkills, group.root, home));
     }
   }
 
-  return { skills, installUnits, warnings };
+  return { skills, installUnits, scannedSkills, warnings };
+}
+
+function compareInventoryGroups(left, right) {
+  const rank = inventoryUnitRank(left.unit) - inventoryUnitRank(right.unit);
+  return rank === 0 ? left.unit.id.localeCompare(right.unit.id) : rank;
+}
+
+function inventoryUnitRank(unit) {
+  if (isTrustedLocalUserUnit(unit)) {
+    return 0;
+  }
+  if (unit.kind === "skill") {
+    return 1;
+  }
+  return 2;
 }
 
 function normalizeDiscoveryResult(result) {
@@ -419,7 +463,7 @@ function normalizeDiscoveryResult(result) {
   return { groups: [], warnings: [] };
 }
 
-function installUnitWithSkills(unit, skills, root, home) {
+function installUnitWithSkills(unit, skills, aliasSkills, root, home) {
   const commands = unit.commands ?? [];
   const hooks = unit.hooks ?? [];
   const mcpServers = unit.mcpServers ?? [];
@@ -433,7 +477,8 @@ function installUnitWithSkills(unit, skills, root, home) {
     mcpServers,
     modifiedConfigFiles: unit.modifiedConfigFiles ?? [],
     permissionRisk: unit.permissionRisk ?? permissionRiskFor({ commands, hooks, mcpServers }),
-    skills
+    skills,
+    sourceAliasSkills: aliasSkills
   };
 }
 
@@ -495,17 +540,18 @@ function skillPath(root, file) {
 }
 
 function skillNode(skill, defaults = {}) {
-  return {
+  return stripUndefined({
     path: skill.path,
     status: defaults.status ?? skill.status,
     invocation: defaults.invocation ?? skill.invocation,
     exposure: skill.exposure,
     category: skill.category,
-    owner_install_unit: skill.ownerInstallUnit
-  };
+    owner_install_unit: skill.ownerInstallUnit,
+    source_aliases: sourceAliasesNode(skill.sourceAliases ?? [])
+  });
 }
 
-function installUnitNode(unit, skills) {
+function installUnitNode(unit, skills, aliasSkills = []) {
   return stripUndefined({
     kind: unit.kind,
     source_class: unit.sourceClass,
@@ -518,6 +564,7 @@ function installUnitNode(unit, skills) {
     provided_components: unit.providedComponents,
     components: {
       skills,
+      source_aliases: aliasSkills,
       commands: unit.commands,
       hooks: unit.hooks,
       mcp_servers: unit.mcpServers
@@ -530,10 +577,11 @@ function installUnitNode(unit, skills) {
   });
 }
 
-function mergeInstallUnitNode(unitMap, unit, skills, document) {
+function mergeInstallUnitNode(unitMap, unit, skills, aliasSkills, document) {
   let changed = false;
   const components = ensureNestedMap(unitMap, "components", document);
   changed = appendNestedSequenceValues(components, "skills", skills, document) || changed;
+  changed = appendNestedSequenceValues(components, "source_aliases", aliasSkills, document) || changed;
   changed = appendNestedSequenceValues(components, "commands", unit.commands ?? [], document) || changed;
   changed = appendNestedSequenceValues(components, "hooks", unit.hooks ?? [], document) || changed;
   changed = appendNestedSequenceValues(components, "mcp_servers", unit.mcpServers ?? [], document) || changed;
@@ -564,6 +612,64 @@ function appendManagedSkill(map, unitId, skillId) {
   const values = map.get(unitId) ?? [];
   values.push(skillId);
   map.set(unitId, values);
+}
+
+function appendSourceAliasSkills(map, sourceAliases, skillId) {
+  for (const alias of sourceAliases) {
+    appendManagedSkill(map, alias.ownerInstallUnit, skillId);
+  }
+}
+
+function appendLocalWorkflowAliasSkills(map, sourceAliases, skillId) {
+  for (const alias of sourceAliases) {
+    appendManagedSkill(map, alias.ownerInstallUnit, skillId);
+  }
+}
+
+function sourceAliasForSkill(skill) {
+  return {
+    ownerInstallUnit: skill.ownerInstallUnit,
+    path: skill.path
+  };
+}
+
+function sourceAliasesNode(sourceAliases) {
+  const aliases = sourceAliases
+    .filter((alias) => alias.ownerInstallUnit !== undefined && alias.path !== undefined)
+    .map((alias) => ({
+      owner_install_unit: alias.ownerInstallUnit,
+      path: alias.path
+    }));
+  return aliases.length === 0 ? undefined : aliases;
+}
+
+function appendSourceAliases(skillNodeValue, sourceAliases, document) {
+  const skillMap = requireYamlMap(skillNodeValue, "skills.<id>");
+  const validAliases = sourceAliases.filter((alias) => alias.ownerInstallUnit !== undefined && alias.path !== undefined);
+  if (validAliases.length === 0) {
+    return false;
+  }
+  const seq = ensureNestedSeq(skillMap, "source_aliases", document);
+  const before = seq.items.length;
+  for (const alias of validAliases) {
+    if (sourceAliasExists(seq, alias)) {
+      continue;
+    }
+    seq.add(document.createNode({
+      owner_install_unit: alias.ownerInstallUnit,
+      path: alias.path
+    }));
+  }
+  return seq.items.length !== before;
+}
+
+function sourceAliasExists(seq, alias) {
+  return seq.items.some((item) => {
+    if (!YAML.isMap(item)) {
+      return false;
+    }
+    return item.get("owner_install_unit") === alias.ownerInstallUnit && item.get("path") === alias.path;
+  });
 }
 
 async function manifestMcpServers(value, pluginRoot) {
@@ -735,17 +841,6 @@ function readYamlMapString(value, key, fallback) {
 
 function preserveLineEndings(text, reference) {
   return reference.includes("\r\n") ? text.replace(/\n/g, "\r\n") : text;
-}
-
-function uniqueId(base, used) {
-  if (!used.has(base)) {
-    return base;
-  }
-  let counter = 2;
-  while (used.has(`${base}-${counter}`)) {
-    counter += 1;
-  }
-  return `${base}-${counter}`;
 }
 
 function validId(value) {
