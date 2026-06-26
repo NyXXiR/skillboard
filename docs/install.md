@@ -3,39 +3,26 @@
 SkillBoard sits one layer above skill installers, plugin marketplaces, harness
 bundles, and local skill repositories.
 
-## Install From A Clone
+## Install From npm
 
-The npm package is not published yet. Until the first publish, use a clone:
+Use npx when you want to bootstrap a project without keeping a global
+SkillBoard binary installed:
 
 ```bash
-git clone https://github.com/NyXXiR/skillboard.git
-cd skillboard
-npm install
-node bin/skillboard.mjs init --dir /path/to/your/project
-node bin/skillboard.mjs brief --dir /path/to/your/project
-node bin/skillboard.mjs doctor --dir /path/to/your/project --summary
+npx agent-skillboard init
+npx agent-skillboard brief
+npx agent-skillboard doctor --summary
 ```
 
 SkillBoard does not make installed skills automatically callable. It imports
 trusted local skills as manual-only and keeps runtime/plugin skills quarantined
 until reviewed.
 
-## Install From npm
-
-After the first npm publish, use npm/npx when you want to bootstrap a project
-without keeping a global SkillBoard binary installed:
-
-```bash
-npx agent-skillboard init
-npx agent-skillboard brief
-npx agent-skillboard doctor
-```
-
 In CI or scripts, use the explicit package/binary spelling:
 
 ```bash
 npx --yes --package agent-skillboard skillboard init
-npx --yes --package agent-skillboard skillboard doctor
+npx --yes --package agent-skillboard skillboard doctor --summary
 ```
 
 The equivalent `npm exec` spelling is explicit about the package and binary,
@@ -43,7 +30,7 @@ which is useful in scripts and CI:
 
 ```bash
 npm exec --yes --package agent-skillboard -- skillboard init
-npm exec --yes --package agent-skillboard -- skillboard doctor
+npm exec --yes --package agent-skillboard -- skillboard doctor --summary
 ```
 
 For repeated local use, install the CLI globally:
@@ -56,6 +43,19 @@ skillboard doctor
 
 The executable remains `skillboard` even though the npm package name is
 `agent-skillboard`.
+
+## Install From A Clone
+
+Use a clone when developing SkillBoard itself or testing unreleased changes:
+
+```bash
+git clone https://github.com/NyXXiR/skillboard.git
+cd skillboard
+npm install
+node bin/skillboard.mjs init --dir /path/to/your/project
+node bin/skillboard.mjs brief --dir /path/to/your/project
+node bin/skillboard.mjs doctor --dir /path/to/your/project --summary
+```
 
 ## What init Does
 

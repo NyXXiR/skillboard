@@ -115,27 +115,9 @@ This repository is an early CLI-first foundation. It currently supports:
 - Reconcile plan generation for new skills, new harnesses, and removed
   harnesses.
 
-## Quick Start
+## 5-Minute Quick Start
 
-npm package is not published yet. For now, run SkillBoard from a clone:
-
-```bash
-git clone https://github.com/NyXXiR/skillboard.git
-cd skillboard
-npm install
-node bin/skillboard.mjs init --dir /path/to/your/project
-node bin/skillboard.mjs brief --dir /path/to/your/project
-node bin/skillboard.mjs doctor --dir /path/to/your/project --summary
-```
-
-The `--dir` value is the project you want SkillBoard to manage. If you omit it,
-SkillBoard initializes the current directory.
-
-SkillBoard does not make installed skills automatically callable. It imports
-trusted local skills as manual-only and keeps runtime/plugin skills quarantined
-until reviewed.
-
-After the first npm publish, the short path will be:
+Run SkillBoard in the project you want to manage:
 
 ```bash
 npx agent-skillboard init
@@ -143,8 +125,21 @@ npx agent-skillboard brief
 npx agent-skillboard doctor --summary
 ```
 
-In CI or scripts after publish, the explicit package form avoids any ambiguity
-about the binary name:
+The first command creates the local control-plane files for the current
+directory. To manage another project from elsewhere, pass `--dir`:
+
+```bash
+npx agent-skillboard init --dir /path/to/your/project
+npx agent-skillboard brief --dir /path/to/your/project
+npx agent-skillboard doctor --dir /path/to/your/project --summary
+```
+
+SkillBoard does not make installed skills automatically callable. It imports
+trusted local skills as manual-only and keeps runtime/plugin skills quarantined
+until reviewed.
+
+For CI or scripts, the explicit package form avoids ambiguity about the binary
+name:
 
 ```bash
 npx --yes --package agent-skillboard skillboard init
@@ -162,7 +157,7 @@ Then check the project:
 npx --yes --package agent-skillboard skillboard doctor
 ```
 
-For repeated local use after publish, install the CLI globally:
+For repeated local use, install the CLI globally:
 
 ```bash
 npm install -g agent-skillboard
@@ -170,15 +165,16 @@ skillboard init
 skillboard doctor
 ```
 
-For development from a clone:
+For development from a clone, run the source-tree CLI:
 
 ```bash
 git clone https://github.com/NyXXiR/skillboard.git
 cd skillboard
 npm install
 npm test
-node bin/skillboard.mjs init
-node bin/skillboard.mjs doctor
+node bin/skillboard.mjs init --dir /path/to/your/project
+node bin/skillboard.mjs brief --dir /path/to/your/project
+node bin/skillboard.mjs doctor --dir /path/to/your/project --summary
 ```
 
 Most examples below use the global or npm-exec `skillboard` command. When
@@ -589,7 +585,7 @@ skillboard prefer <skill-id> --workflow <name> --capability <name> --config <pat
 skillboard remove skill <skill-id> --config <path> --skills <dir> [--force]
 skillboard dashboard --config <path> --skills <dir> [--out <path>]
 skillboard reconcile --config <path> --skills <dir> [--actual-harnesses a,b] [--out <path>]
-skillboard impact disable <skill-id> --config <path> --skills <dir> [--out <path>]
+skillboard impact disable <skill-id> --config <path> --skills <dir> [--out <path>] [--json]
 ```
 
 The bundled examples in this repository use `node bin/skillboard.mjs` explicitly

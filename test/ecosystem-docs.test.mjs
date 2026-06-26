@@ -64,21 +64,29 @@ test("README shows the architecture diagram from a GitHub-hosted asset", async (
   assert.match(text, /https:\/\/raw\.githubusercontent\.com\/NyXXiR\/skillboard\/main\/skillboard\.png/);
 });
 
-test("README and install docs keep clone quick start until first npm publish", async () => {
+test("README and install docs lead with npm quick start after publish", async () => {
   const readme = await readFile(resolve("README.md"), "utf8");
   const install = await readFile(resolve("docs/install.md"), "utf8");
 
-  assert.match(readme, /npm package is not published yet/i);
+  assert.match(readme, /## 5-Minute Quick Start/);
+  assert.match(readme, /npx agent-skillboard init/);
+  assert.match(readme, /npx agent-skillboard brief/);
+  assert.match(readme, /npx agent-skillboard doctor --summary/);
+  assert.match(readme, /npx agent-skillboard init --dir \/path\/to\/your\/project/);
   assert.match(readme, /git clone https:\/\/github\.com\/NyXXiR\/skillboard\.git/);
   assert.match(readme, /node bin\/skillboard\.mjs init --dir \/path\/to\/your\/project/);
   assert.match(readme, /node bin\/skillboard\.mjs brief --dir \/path\/to\/your\/project/);
   assert.match(readme, /node bin\/skillboard\.mjs doctor --dir \/path\/to\/your\/project --summary/);
-  assert.match(readme, /If you omit it,\s*SkillBoard initializes the current directory/);
+  assert.doesNotMatch(readme, /npm package is not published yet/i);
 
-  assert.match(install, /After the first npm publish/i);
+  assert.match(install, /## Install From npm/);
   assert.match(install, /npx agent-skillboard init/);
+  assert.match(install, /npx agent-skillboard brief/);
+  assert.match(install, /npx agent-skillboard doctor --summary/);
   assert.match(install, /npx --yes --package agent-skillboard skillboard init/);
   assert.match(install, /npm exec --yes --package agent-skillboard -- skillboard init/);
+  assert.match(install, /## Install From A Clone/);
+  assert.doesNotMatch(install, /not published yet/i);
 });
 
 test("project dogfoods AGENTS.md and CLAUDE.md bridge files", async () => {

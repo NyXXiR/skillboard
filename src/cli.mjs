@@ -680,6 +680,10 @@ async function impact(argv, options, stdout) {
   }
   const workspace = await loadWorkspace({ configPath: configPath(options), skillsRoot: skillsRoot(options) });
   const result = impactDisable(workspace, argv[1]);
+  if (options.get("json") === "true") {
+    stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return 0;
+  }
   const markdown = renderImpact(result);
   const out = options.get("out");
   if (out === undefined) {
@@ -1154,7 +1158,7 @@ function helpText() {
     "  remove skill <skill-id> --config <path> --skills <dir> [--force] [--dry-run] [--json]",
     "  dashboard --config <path> --skills <dir> [--out <path>]",
     "  reconcile --config <path> --skills <dir> [--actual-harnesses a,b] [--out <path>]",
-    "  impact disable <skill-id> --config <path> --skills <dir> [--out <path>]",
+    "  impact disable <skill-id> --config <path> --skills <dir> [--out <path>] [--json]",
     "",
     "Approval loop:",
     "  Run skillboard brief --json --config <path> --skills <dir> [--workflow <name>] [--include-actions].",

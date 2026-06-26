@@ -1074,6 +1074,28 @@ test("cli impact can write disable reports to a file", async () => {
   }
 });
 
+test("cli impact disable --json writes a machine-readable payload", async () => {
+  const result = await execFileAsync(process.execPath, [
+    "bin/skillboard.mjs",
+    "impact",
+    "disable",
+    "matt.tdd",
+    "--config",
+    "examples/skillboard.config.yaml",
+    "--skills",
+    "examples/skills",
+    "--json"
+  ]);
+  const payload = JSON.parse(result.stdout);
+
+  assert.equal(payload.skillId, "matt.tdd");
+  assert.equal(payload.exists, true);
+  assert.equal(payload.risk, "medium");
+  assert.deepEqual(payload.affectedWorkflows, ["codex-night-workflow"]);
+  assert.deepEqual(payload.affectedOutputs, ["diff_summary", "test_result_or_reason", "risk_notes"]);
+  assert.deepEqual(payload.alternatives, ["meerkat.test-first-implementation"]);
+});
+
 test("cli init scans installed local user skills into manual workflow state", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-init-scan-test-"));
   try {
