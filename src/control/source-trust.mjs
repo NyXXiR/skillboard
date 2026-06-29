@@ -130,6 +130,7 @@ export function skillSummary(workspace, skill, workflow) {
     invocation: skill.invocation,
     exposure: skill.exposure,
     category: skill.category,
+    variant: skill.variant ?? null,
     sourceClass: source.class,
     sourcePriority: source.priority,
     ownerInstallUnit: source.ownerInstallUnit,

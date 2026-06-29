@@ -132,7 +132,8 @@ SkillBoard is deliberately narrower:
 - Treat harness additions/removals as migration events, not silent breakage.
 - Track capabilities so workflows can depend on roles instead of only skill ids.
 - Record user-approved skill variants, such as `a -> claude.a`, so different
-  agents can share consistent workflow policy.
+  agents can share consistent workflow policy, with a manual adaptation lifecycle
+  for draft, approval, computed drift, and reset checkpoints.
 - Track install units so plugin bundles, package-manager dependencies, harnesses,
   MCP servers, hooks, agents, and LSPs are not flattened into skill names.
 - Keep user-added global skills limited to explicit `global-meta` skills such as
@@ -651,7 +652,11 @@ skillboard review install-unit <unit-id> [--trust-level trusted|reviewed|unrevie
 skillboard add skill <skill-id> --path <relative-skill-path> --config <path> --skills <dir>
 skillboard add workflow <workflow-name> --harness <harness-name> --config <path> --skills <dir> [--skill <id>[,<id>]]
 skillboard add harness <harness-name> --config <path> --skills <dir> [--status <status>] [--command <cmd>[,<cmd>]]
-skillboard variant add <variant-id> --from <base-id> --capability <name> --workflow <name> --config <path> --skills <dir> [--path <relative-skill-path>]
+skillboard variant add <variant-id> --from <base-id> --capability <name> --workflow <name> --config <path> --skills <dir> [--path <relative-skill-path>] [--mode manual-only|router-only|workflow-auto] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]
+skillboard variant fork <variant-id> --from <base-id> --capability <name> --workflow <name> --path <relative-skill-path> --config <path> --skills <dir> [--adapted-for <label>] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]
+skillboard variant status <variant-id> --config <path> --skills <dir> [--json]
+skillboard variant approve <variant-id> --config <path> --skills <dir> [--mode manual-only|router-only|workflow-auto] [--dry-run] [--json]
+skillboard variant reset <variant-id> --to-base|--to-approved --config <path> --skills <dir> [--yes] [--dry-run] [--mode manual-only|router-only|workflow-auto] [--json]
 skillboard activate <skill-id> --workflow <name> --config <path> --skills <dir>
 skillboard block <skill-id> --workflow <name> --config <path> --skills <dir>
 skillboard quarantine <skill-id> --config <path> --skills <dir>
@@ -667,10 +672,17 @@ because they are meant to run from a fresh clone without a global install.
 
 Use `skillboard variant add claude.a --from a --capability task-review
 --workflow claude-workflow --path claude/a ...` to record an explicit,
-user-approved `a -> claude.a` variant and make it preferred for that workflow.
+user-approved `a -> claude.a` variant. For a reviewed manual adaptation lifecycle,
+use `skillboard variant fork <variant-id>` to create draft metadata and raw
+snapshot records, edit the variant `SKILL.md` by hand, inspect `skillboard variant
+status <variant-id>` for `variant.status` and computed drift, then promote with
+`skillboard variant approve <variant-id>` or restore with `skillboard variant
+reset <variant-id> --to-base|--to-approved`.
+
 SkillBoard records the relationship and policy only; it does not convert skill
 bodies, does not rewrite skill bodies, and does not guarantee semantic
-equivalence of skill bodies.
+equivalence of skill bodies. See [docs/variant-lifecycle.md](docs/variant-lifecycle.md)
+for the full lifecycle guide.
 
 ## Reconciliation Model
 

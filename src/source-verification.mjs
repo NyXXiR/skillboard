@@ -233,6 +233,12 @@ function uniquePaths(paths) {
   return [...new Set(paths)];
 }
 
+export async function skillContentDigest(skillFilePath) {
+  const hash = createHash("sha256");
+  hash.update(await readFile(skillFilePath));
+  return `${DIGEST_PREFIX}${hash.digest("hex")}`;
+}
+
 async function skillContentDigests(workspace, skillsRoot) {
   const digests = new Map();
   if (skillsRoot === undefined) {
@@ -241,9 +247,7 @@ async function skillContentDigests(workspace, skillsRoot) {
   for (const skill of workspace.skills) {
     const skillPath = join(skillsRoot, skill.path, "SKILL.md");
     try {
-      const hash = createHash("sha256");
-      hash.update(await readFile(skillPath));
-      digests.set(skill.id, `${DIGEST_PREFIX}${hash.digest("hex")}`);
+      digests.set(skill.id, await skillContentDigest(skillPath));
     } catch {
       digests.set(skill.id, null);
     }

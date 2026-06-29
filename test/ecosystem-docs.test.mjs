@@ -49,6 +49,34 @@ test("docs/capabilities.md exists and explains global vs workflow-scoped capabil
   assert.match(text, /required_capabilities/);
 });
 
+test("docs document manual variant lifecycle without promising conversion", async () => {
+  const readme = await readFile(resolve("README.md"), "utf8");
+  const capabilities = await readFile(resolve("docs/capabilities.md"), "utf8");
+  const policy = await readFile(resolve("docs/policy-model.md"), "utf8");
+  const guide = await readFile(resolve("docs/variant-lifecycle.md"), "utf8");
+  const bridge = await readFile(resolve("src/lifecycle-content.mjs"), "utf8");
+  const combined = `${readme}\n${capabilities}\n${policy}\n${guide}\n${bridge}`;
+
+  assert.match(combined, /skillboard variant add/);
+  assert.match(combined, /skillboard variant fork <variant-id>/);
+  assert.match(combined, /skillboard variant status <variant-id>/);
+  assert.match(combined, /skillboard variant approve <variant-id>/);
+  assert.match(combined, /skillboard variant reset <variant-id>/);
+  assert.match(combined, /manual adaptation lifecycle/);
+  assert.match(combined, /policy registration/);
+  assert.match(combined, /variant\.status/);
+  assert.match(combined, /computed drift/);
+  assert.match(combined, /raw snapshot/);
+  assert.match(guide, /base:\n\s+content_digest: sha256:\.\.\.\n\s+snapshot: \.skillboard\/variant-snapshots\/claude\.a\/base\.md/);
+  assert.match(guide, /approved:\n\s+content_digest: sha256:\.\.\.\n\s+snapshot: \.skillboard\/variant-snapshots\/claude\.a\/approved\.md/);
+  assert.match(guide, /created lazily/);
+  assert.match(readme, /\[--category <name>\] \[--owner-install-unit <unit-id>\]/);
+  assert.match(guide, /\[--category <name>\] \[--owner-install-unit <unit-id>\]/);
+  assert.match(combined, /does not convert skill bodies/);
+  assert.doesNotMatch(combined, /Success payloads include `ok: true`/);
+  assert.doesNotMatch(combined, /automatically (convert|rewrite|adapt)/i);
+});
+
 test("docs/versioning.md documents tag-based npm release automation", async () => {
   const text = await readFile(resolve("docs/versioning.md"), "utf8");
 

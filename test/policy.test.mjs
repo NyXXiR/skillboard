@@ -98,7 +98,8 @@ test("policy allows global invocation only for explicitly global meta skills", a
       canonicalFor: [],
       conflictsWith: [],
       replacedBy: undefined,
-      ownerInstallUnit: undefined
+      ownerInstallUnit: undefined,
+      variant: undefined
     });
     workspace.skills[0].invocation = "global-auto";
     const result = checkPolicy(workspace);
@@ -167,7 +168,8 @@ test("policy rejects invalid status/invocation combinations", async () => {
       canonicalFor: [],
       conflictsWith: [],
       replacedBy: undefined,
-      ownerInstallUnit: undefined
+      ownerInstallUnit: undefined,
+      variant: undefined
     });
     const result = checkPolicy(workspace);
     const errors = result.errors.join("\n");
@@ -190,7 +192,8 @@ test("policy warns on legacy status values", async () => {
       canonicalFor: [],
       conflictsWith: [],
       replacedBy: undefined,
-      ownerInstallUnit: undefined
+      ownerInstallUnit: undefined,
+      variant: undefined
     });
     const result = checkPolicy(workspace);
 
@@ -222,7 +225,8 @@ test("policy accepts all canonical status/invocation pairs", async () => {
         canonicalFor: [],
         conflictsWith: [],
         replacedBy: undefined,
-        ownerInstallUnit: undefined
+        ownerInstallUnit: undefined,
+        variant: undefined
       });
     }
     const result = checkPolicy(workspace);

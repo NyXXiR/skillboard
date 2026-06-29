@@ -11,12 +11,14 @@ const EXPECTED_EXPORTS = [
   "addSkill",
   "addSkillVariant",
   "addWorkflow",
+  "approveSkillVariant",
   "auditSources",
   "blockSkill",
   "canUseSkill",
   "classifySkillSource",
   "classifySkillTrust",
   "explainSkill",
+  "forkSkillVariant",
   "installGuardHook",
   "listHarnesses",
   "listInstallUnits",
@@ -25,7 +27,9 @@ const EXPECTED_EXPORTS = [
   "planGuardHookInstall",
   "preferSkill",
   "quarantineSkill",
-  "removeSkill"
+  "removeSkill",
+  "resetSkillVariant",
+  "variantLifecycleStatus"
 ];
 
 test("control.mjs exports the expected public API", async () => {
@@ -45,10 +49,12 @@ test("index.mjs exports the expected control-derived public API", async () => {
     "addSkill",
     "addSkillVariant",
     "addWorkflow",
+    "approveSkillVariant",
     "auditSources",
     "blockSkill",
     "canUseSkill",
     "explainSkill",
+    "forkSkillVariant",
     "installGuardHook",
     "listHarnesses",
     "listInstallUnits",
@@ -56,7 +62,9 @@ test("index.mjs exports the expected control-derived public API", async () => {
     "listWorkflows",
     "preferSkill",
     "quarantineSkill",
-    "removeSkill"
+    "removeSkill",
+    "resetSkillVariant",
+    "variantLifecycleStatus"
   ];
 
   for (const name of expected) {

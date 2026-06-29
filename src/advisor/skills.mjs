@@ -52,6 +52,7 @@ function declaredSkillEntry(summary, explanation, use, group) {
       invocation: summary.invocation,
       exposure: summary.exposure,
       category: summary.category,
+      variant: summary.variant ?? null,
       source_class: explanation.source.class,
       owner_install_unit: explanation.source.ownerInstallUnit,
       workflow_roles: use?.roles ?? summary.workflowRoles,

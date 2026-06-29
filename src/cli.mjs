@@ -8,6 +8,7 @@ import {
   addSkill,
   addSkillVariant,
   addWorkflow,
+  approveSkillVariant,
   auditSources,
   blockSkill,
   canUseSkill,
@@ -15,6 +16,7 @@ import {
   detectInstallOutput,
   doctorProject,
   explainSkill,
+  forkSkillVariant,
   importSource,
   installGuardHook,
   impactDisable,
@@ -28,6 +30,7 @@ import {
   preferSkill,
   quarantineSkill,
   removeSkill,
+  resetSkillVariant,
   reconcileWorkspace,
   refreshAgentInventory,
   refreshSourcePins,
@@ -41,6 +44,7 @@ import {
   rolloutReport,
   rolloutRollback,
   verifySources,
+  variantLifecycleStatus,
   writeLockfile
 } from "./index.mjs";
 // SIZE_OK: src/cli.mjs is pre-existing command-router debt; brief behavior delegates to src/brief-cli.mjs and hook planning delegates through src/hook-plan.mjs until a broader router split.
@@ -60,7 +64,7 @@ export async function main(argv, stdout, stderr) {
     return await run(argv, stdout, stderr);
   } catch (error) {
     stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-    return 1;
+    return Number.isInteger(error?.exitCode) ? error.exitCode : 1;
   }
 }
 
@@ -589,13 +593,46 @@ async function addHarnessCommand(args, options, stdout) {
 }
 
 async function variant(argv, options, stdout) {
+  try {
+    return await runVariant(argv, options, stdout);
+  } catch (error) {
+    const payload = variantErrorPayload(error);
+    if (options.get("json") === "true") {
+      stdout.write(`${JSON.stringify({ ok: false, error: payload.error }, null, 2)}\n`);
+      return payload.exitCode;
+    }
+    throw Object.assign(new Error(payload.error.message), { exitCode: payload.exitCode });
+  }
+}
+
+async function runVariant(argv, options, stdout) {
   const args = positionalArgs(argv);
+  const subcommand = args[0];
+  if (subcommand === "add") {
+    return await variantAddCommand(args, options, stdout);
+  }
+  if (subcommand === "fork") {
+    return await variantForkCommand(args, options, stdout);
+  }
+  if (subcommand === "status") {
+    return await variantStatusCommand(args, options, stdout);
+  }
+  if (subcommand === "approve") {
+    return await variantApproveCommand(args, options, stdout);
+  }
+  if (subcommand === "reset") {
+    return await variantResetCommand(args, options, stdout);
+  }
+  throw new VariantCliError("unknown_variant_subcommand", `Unknown variant subcommand: ${subcommand ?? "<missing>"}`, 2);
+}
+
+async function variantAddCommand(args, options, stdout) {
   const variantId = args[1];
   const baseId = options.get("from");
   const capability = options.get("capability");
   const workflow = options.get("workflow");
-  if (args[0] !== "add" || variantId === undefined || baseId === undefined || capability === undefined || workflow === undefined) {
-    throw new Error("Usage: skillboard variant add <variant-id> --from <base-id> --capability <name> --workflow <name> --config <path> --skills <dir> [--path <relative-skill-path>] [--mode manual-only|router-only|workflow-auto] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]");
+  if (variantId === undefined || baseId === undefined || capability === undefined || workflow === undefined) {
+    throw new VariantCliError("usage_error", variantAddUsage(), 2);
   }
   const result = await addSkillVariant({
     variantId,
@@ -612,6 +649,160 @@ async function variant(argv, options, stdout) {
   });
   writeControlResult(stdout, result, options);
   return 0;
+}
+
+async function variantForkCommand(args, options, stdout) {
+  const variantId = args[1];
+  const baseId = options.get("from");
+  const capability = options.get("capability");
+  const workflow = options.get("workflow");
+  if (variantId === undefined || baseId === undefined || capability === undefined || workflow === undefined || options.get("path") === undefined) {
+    throw new VariantCliError("usage_error", variantForkUsage(), 2);
+  }
+  const result = await forkSkillVariant({
+    variantId,
+    baseId,
+    capability,
+    workflow,
+    path: options.get("path"),
+    adaptedFor: options.get("adapted-for"),
+    category: options.get("category"),
+    ownerInstallUnit: options.get("owner-install-unit"),
+    configPath: configPath(options),
+    skillsRoot: skillsRoot(options),
+    dryRun: options.get("dry-run") === "true"
+  });
+  writeLifecycleResult(stdout, result, options);
+  return 0;
+}
+
+async function variantStatusCommand(args, options, stdout) {
+  const variantId = args[1];
+  if (variantId === undefined) {
+    throw new VariantCliError("usage_error", "Usage: skillboard variant status <variant-id> --config <path> --skills <dir> [--json]", 2);
+  }
+  const result = await variantLifecycleStatus({ variantId, configPath: configPath(options), skillsRoot: skillsRoot(options) });
+  writeOutput(stdout, result, options, () => renderVariantStatus(result));
+  return 0;
+}
+
+async function variantApproveCommand(args, options, stdout) {
+  const variantId = args[1];
+  if (variantId === undefined) {
+    throw new VariantCliError("usage_error", "Usage: skillboard variant approve <variant-id> --config <path> --skills <dir> [--mode manual-only|router-only|workflow-auto] [--dry-run] [--json]", 2);
+  }
+  const result = await approveSkillVariant({
+    variantId,
+    mode: options.get("mode"),
+    configPath: configPath(options),
+    skillsRoot: skillsRoot(options),
+    dryRun: options.get("dry-run") === "true"
+  });
+  writeLifecycleResult(stdout, result, options);
+  return 0;
+}
+
+async function variantResetCommand(args, options, stdout) {
+  const variantId = args[1];
+  if (variantId === undefined) {
+    throw new VariantCliError("usage_error", "Usage: skillboard variant reset <variant-id> --to-base|--to-approved --config <path> --skills <dir> [--yes] [--dry-run] [--mode manual-only|router-only|workflow-auto] [--json]", 2);
+  }
+  const result = await resetSkillVariant({
+    variantId,
+    toBase: options.get("to-base") === "true",
+    toApproved: options.get("to-approved") === "true",
+    mode: options.get("mode"),
+    yes: options.get("yes") === "true",
+    dryRun: options.get("dry-run") === "true",
+    configPath: configPath(options),
+    skillsRoot: skillsRoot(options)
+  });
+  writeLifecycleResult(stdout, result, options);
+  return 0;
+}
+
+function variantAddUsage() {
+  return "Usage: skillboard variant add <variant-id> --from <base-id> --capability <name> --workflow <name> --config <path> --skills <dir> [--path <relative-skill-path>] [--mode manual-only|router-only|workflow-auto] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]";
+}
+
+function variantForkUsage() {
+  return "Usage: skillboard variant fork <variant-id> --from <base-id> --capability <name> --workflow <name> --path <relative-skill-path> --config <path> --skills <dir> [--adapted-for <label>] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]";
+}
+
+class VariantCliError extends Error {
+  constructor(code, message, exitCode) {
+    super(message);
+    this.code = code;
+    this.exitCode = exitCode;
+  }
+}
+
+function variantErrorPayload(error) {
+  if (error instanceof VariantCliError) {
+    return { exitCode: error.exitCode, error: { code: error.code, message: error.message } };
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  if (
+    message.startsWith("Usage:")
+    || message.includes("requires exactly one of --to-base or --to-approved")
+    || message.includes("requires --mode manual-only")
+  ) {
+    return { exitCode: 2, error: { code: "usage_error", message } };
+  }
+  if (message.includes("requires --yes")) {
+    return { exitCode: 1, error: { code: "confirmation_required", message } };
+  }
+  if (message.toLowerCase().includes("snapshot")) {
+    return { exitCode: 1, error: { code: "snapshot_error", message } };
+  }
+  if (message.toLowerCase().includes("symlink") || message.toLowerCase().includes("path")) {
+    return { exitCode: 1, error: { code: "path_error", message } };
+  }
+  return { exitCode: 1, error: { code: "lifecycle_error", message } };
+}
+
+function writeLifecycleResult(stdout, result, options) {
+  const warnings = result.warnings ?? result.policy?.warnings ?? [];
+  if (options.get("json") === "true") {
+    stdout.write(`${JSON.stringify({
+      message: result.message,
+      dryRun: result.dryRun,
+      changed: result.changed,
+      plan: result.plan,
+      filePlan: result.filePlan ?? [],
+      skill: result.skill,
+      variant: result.variant,
+      warnings
+    }, null, 2)}\n`);
+    return;
+  }
+  stdout.write(`${result.dryRun ? "Dry run: " : ""}${result.message}\n`);
+  stdout.write(renderChangePlan(result.plan));
+  stdout.write(renderFilePlan(result.filePlan ?? []));
+  if (warnings.length > 0) {
+    stdout.write(`${warnings.join("\n")}\n`);
+  }
+}
+
+function renderFilePlan(filePlan) {
+  if (filePlan.length === 0) {
+    return "File operations: none\n";
+  }
+  return `File operations:\n${filePlan.map((item) => `- ${item.operation ?? "write"} ${item.path ?? item.target ?? "unknown"}`).join("\n")}\n`;
+}
+
+function renderVariantStatus(result) {
+  return [
+    `Variant ${result.skill}: ${result.computedStatus}`,
+    `Live digest: ${result.liveDigest ?? "missing"}`,
+    `Base digest: ${result.baseDigest}`,
+    `Approved digest: ${result.approvedDigest ?? "none"}`,
+    `Live file: ${result.files.live.path}`,
+    `Base snapshot: ${result.files.baseSnapshot.path}`,
+    `Approved snapshot: ${result.files.approvedSnapshot?.path ?? "none"}`,
+    `Warnings: ${result.warnings.length === 0 ? "none" : result.warnings.join("; ")}`,
+    ""
+  ].join("\n");
 }
 
 async function block(argv, options, stdout) {
@@ -1189,6 +1380,10 @@ function helpText() {
     "  add workflow <workflow-name> --harness <harness-name> --config <path> --skills <dir> [--skill <id>[,<id>]] [--harness-status <status>] [--require-existing-harness] [--dry-run] [--json]",
     "  add harness <harness-name> --config <path> --skills <dir> [--status <status>] [--command <cmd>[,<cmd>]] [--dry-run] [--json]",
     "  variant add <variant-id> --from <base-id> --capability <name> --workflow <name> --config <path> --skills <dir> [--path <relative-skill-path>] [--mode manual-only|router-only|workflow-auto] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]",
+    "  variant fork <variant-id> --from <base-id> --capability <name> --workflow <name> --path <relative-skill-path> --config <path> --skills <dir> [--adapted-for <label>] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]",
+    "  variant status <variant-id> --config <path> --skills <dir> [--json]",
+    "  variant approve <variant-id> --config <path> --skills <dir> [--mode manual-only|router-only|workflow-auto] [--dry-run] [--json]",
+    "  variant reset <variant-id> --to-base|--to-approved --config <path> --skills <dir> [--yes] [--dry-run] [--mode manual-only|router-only|workflow-auto] [--json]",
     "  activate <skill-id> --workflow <name> [--mode manual-only|router-only|workflow-auto] --config <path> --skills <dir> [--dry-run] [--json]",
     "  block <skill-id> --workflow <name> --config <path> --skills <dir> [--dry-run] [--json]",
     "  quarantine <skill-id> --config <path> --skills <dir> [--dry-run] [--json]",

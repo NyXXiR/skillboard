@@ -80,7 +80,7 @@ If no preferred skill is set in the workflow, the global catalog's canonical ski
 
 Use `skillboard variant add claude.a --from a --capability task-review --workflow claude-workflow --path claude/a ...` to record a user-approved `a -> claude.a` variant. SkillBoard adds the variant to the capability alternatives, makes it preferred for the named workflow, and keeps the base skill available as fallback.
 
-This is policy registration, not prompt migration. SkillBoard records user-approved variants and consistent workflow policy across agents; it does not convert skill bodies, does not rewrite skill bodies, and does not guarantee semantic equivalence of skill bodies.
+This is policy registration, not prompt migration. For a reviewed manual adaptation lifecycle, run `skillboard variant fork <variant-id>` to create a draft and raw snapshot, edit the variant body by hand, inspect `skillboard variant status <variant-id>` for `variant.status` and computed drift, then use `skillboard variant approve <variant-id>` or `skillboard variant reset <variant-id>`. SkillBoard records user-approved variants and consistent workflow policy across agents; it does not convert skill bodies, does not rewrite skill bodies, and does not guarantee semantic equivalence of skill bodies.
 
 ## Global vs Workflow: When to Use Each
 

@@ -20,6 +20,12 @@ import {
   quarantineSkill,
   removeSkill
 } from "./control/skill-crud.mjs";
+import {
+  approveSkillVariant,
+  forkSkillVariant
+} from "./control/skill-variants.mjs";
+import { resetSkillVariant } from "./control/variant-reset.mjs";
+import { variantLifecycleStatus } from "./control/variant-status.mjs";
 import { addHarness, addWorkflow } from "./control/workflow-crud.mjs";
 import {
   GUARD_HOOK_MODE,
@@ -119,14 +125,18 @@ export {
   addSkill,
   addSkillVariant,
   addWorkflow,
+  approveSkillVariant,
   auditSources,
   blockSkill,
   canUseSkill,
   classifySkillSource,
   classifySkillTrust,
+  forkSkillVariant,
   preferSkill,
   quarantineSkill,
-  removeSkill
+  removeSkill,
+  resetSkillVariant,
+  variantLifecycleStatus
 };
 
 export async function installGuardHook(options) {

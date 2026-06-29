@@ -3,7 +3,9 @@ import { join, relative } from "node:path";
 import YAML from "yaml";
 import {
   readBoolean,
+  readOptionalRecord,
   readOptionalString,
+  readRequiredString,
   readString,
   readStringList,
   requireRecord
@@ -147,9 +149,38 @@ function parseSkills(value) {
       canonicalFor: readStringList(skill, "canonical_for"),
       conflictsWith: readStringList(skill, "conflicts_with"),
       replacedBy: readOptionalString(skill, "replaced_by"),
-      ownerInstallUnit: readOptionalString(skill, "owner_install_unit")
+      ownerInstallUnit: readOptionalString(skill, "owner_install_unit"),
+      variant: parseSkillVariant(skill, `skills.${id}.variant`)
     };
   });
+}
+
+function parseSkillVariant(skill, label) {
+  const raw = readOptionalRecord(skill, "variant", label);
+  if (raw === undefined) {
+    return null;
+  }
+  const approved = readOptionalRecord(raw, "approved", `${label}.approved`);
+  return {
+    of: readRequiredString(raw, "of", `${label}.of`),
+    adaptedFor: readOptionalString(raw, "adapted_for") ?? null,
+    capability: readRequiredString(raw, "capability", `${label}.capability`),
+    workflow: readRequiredString(raw, "workflow", `${label}.workflow`),
+    status: readRequiredString(raw, "status", `${label}.status`),
+    base: parseVariantCheckpoint(raw, "base", `${label}.base`),
+    ...(approved === undefined ? {} : { approved: parseVariantCheckpoint(raw, "approved", `${label}.approved`) })
+  };
+}
+
+function parseVariantCheckpoint(raw, key, label) {
+  const checkpoint = readOptionalRecord(raw, key, label);
+  if (checkpoint === undefined) {
+    throw new Error(`${label} must be a mapping`);
+  }
+  return {
+    contentDigest: readRequiredString(checkpoint, "content_digest", `${label}.content_digest`),
+    snapshot: readRequiredString(checkpoint, "snapshot", `${label}.snapshot`)
+  };
 }
 
 function parseCapabilities(value) {

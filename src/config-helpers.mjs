@@ -5,6 +5,14 @@ export function requireRecord(value, label) {
   return value;
 }
 
+export function readOptionalRecord(record, key, label = key) {
+  const value = record[key];
+  if (value === undefined) {
+    return undefined;
+  }
+  return requireRecord(value, label);
+}
+
 export function readString(record, key, fallback) {
   const value = record[key];
   if (value === undefined) {
@@ -12,6 +20,14 @@ export function readString(record, key, fallback) {
   }
   if (typeof value !== "string") {
     throw new Error(`${key} must be a string`);
+  }
+  return value;
+}
+
+export function readRequiredString(record, key, label = key) {
+  const value = record[key];
+  if (typeof value !== "string") {
+    throw new Error(`${label} must be a string`);
   }
   return value;
 }

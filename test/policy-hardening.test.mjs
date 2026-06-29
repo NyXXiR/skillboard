@@ -17,7 +17,8 @@ test("policy rejects unscoped workflow-auto skills when explicit workflows are r
     canonicalFor: [],
     conflictsWith: [],
     replacedBy: undefined,
-    ownerInstallUnit: undefined
+    ownerInstallUnit: undefined,
+    variant: undefined
   });
 
   const result = checkPolicy(workspace);

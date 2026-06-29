@@ -21,10 +21,12 @@ import {
   addSkill,
   addSkillVariant,
   addWorkflow,
+  approveSkillVariant,
   auditSources,
   blockSkill,
   canUseSkill,
   explainSkill,
+  forkSkillVariant,
   installGuardHook,
   listHarnesses,
   listInstallUnits,
@@ -32,7 +34,9 @@ import {
   listWorkflows,
   preferSkill,
   quarantineSkill,
-  removeSkill
+  removeSkill,
+  resetSkillVariant,
+  variantLifecycleStatus
 } from "./control.mjs";
 
 export {
@@ -41,6 +45,7 @@ export {
   addSkill,
   addSkillVariant,
   addWorkflow,
+  approveSkillVariant,
   agentInventoryDetectors,
   auditSources,
   blockSkill,
@@ -51,6 +56,7 @@ export {
   detectInstallOutput,
   doctorProject,
   explainSkill,
+  forkSkillVariant,
   impactDisable,
   importSource,
   initProject,
@@ -66,6 +72,7 @@ export {
   preferSkill,
   quarantineSkill,
   removeSkill,
+  resetSkillVariant,
   reconcileWorkspace,
   refreshAgentInventory,
   refreshSourcePins,
@@ -80,5 +87,6 @@ export {
   renderReconcilePlan,
   uninstallProject,
   verifySources,
+  variantLifecycleStatus,
   writeLockfile
 };
