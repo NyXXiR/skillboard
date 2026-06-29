@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
+import YAML from "yaml";
 
 const execFileAsync = promisify(execFile);
 
@@ -39,6 +40,95 @@ function assertInitNextCommand(stdout, command, dir, suffix = "") {
       && candidate.endsWith(suffix);
   });
   assert.ok(line, `expected init Next command ${command} for ${dir}${suffix}\n${stdout}`);
+}
+
+function variantAddCliConfig(options = {}) {
+  return `version: 1
+defaults:
+  invocation_policy: deny-by-default
+  allow_model_invocation: false
+skills:
+  # variant add should preserve comments through control writes
+  base.review:
+    path: base/review
+    status: active
+    invocation: workflow-auto
+    exposure: exported
+    category: core
+  canonical.review:
+    path: canonical/review
+    status: active
+    invocation: manual-only
+    exposure: exported
+    category: core
+  old.review:
+    path: old/review
+    status: active
+    invocation: manual-only
+    exposure: exported
+    category: core
+${options.variantSkill ?? ""}capabilities:
+  task-review:
+    canonical: canonical.review
+    alternatives: []
+    default_policy: router-only
+harnesses:
+  claude:
+    status: available
+    workflows:
+      - claude-workflow
+workflows:
+  claude-workflow:
+    harness: claude
+    active_skills: []
+    blocked_skills: []
+    required_capabilities:
+      task-review:
+        preferred: old.review
+        fallback: []
+        policy: workflow-auto
+${options.installUnits ?? ""}`;
+}
+
+async function withAppliedVariantAddFixture(prefix, callback) {
+  const root = await mkdtemp(join(tmpdir(), prefix));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    await mkdir(skillsRoot, { recursive: true });
+    for (const skillPath of ["base/review", "canonical/review", "old/review", "claude/review"]) {
+      await mkdir(join(skillsRoot, skillPath), { recursive: true });
+      await writeFile(
+        join(skillsRoot, skillPath, "SKILL.md"),
+        `---\nname: ${skillPath}\ndescription: fixture skill\n---\n`,
+        "utf8"
+      );
+    }
+    await writeFile(configPath, variantAddCliConfig(), "utf8");
+    await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "variant",
+      "add",
+      "claude.review",
+      "--from",
+      "base.review",
+      "--capability",
+      "task-review",
+      "--workflow",
+      "claude-workflow",
+      "--path",
+      "claude/review",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot,
+      "--json"
+    ]);
+
+    await callback({ configPath, skillsRoot, root });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 }
 
 test("cli check and dashboard handle the multi-source example", async () => {
@@ -2056,6 +2146,623 @@ install_units:
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("cli variant add dry-run reports semantic changes without writing config", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-dry-run-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    await writeFile(configPath, variantAddCliConfig(), "utf8");
+    const before = await readFile(configPath, "utf8");
+
+    const result = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "variant",
+      "add",
+      "claude.review",
+      "--from",
+      "base.review",
+      "--capability",
+      "task-review",
+      "--workflow",
+      "claude-workflow",
+      "--path",
+      "claude/review",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot,
+      "--dry-run",
+      "--json"
+    ]);
+    const payload = JSON.parse(result.stdout);
+    const semanticPaths = payload.plan.semanticChanges.map((change) => change.path);
+
+    assert.equal(await readFile(configPath, "utf8"), before);
+    assert.equal(payload.dryRun, true);
+    assert.equal(payload.changed, true);
+    assert.equal(payload.plan.semanticAvailable, true);
+    assert.ok(semanticPaths.includes("/skills/claude.review"));
+    assert.ok(semanticPaths.includes("/capabilities/task-review/alternatives/base.review"));
+    assert.ok(semanticPaths.includes("/capabilities/task-review/alternatives/claude.review"));
+    assert.ok(semanticPaths.includes("/workflows/claude-workflow/required_capabilities/task-review/preferred"));
+    assert.ok(semanticPaths.some((path) => path.startsWith("/workflows/claude-workflow/required_capabilities/task-review/fallback/")));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli variant add writes config and preserves YAML comments", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-apply-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    await writeFile(configPath, variantAddCliConfig(), "utf8");
+
+    const result = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "variant",
+      "add",
+      "claude.review",
+      "--from",
+      "base.review",
+      "--capability",
+      "task-review",
+      "--workflow",
+      "claude-workflow",
+      "--path",
+      "claude/review",
+      "--mode",
+      "router-only",
+      "--category",
+      "agent-bridge",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot
+    ]);
+    const configText = await readFile(configPath, "utf8");
+    const config = YAML.parse(configText);
+
+    assert.match(result.stdout, /Added variant claude\.review for base\.review in claude-workflow/);
+    assert.match(configText, /# variant add should preserve comments through control writes/);
+    assert.deepEqual(config.skills["claude.review"], {
+      path: "claude/review",
+      status: "active",
+      invocation: "router-only",
+      exposure: "exported",
+      category: "agent-bridge"
+    });
+    assert.deepEqual(config.capabilities["task-review"].alternatives, ["base.review", "claude.review"]);
+    assert.equal(config.workflows["claude-workflow"].required_capabilities["task-review"].preferred, "claude.review");
+    assert.deepEqual(
+      config.workflows["claude-workflow"].required_capabilities["task-review"].fallback,
+      ["old.review", "base.review", "canonical.review"]
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli variant add preserves declared variant skill fields without path", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-existing-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    await writeFile(configPath, variantAddCliConfig({
+      variantSkill: `  claude.review:
+    path: declared/claude-review
+    status: active
+    invocation: router-only
+    exposure: private
+    category: declared-category
+`
+    }), "utf8");
+
+    await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "variant",
+      "add",
+      "claude.review",
+      "--from",
+      "base.review",
+      "--capability",
+      "task-review",
+      "--workflow",
+      "claude-workflow",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot,
+      "--json"
+    ]);
+    const config = YAML.parse(await readFile(configPath, "utf8"));
+
+    assert.deepEqual(config.skills["claude.review"], {
+      path: "declared/claude-review",
+      status: "active",
+      invocation: "router-only",
+      exposure: "private",
+      category: "declared-category"
+    });
+    assert.equal(config.workflows["claude-workflow"].required_capabilities["task-review"].preferred, "claude.review");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli variant add requires path for undeclared variants without changing config", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-missing-path-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    await writeFile(configPath, variantAddCliConfig(), "utf8");
+    const before = await readFile(configPath, "utf8");
+
+    let error;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "variant",
+        "add",
+        "claude.review",
+        "--from",
+        "base.review",
+        "--capability",
+        "task-review",
+        "--workflow",
+        "claude-workflow",
+        "--config",
+        configPath,
+        "--skills",
+        skillsRoot
+      ]);
+    } catch (caught) {
+      error = caught;
+    }
+
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /--path is required/);
+    assert.equal(await readFile(configPath, "utf8"), before);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli variant add reports unknown base capability and workflow through control errors", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-unknown-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    await writeFile(configPath, variantAddCliConfig(), "utf8");
+    const before = await readFile(configPath, "utf8");
+    const cases = [
+      { override: ["--from", "missing.review"], message: /Unknown skill: missing\.review/ },
+      { override: ["--capability", "missing-capability"], message: /Unknown capability: missing-capability/ },
+      { override: ["--workflow", "missing-workflow"], message: /Unknown workflow: missing-workflow/ }
+    ];
+
+    for (const { override, message } of cases) {
+      const args = [
+        "bin/skillboard.mjs",
+        "variant",
+        "add",
+        "claude.review",
+        "--from",
+        "base.review",
+        "--capability",
+        "task-review",
+        "--workflow",
+        "claude-workflow",
+        "--path",
+        "claude/review",
+        "--config",
+        configPath,
+        "--skills",
+        skillsRoot
+      ];
+      const optionIndex = args.indexOf(override[0]);
+      args.splice(optionIndex, 2, ...override);
+
+      let error;
+      try {
+        await execFileAsync(process.execPath, args);
+      } catch (caught) {
+        error = caught;
+      }
+      assert.equal(error.code, 1);
+      assert.match(error.stderr, message);
+      assert.equal(await readFile(configPath, "utf8"), before);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli variant add owner records a reviewed install unit component", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-owner-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    await writeFile(configPath, variantAddCliConfig({
+      installUnits: `install_units:
+  user.local:
+    kind: skill
+    source: ./skills
+    scope: project
+    provided_components:
+      - skills
+    components:
+      skills:
+        - base.review
+    enabled: true
+    trust_level: reviewed
+    permission_risk: low
+`
+    }), "utf8");
+
+    const result = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "variant",
+      "add",
+      "claude.review",
+      "--from",
+      "base.review",
+      "--capability",
+      "task-review",
+      "--workflow",
+      "claude-workflow",
+      "--path",
+      "claude/review",
+      "--owner-install-unit",
+      "user.local",
+      "--mode",
+      "manual-only",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot,
+      "--json"
+    ]);
+    const payload = JSON.parse(result.stdout);
+    const config = YAML.parse(await readFile(configPath, "utf8"));
+
+    assert.equal(payload.changed, true);
+    assert.equal(config.skills["claude.review"].owner_install_unit, "user.local");
+    assert.deepEqual(config.install_units["user.local"].components.skills, ["base.review", "claude.review"]);
+    assert.equal(config.install_units["user.local"].trust_level, "reviewed");
+    assert.equal(config.install_units["user.local"].enabled, true);
+    assert.deepEqual(config.install_units["user.local"].provided_components, ["skills"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli variant add owner refuses an unknown install unit without changing config", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-owner-unknown-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    await writeFile(configPath, variantAddCliConfig(), "utf8");
+    const before = await readFile(configPath, "utf8");
+
+    let error;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "variant",
+        "add",
+        "claude.review",
+        "--from",
+        "base.review",
+        "--capability",
+        "task-review",
+        "--workflow",
+        "claude-workflow",
+        "--path",
+        "claude/review",
+        "--owner-install-unit",
+        "missing.unit",
+        "--config",
+        configPath,
+        "--skills",
+        skillsRoot
+      ]);
+    } catch (caught) {
+      error = caught;
+    }
+
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /Unknown install unit: missing\.unit/);
+    assert.equal(await readFile(configPath, "utf8"), before);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli variant add owner option preserves an existing variant owner fields", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-owner-existing-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    await writeFile(configPath, variantAddCliConfig({
+      variantSkill: `  claude.review:
+    path: declared/claude-review
+    status: active
+    invocation: manual-only
+    exposure: exported
+    category: declared-category
+    owner_install_unit: user.existing
+`,
+      installUnits: `install_units:
+  user.existing:
+    kind: skill
+    source: ./existing
+    scope: project
+    provided_components:
+      - skills
+    components:
+      skills:
+        - claude.review
+    enabled: true
+    trust_level: reviewed
+    permission_risk: low
+  user.other:
+    kind: skill
+    source: ./other
+    scope: project
+    provided_components:
+      - skills
+    components:
+      skills:
+        - base.review
+    enabled: true
+    trust_level: trusted
+    permission_risk: low
+`
+    }), "utf8");
+
+    await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "variant",
+      "add",
+      "claude.review",
+      "--from",
+      "base.review",
+      "--capability",
+      "task-review",
+      "--workflow",
+      "claude-workflow",
+      "--owner-install-unit",
+      "user.other",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot,
+      "--json"
+    ]);
+    const config = YAML.parse(await readFile(configPath, "utf8"));
+
+    assert.deepEqual(config.skills["claude.review"], {
+      path: "declared/claude-review",
+      status: "active",
+      invocation: "manual-only",
+      exposure: "exported",
+      category: "declared-category",
+      owner_install_unit: "user.existing"
+    });
+    assert.deepEqual(config.install_units["user.existing"].components.skills, ["claude.review"]);
+    assert.deepEqual(config.install_units["user.other"].components.skills, ["base.review"]);
+    assert.equal(config.workflows["claude-workflow"].required_capabilities["task-review"].preferred, "claude.review");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli variant add unreviewed non-user owner is refused and preserves config", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-unreviewed-owner-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    const original = variantAddCliConfig({
+      installUnits: `install_units:
+  github.vendor.skills:
+    kind: marketplace
+    source: github.com/vendor/skills
+    scope: project
+    provided_components:
+      - skills
+    components:
+      skills:
+        - base.review
+    enabled: true
+    trust_level: unreviewed
+    permission_risk: medium
+`
+    });
+    await writeFile(configPath, original, "utf8");
+
+    let error;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "variant",
+        "add",
+        "vendor.review",
+        "--from",
+        "base.review",
+        "--capability",
+        "task-review",
+        "--workflow",
+        "claude-workflow",
+        "--path",
+        "vendor/review",
+        "--owner-install-unit",
+        "github.vendor.skills",
+        "--mode",
+        "manual-only",
+        "--config",
+        configPath,
+        "--skills",
+        skillsRoot
+      ]);
+    } catch (caught) {
+      error = caught;
+    }
+
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /Control update would not be usable|belongs to unreviewed non-user source|source github\.vendor\.skills is unreviewed/);
+    assert.equal(await readFile(configPath, "utf8"), original);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli variant add inspection passes check and brief exposes the preferred workflow skill", async () => {
+  await withAppliedVariantAddFixture("skillboard-variant-add-inspection-test-", async ({ configPath, skillsRoot }) => {
+    const baseArgs = ["--config", configPath, "--skills", skillsRoot];
+    const check = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "check", ...baseArgs]);
+    let brief;
+    try {
+      brief = await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "brief",
+        "--workflow",
+        "claude-workflow",
+        ...baseArgs,
+        "--json"
+      ]);
+    } catch (caught) {
+      brief = caught;
+    }
+    const payload = JSON.parse(brief.stdout);
+    const usable = [
+      ...payload.skills.automatic_allowed,
+      ...payload.skills.manual_allowed
+    ];
+    const variant = usable.find((skill) => skill.id === "claude.review");
+
+    assert.match(check.stdout, /Policy check passed/);
+    assert.equal(payload.health.policy.ok, true);
+    assert.ok(variant, "expected claude.review in a usable brief group");
+    assert.deepEqual(variant.advanced.workflow_roles, ["active", "preferred"]);
+    assert.deepEqual(variant.advanced.capability_roles, [
+      { capability: "task-review", role: "preferred", policy: "workflow-auto" }
+    ]);
+  });
+});
+
+test("cli variant add can-use allows the preferred active variant and denies blocked mutations", async () => {
+  await withAppliedVariantAddFixture("skillboard-variant-add-can-use-test-", async ({ configPath, skillsRoot }) => {
+    const baseArgs = ["--config", configPath, "--skills", skillsRoot];
+    const canUse = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "can-use",
+      "claude.review",
+      "--workflow",
+      "claude-workflow",
+      ...baseArgs,
+      "--json"
+    ]);
+    const allowed = JSON.parse(canUse.stdout);
+
+    assert.equal(allowed.allowed, true);
+    assert.equal(allowed.automaticAllowed, true);
+    assert.ok(allowed.roles.includes("active"));
+    assert.ok(allowed.roles.includes("preferred"));
+    assert.deepEqual(allowed.capabilityRoles, [
+      { capability: "task-review", role: "preferred", policy: "workflow-auto" }
+    ]);
+
+    const config = YAML.parse(await readFile(configPath, "utf8"));
+    config.workflows["claude-workflow"].blocked_skills.push("claude.review");
+    await writeFile(configPath, YAML.stringify(config), "utf8");
+
+    let checkError;
+    try {
+      await execFileAsync(process.execPath, ["bin/skillboard.mjs", "check", ...baseArgs]);
+    } catch (caught) {
+      checkError = caught;
+    }
+    let blockedError;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "can-use",
+        "claude.review",
+        "--workflow",
+        "claude-workflow",
+        ...baseArgs,
+        "--json"
+      ]);
+    } catch (caught) {
+      blockedError = caught;
+    }
+    const blocked = JSON.parse(blockedError.stdout);
+
+    assert.equal(checkError.code, 1);
+    assert.equal(blockedError.code, 2);
+    assert.equal(blocked.allowed, false);
+    assert.match(blocked.reasons.join("\n"), /blocks skill claude\.review|prefers blocked skill: claude\.review/);
+  });
+});
+
+test("cli variant add explain reports capability alternative and workflow preferred state", async () => {
+  await withAppliedVariantAddFixture("skillboard-variant-add-explain-test-", async ({ configPath, skillsRoot }) => {
+    const explain = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "explain",
+      "claude.review",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot,
+      "--json"
+    ]);
+    const payload = JSON.parse(explain.stdout);
+
+    assert.ok(payload.capabilities.some((capability) => {
+      return capability.name === "task-review" && capability.role === "alternative";
+    }));
+    assert.deepEqual(payload.workflows, [
+      {
+        workflow: "claude-workflow",
+        roles: ["active", "preferred"],
+        capabilityRoles: [
+          { capability: "task-review", role: "preferred", policy: "workflow-auto" }
+        ]
+      }
+    ]);
+  });
+});
+
+test("cli variant add impact reports capability alternatives for the base skill", async () => {
+  await withAppliedVariantAddFixture("skillboard-variant-add-impact-test-", async ({ configPath, skillsRoot }) => {
+    const impact = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "impact",
+      "disable",
+      "base.review",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot,
+      "--json"
+    ]);
+    const payload = JSON.parse(impact.stdout);
+
+    assert.equal(payload.skillId, "base.review");
+    assert.ok(payload.alternatives.includes("claude.review"));
+  });
+});
+
+test("cli variant add help shows public command usage", async () => {
+  const result = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "--help"]);
+
+  assert.match(result.stdout, /variant add <variant-id> --from <base-id> --capability <name> --workflow <name>/);
+  assert.match(result.stdout, /\[--mode manual-only\|router-only\|workflow-auto\]/);
+  assert.match(result.stdout, /\[--owner-install-unit <unit-id>\]/);
 });
 
 test("cli prefer refuses unusable unreviewed automatic external skills", async () => {

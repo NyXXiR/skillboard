@@ -76,6 +76,12 @@ workflow.required_capabilities
 
 If no preferred skill is set in the workflow, the global catalog's canonical skill is used. Fallbacks are checked in order: first the workflow's own fallback list, then the global alternatives.
 
+## Explicit Skill Variants
+
+Use `skillboard variant add claude.a --from a --capability task-review --workflow claude-workflow --path claude/a ...` to record a user-approved `a -> claude.a` variant. SkillBoard adds the variant to the capability alternatives, makes it preferred for the named workflow, and keeps the base skill available as fallback.
+
+This is policy registration, not prompt migration. SkillBoard records user-approved variants and consistent workflow policy across agents; it does not convert skill bodies, does not rewrite skill bodies, and does not guarantee semantic equivalence of skill bodies.
+
 ## Global vs Workflow: When to Use Each
 
 | Use case | Use global catalog | Use workflow requirement |

@@ -81,6 +81,68 @@ export async function addSkill(options) {
   return await writeCheckedConfig(document, originalText, validation, `Added ${options.skillId}`);
 }
 
+export async function addSkillVariant(options) {
+  const { document, originalText } = await loadConfig(options.configPath);
+  const skills = requireMapAt(document, ["skills"], "skills");
+  const baseSkill = requireConfigSkill(document, options.baseId);
+  const workflow = requireConfigWorkflow(document, options.workflow);
+  const capabilityDefinition = requireConfigCapability(document, options.capability);
+  const existingRequiredPolicy = readRequiredCapabilityPolicy(workflow, options.capability);
+  const required = ensureRequiredCapability(workflow, options.capability, document);
+  const existingVariant = skills.get(options.variantId, true);
+
+  if (existingVariant === undefined) {
+    if (options.path === undefined) {
+      throw new Error("--path is required when adding an undeclared variant skill");
+    }
+    if (options.ownerInstallUnit !== undefined) {
+      appendSkillToOwnerInstallUnit(document, options.ownerInstallUnit, options.variantId);
+    }
+    const invocation = variantInvocation(options, existingRequiredPolicy, capabilityDefinition);
+    validateSkillState("active", invocation, "exported");
+    skills.set(options.variantId, document.createNode(stripUndefined({
+      path: normalizeSkillPath(options.path, "skill path"),
+      status: "active",
+      invocation,
+      exposure: "exported",
+      category: options.category ?? readMapString(baseSkill, "category", "uncategorized"),
+      owner_install_unit: options.ownerInstallUnit
+    })));
+  } else {
+    requireYamlMap(existingVariant, `skills.${options.variantId}`);
+  }
+
+  const alternatives = ensureSeq(capabilityDefinition, "alternatives", document);
+  const canonical = readMapString(capabilityDefinition, "canonical", "");
+  if (canonical !== options.baseId && !sequenceIncludes(alternatives, options.baseId)) {
+    addUnique(alternatives, options.baseId);
+  }
+  if (canonical !== options.variantId && !sequenceIncludes(alternatives, options.variantId)) {
+    addUnique(alternatives, options.variantId);
+  }
+
+  const previousPreferred = readMapString(required, "preferred", "");
+  const fallback = ensureSeq(required, "fallback", document);
+  required.set("preferred", options.variantId);
+  setFallbackValues(
+    fallback,
+    orderedVariantFallbacks(
+      sequenceValues(fallback),
+      [previousPreferred, options.baseId, canonical],
+      options.variantId
+    )
+  );
+  addUnique(ensureSeq(workflow, "active_skills", document), options.variantId);
+  removeValue(ensureSeq(workflow, "blocked_skills", document), options.variantId);
+
+  return await writeCheckedConfig(
+    document,
+    originalText,
+    { ...options, validateUse: { skillId: options.variantId, workflow: options.workflow } },
+    `Added variant ${options.variantId} for ${options.baseId} in ${options.workflow}`
+  );
+}
+
 export async function blockSkill(options) {
   const { document, originalText } = await loadConfig(options.configPath);
   requireConfigSkill(document, options.skillId);
@@ -184,6 +246,33 @@ function requireConfigWorkflow(document, workflowName) {
   return raw;
 }
 
+function requireConfigCapability(document, capabilityName) {
+  const capabilities = requireMapAt(document, ["capabilities"], "capabilities");
+  const capability = capabilities.get(capabilityName, true);
+  if (capability === undefined) {
+    throw new Error(`Unknown capability: ${capabilityName}`);
+  }
+  return requireYamlMap(capability, `capabilities.${capabilityName}`);
+}
+
+function appendSkillToOwnerInstallUnit(document, unitId, skillId) {
+  const installUnits = optionalRootMap(document, "install_units");
+  if (installUnits === undefined) {
+    throw new Error(`Unknown install unit: ${unitId}`);
+  }
+  const installUnit = installUnits.get(unitId, true);
+  if (installUnit === undefined) {
+    throw new Error(`Unknown install unit: ${unitId}`);
+  }
+  const unit = requireYamlMap(installUnit, `install_units.${unitId}`);
+  let components = unit.get("components", true);
+  if (components === undefined) {
+    components = document.createNode({});
+    unit.set("components", components);
+  }
+  addUnique(ensureSeq(requireYamlMap(components, `install_units.${unitId}.components`), "skills", document), skillId);
+}
+
 function ensureRequiredCapability(workflow, capabilityName, document) {
   let capabilities = workflow.get("required_capabilities", true);
   if (capabilities === undefined) {
@@ -201,6 +290,59 @@ function ensureRequiredCapability(workflow, capabilityName, document) {
   const capability = requireYamlMap(capabilityMap.get(capabilityName, true), `required_capabilities.${capabilityName}`);
   ensureSeq(capability, "fallback", document);
   return capability;
+}
+
+function readRequiredCapabilityPolicy(workflow, capabilityName) {
+  const capabilities = optionalMap(workflow, "required_capabilities");
+  if (capabilities === undefined) {
+    return "";
+  }
+  const capability = capabilities.get(capabilityName, true);
+  if (capability === undefined) {
+    return "";
+  }
+  return readMapString(requireYamlMap(capability, `required_capabilities.${capabilityName}`), "policy", "");
+}
+
+function variantInvocation(options, requiredPolicy, capabilityDefinition) {
+  const explicit = options.mode ?? options.invocation;
+  const computed = firstNonEmpty([
+    explicit,
+    requiredPolicy,
+    readMapString(capabilityDefinition, "default_policy", ""),
+    "manual-only"
+  ]);
+  return computed === "global-auto" ? "manual-only" : computed;
+}
+
+function firstNonEmpty(values) {
+  return values.find((value) => typeof value === "string" && value.length > 0) ?? "manual-only";
+}
+
+function sequenceValues(sequence) {
+  return sequence.items.map((item) => nodeScalarValue(item));
+}
+
+function orderedVariantFallbacks(existingValues, priorityValues, variantId) {
+  const next = [];
+  const seen = new Set();
+  for (const value of [...priorityValues, ...existingValues]) {
+    if (typeof value !== "string" || value.length === 0 || value === variantId || seen.has(value)) {
+      continue;
+    }
+    next.push(value);
+    seen.add(value);
+  }
+  return next;
+}
+
+function setFallbackValues(sequence, values) {
+  while (sequence.items.length > 0) {
+    sequence.delete(0);
+  }
+  for (const value of values) {
+    sequence.add(value);
+  }
 }
 
 function removeSkillFromRequiredCapabilities(workflow, skillId, document) {

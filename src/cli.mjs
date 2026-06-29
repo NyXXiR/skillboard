@@ -6,6 +6,7 @@ import {
   activateSkill,
   addHarness,
   addSkill,
+  addSkillVariant,
   addWorkflow,
   auditSources,
   blockSkill,
@@ -113,6 +114,8 @@ async function run(argv, stdout, stderr) {
       return await activate(argv.slice(1), options, stdout);
     case "add":
       return await add(argv.slice(1), options, stdout);
+    case "variant":
+      return await variant(argv.slice(1), options, stdout);
     case "block":
       return await block(argv.slice(1), options, stdout);
     case "quarantine":
@@ -577,6 +580,32 @@ async function addHarnessCommand(args, options, stdout) {
     harness,
     status: options.get("status"),
     commands: readCsv(options.get("command")),
+    configPath: configPath(options),
+    skillsRoot: skillsRoot(options),
+    dryRun: options.get("dry-run") === "true"
+  });
+  writeControlResult(stdout, result, options);
+  return 0;
+}
+
+async function variant(argv, options, stdout) {
+  const args = positionalArgs(argv);
+  const variantId = args[1];
+  const baseId = options.get("from");
+  const capability = options.get("capability");
+  const workflow = options.get("workflow");
+  if (args[0] !== "add" || variantId === undefined || baseId === undefined || capability === undefined || workflow === undefined) {
+    throw new Error("Usage: skillboard variant add <variant-id> --from <base-id> --capability <name> --workflow <name> --config <path> --skills <dir> [--path <relative-skill-path>] [--mode manual-only|router-only|workflow-auto] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]");
+  }
+  const result = await addSkillVariant({
+    variantId,
+    baseId,
+    capability,
+    workflow,
+    path: options.get("path"),
+    mode: options.get("mode"),
+    category: options.get("category"),
+    ownerInstallUnit: options.get("owner-install-unit"),
     configPath: configPath(options),
     skillsRoot: skillsRoot(options),
     dryRun: options.get("dry-run") === "true"
@@ -1159,6 +1188,7 @@ function helpText() {
     "  add skill <skill-id> --path <relative-skill-path> --config <path> --skills <dir> [--status <status>] [--invocation <mode>] [--exposure <exposure>] [--category <name>] [--workflow <name>] [--dry-run] [--json]",
     "  add workflow <workflow-name> --harness <harness-name> --config <path> --skills <dir> [--skill <id>[,<id>]] [--harness-status <status>] [--require-existing-harness] [--dry-run] [--json]",
     "  add harness <harness-name> --config <path> --skills <dir> [--status <status>] [--command <cmd>[,<cmd>]] [--dry-run] [--json]",
+    "  variant add <variant-id> --from <base-id> --capability <name> --workflow <name> --config <path> --skills <dir> [--path <relative-skill-path>] [--mode manual-only|router-only|workflow-auto] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]",
     "  activate <skill-id> --workflow <name> [--mode manual-only|router-only|workflow-auto] --config <path> --skills <dir> [--dry-run] [--json]",
     "  block <skill-id> --workflow <name> --config <path> --skills <dir> [--dry-run] [--json]",
     "  quarantine <skill-id> --config <path> --skills <dir> [--dry-run] [--json]",

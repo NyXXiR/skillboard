@@ -131,6 +131,8 @@ SkillBoard is deliberately narrower:
 - Quarantine newly discovered skills instead of auto-enabling them.
 - Treat harness additions/removals as migration events, not silent breakage.
 - Track capabilities so workflows can depend on roles instead of only skill ids.
+- Record user-approved skill variants, such as `a -> claude.a`, so different
+  agents can share consistent workflow policy.
 - Track install units so plugin bundles, package-manager dependencies, harnesses,
   MCP servers, hooks, agents, and LSPs are not flattened into skill names.
 - Keep user-added global skills limited to explicit `global-meta` skills such as
@@ -649,6 +651,7 @@ skillboard review install-unit <unit-id> [--trust-level trusted|reviewed|unrevie
 skillboard add skill <skill-id> --path <relative-skill-path> --config <path> --skills <dir>
 skillboard add workflow <workflow-name> --harness <harness-name> --config <path> --skills <dir> [--skill <id>[,<id>]]
 skillboard add harness <harness-name> --config <path> --skills <dir> [--status <status>] [--command <cmd>[,<cmd>]]
+skillboard variant add <variant-id> --from <base-id> --capability <name> --workflow <name> --config <path> --skills <dir> [--path <relative-skill-path>]
 skillboard activate <skill-id> --workflow <name> --config <path> --skills <dir>
 skillboard block <skill-id> --workflow <name> --config <path> --skills <dir>
 skillboard quarantine <skill-id> --config <path> --skills <dir>
@@ -661,6 +664,13 @@ skillboard impact disable <skill-id> --config <path> --skills <dir> [--out <path
 
 The bundled examples in this repository use `node bin/skillboard.mjs` explicitly
 because they are meant to run from a fresh clone without a global install.
+
+Use `skillboard variant add claude.a --from a --capability task-review
+--workflow claude-workflow --path claude/a ...` to record an explicit,
+user-approved `a -> claude.a` variant and make it preferred for that workflow.
+SkillBoard records the relationship and policy only; it does not convert skill
+bodies, does not rewrite skill bodies, and does not guarantee semantic
+equivalence of skill bodies.
 
 ## Reconciliation Model
 

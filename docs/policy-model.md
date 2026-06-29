@@ -132,6 +132,14 @@ capabilities:
 This lets SkillBoard suggest replacements when a skill is removed and group
 overlapping skills by role instead of by name alone.
 
+Explicit variants use the same capability and workflow fields. For example,
+`skillboard variant add claude.a --from a --capability task-review --workflow
+claude-workflow --path claude/a ...` records the user-approved `a -> claude.a`
+relationship, makes `claude.a` preferred for that workflow, and keeps `a` as a
+fallback. SkillBoard records workflow policy across agents; it does not convert
+skill bodies, does not rewrite skill bodies, and does not guarantee semantic
+equivalence of skill bodies.
+
 When the reconciler discovers a new non-user skill that already maps to a
 capability, it uses `default_policy` as the recommended invocation mode. The
 status remains `quarantined`, so the recommendation is visible but not

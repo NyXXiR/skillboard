@@ -14,6 +14,7 @@ import {
 import {
   activateSkill,
   addSkill,
+  addSkillVariant,
   blockSkill,
   preferSkill,
   quarantineSkill,
@@ -116,6 +117,7 @@ export {
   activateSkill,
   addHarness,
   addSkill,
+  addSkillVariant,
   addWorkflow,
   auditSources,
   blockSkill,
