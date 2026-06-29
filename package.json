@@ -1,6 +1,6 @@
 {
   "name": "agent-skillboard",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Policy and visibility layer for AI agent skills.",
   "keywords": [
     "ai-agent",
@@ -26,6 +26,7 @@
     "profiles",
     "README.md",
     "CONTRIBUTING.md",
+    "CHANGELOG.md",
     "LICENSE",
     "tsconfig.lsp.json"
   ],

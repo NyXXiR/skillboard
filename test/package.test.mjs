@@ -11,7 +11,7 @@ const execFileAsync = promisify(execFile);
 test("package manifest excludes internal work artifacts from npm pack", async () => {
   const manifest = JSON.parse(await readFile(resolve("package.json"), "utf8"));
 
-  assert.deepEqual(manifest.files, ["bin", "src", "docs", "examples", "profiles", "README.md", "CONTRIBUTING.md", "LICENSE", "tsconfig.lsp.json"]);
+  assert.deepEqual(manifest.files, ["bin", "src", "docs", "examples", "profiles", "README.md", "CONTRIBUTING.md", "CHANGELOG.md", "LICENSE", "tsconfig.lsp.json"]);
 });
 
 test("package manifest is publishable as the SkillBoard CLI", async () => {

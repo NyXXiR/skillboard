@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { dirname, isAbsolute } from "node:path";
 import YAML from "yaml";
 import {
@@ -48,6 +49,8 @@ import { renderSkillBrief } from "./brief-renderer.mjs";
 import { planGuardHookInstall } from "./control.mjs";
 import { writeCheckedConfig } from "./control/config-write.mjs";
 import { runInitCommand, runUninstallCommand } from "./lifecycle-cli.mjs";
+
+const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
 const APPLY_ACTION_VALUE_OPTIONS = new Set(["workflow", "dir", "config", "skills", "out", "skillboard-bin"]);
 
@@ -128,6 +131,10 @@ async function run(argv, stdout, stderr) {
     case "--help":
     case "-h":
       stdout.write(helpText());
+      return 0;
+    case "--version":
+    case "-v":
+      stdout.write(`${VERSION}\n`);
       return 0;
     default:
       stderr.write(`Unknown command: ${command}\n`);
@@ -1124,6 +1131,7 @@ function renderCounts(counts) {
 function helpText() {
   return [
     "SkillBoard - workflow-scoped agent skill policy",
+    "Version: see skillboard --version",
     "",
     "Commands:",
     "  init [--dir <path>] [--scan-root <dir>[,<dir>]] [--no-scan-installed]",

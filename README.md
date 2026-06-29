@@ -121,6 +121,7 @@ Run SkillBoard in the project you want to manage:
 
 ```bash
 npx agent-skillboard init
+npx agent-skillboard --version
 npx agent-skillboard brief
 npx agent-skillboard doctor --summary
 ```

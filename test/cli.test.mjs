@@ -53,6 +53,14 @@ test("cli check and dashboard handle the multi-source example", async () => {
   assert.match(dashboard.stdout, /owner: `local\.agent-skills-private`/);
 });
 
+test("cli --version and -v print package version", async () => {
+  const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const longFlag = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "--version"]);
+  const shortFlag = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "-v"]);
+  assert.equal(longFlag.stdout.trim(), pkg.version);
+  assert.equal(shortFlag.stdout.trim(), pkg.version);
+});
+
 test("cli multi-source example is runnable from the project root without local path edits", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-first-user-example-"));
   try {

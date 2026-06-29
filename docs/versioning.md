@@ -8,7 +8,7 @@ source profiles, and the generated lockfile.
 
 ## Status
 
-Current package version: `0.1.1`
+Current package version: `0.1.2`
 
 Current config schema version:
 
@@ -194,8 +194,8 @@ Before tagging a public release:
     publish.yml --allow-publish` cannot configure it from the CLI, use the npm
     package settings page and add a GitHub Actions trusted publisher with the
     same repository, workflow filename, and allowed action.
-- Push a version tag that exactly matches `package.json`, for example `v0.1.1`
-  for package version `0.1.1`.
+- Push a version tag that exactly matches `package.json`, for example `v0.1.2`
+  for package version `0.1.2`.
 - Let `.github/workflows/publish.yml` publish from the tag. The workflow runs
   the full check suite, validates that the tag matches the package version, and
   skips `npm publish` only when that exact version already exists on npm.
@@ -220,3 +220,11 @@ completion notes:
   without generating user-visible `-2` suffixes;
 - README and install docs include a Hermes system prompt bridge for profiles
   that do not automatically read `AGENTS.md` or `CLAUDE.md`.
+
+## 0.1.2 Completion Notes
+
+- add `--version` and `-v` flags to the CLI for fast version verification in
+  npm, global, source-tree, and tarball installs;
+- add a dedicated test for the version flags;
+- update README quick-start to verify the installed version before running
+  policy commands.
