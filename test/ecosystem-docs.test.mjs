@@ -144,6 +144,28 @@ test("README and install docs lead with npm quick start after registry publish",
   assert.doesNotMatch(install, /not published yet/i);
 });
 
+test("user docs frame commands as AI automation details, not a memorized user loop", async () => {
+  const readme = await readFile(resolve("README.md"), "utf8");
+  const userFlow = await readFile(resolve("docs/user-flow.md"), "utf8");
+  const install = await readFile(resolve("docs/install.md"), "utf8");
+  const policy = await readFile(resolve("docs/policy-model.md"), "utf8");
+  const combined = `${readme}\n${userFlow}\n${install}\n${policy}`;
+
+  assert.match(combined, /Ask your AI/i);
+  assert.match(combined, /You\s+do not need to memorize the SkillBoard command loop/i);
+  assert.match(combined, /behind the scenes/i);
+  assert.match(combined, /AI\/automation\/operator details/i);
+  assert.match(userFlow, /When you ask your AI/i);
+  assert.match(install, /After install, ask your AI/i);
+  assert.match(policy, /The user does\s+not need to know the command loop/i);
+
+  assert.match(combined, /read the current brief/i);
+  assert.match(combined, /current action id/i);
+  assert.doesNotMatch(combined, /apply cached action-card commands/i);
+  assert.doesNotMatch(combined, /infer availability from raw SKILL\.md/i);
+  assert.doesNotMatch(combined, /run these commands every time you need a skill/i);
+});
+
 test("README and install docs include a Hermes system prompt bridge guide", async () => {
   const readme = await readFile(resolve("README.md"), "utf8");
   const install = await readFile(resolve("docs/install.md"), "utf8");

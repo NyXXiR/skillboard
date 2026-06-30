@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { dirname, isAbsolute } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import {
   activateSkill,
@@ -58,6 +59,10 @@ import { runInitCommand, runUninstallCommand } from "./lifecycle-cli.mjs";
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
 const APPLY_ACTION_VALUE_OPTIONS = new Set(["workflow", "dir", "config", "skills", "out", "skillboard-bin"]);
+
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exitCode = await main(process.argv.slice(2), process.stdout, process.stderr);
+}
 
 export async function main(argv, stdout, stderr) {
   try {
@@ -1350,10 +1355,10 @@ function renderCounts(counts) {
 
 function helpText() {
   return [
-    "SkillBoard - workflow-scoped agent skill policy",
+    "SkillBoard - AI-mediated workflow-scoped skill policy",
     "Version: see skillboard --version",
     "",
-    "Commands:",
+    "AI/automation operations:",
     "  init [--dir <path>] [--scan-root <dir>[,<dir>]] [--no-scan-installed]",
     "  uninstall [--dir <path>] [--dry-run] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs]",
     "  inventory refresh [--dir <path>] [--config <path>] [--scan-root <dir>[,<dir>]] [--dry-run] [--json]",
@@ -1393,10 +1398,10 @@ function helpText() {
     "  reconcile --config <path> --skills <dir> [--actual-harnesses a,b] [--out <path>]",
     "  impact disable <skill-id> --config <path> --skills <dir> [--out <path>] [--json]",
     "",
-    "Approval loop:",
-    "  Run skillboard brief --json --config <path> --skills <dir> [--workflow <name>] [--include-actions].",
-    "  Pick one current action id from the brief and ask the user for confirmation.",
-    "  Apply with skillboard apply-action <action-id> --config <path> --skills <dir> [--workflow <name>] --yes --json.",
+    "AI/automation approval loop:",
+    "  Translate a user's skill request into the current brief: skillboard brief --json --config <path> --skills <dir> [--workflow <name>] [--include-actions].",
+    "  Pick one current action id from that brief and ask the user for one confirmation.",
+    "  Apply one current action with skillboard apply-action <action-id> --config <path> --skills <dir> [--workflow <name>] --yes --json.",
     "  Read the returned post-apply brief, then run skillboard guard use before invocation.",
     "  apply-action re-resolves current actions; do not use cached/stale ids, multiple actions, or raw action-card shell text as the primary apply path.",
     ""

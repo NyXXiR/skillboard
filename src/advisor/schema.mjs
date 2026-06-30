@@ -1,5 +1,6 @@
 import { isAbsolute, resolve } from "node:path";
 import { uninstallProject } from "../uninstall.mjs";
+import { buildAssistantGuidance } from "./guidance.mjs";
 import { sortedStrings } from "./sort.mjs";
 
 const SCHEMA_VERSION = 1;
@@ -28,6 +29,7 @@ export function buildBrief(data) {
   brief.cleanup = data.cleanup;
   if (data.actions !== undefined) {
     brief.actions = data.actions;
+    brief.assistant_guidance = buildAssistantGuidance(brief);
   }
   return brief;
 }

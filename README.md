@@ -1,22 +1,31 @@
 # SkillBoard
 
-Know which agent skills can run before they run.
+Ask your AI which skills it can safely use before it uses them.
+
+Start with normal requests:
+
+- "What skills can you use in this project?"
+- "Can you make `anthropic.docx` available for this workflow?"
+- "Why is this skill blocked?"
+
+Your AI runs SkillBoard behind the scenes, reads the current brief, asks before
+applying one current action, and checks the guard before invoking a skill. You
+do not need to memorize the SkillBoard command loop.
 
 SkillBoard is a control board for AI-agent skills. It turns installed
 `SKILL.md` files, plugin skills, hooks, MCP servers, harnesses, and local skill
-folders into a checked answer:
+folders into a checked answer about what this AI can use in this workflow, why,
+and what would change if a skill were enabled or disabled.
 
-> Which skills can this AI use in this workflow, why, and what changes if I
-> disable one?
-
-Names you will see:
+Names you may see in setup and logs:
 
 - `SkillBoard`: the product and policy model.
 - `agent-skillboard`: the npm package.
 - `skillboard`: the CLI binary.
 
-Use SkillBoard if your agent setup has grown beyond one trusted skill folder
-and you need workflow-scoped control before a model can invoke tools or skills.
+Use SkillBoard when your agent setup has grown beyond one trusted skill folder
+and you want workflow-scoped control without turning skill governance into a
+manual checklist.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/NyXXiR/skillboard/main/skillboard.png" alt="SkillBoard architecture diagram: sources, inventory scanner, SkillBoard model, policy engine, and user and agent surfaces." width="100%">
@@ -42,7 +51,11 @@ See [Tested Value Proof](#tested-value-proof) for the executable proof.
 
 ## 5-Minute Quick Start
 
-Run SkillBoard in the project you want to manage:
+Ask your AI to set up SkillBoard in the project you want to manage. The AI runs
+SkillBoard behind the scenes, then answers from the generated brief instead of
+from memory or raw skill files.
+
+AI/automation/operator details:
 
 ```bash
 npx agent-skillboard init
@@ -55,7 +68,7 @@ and writes agent bridge instructions. Trusted user-local skills start as
 manual-only. Runtime, plugin, and external skills stay quarantined or blocked
 until reviewed.
 
-For CI or scripts, use the explicit package/binary spelling:
+For CI, scripts, or operator runbooks, use the explicit package/binary spelling:
 
 ```bash
 npx --yes --package agent-skillboard skillboard init

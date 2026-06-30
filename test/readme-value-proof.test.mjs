@@ -92,6 +92,107 @@ test("README proof fixture shows action cards re-resolve usable state", async ()
   }
 });
 
+test("README proof fixture simulates AI-mediated approved action flow", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-ai-mediated-proof-"));
+  try {
+    await cp(resolve("examples/multi-source.config.yaml"), join(root, "skillboard.config.yaml"));
+    await cp(resolve("examples/multi-source-skills"), join(root, "skills"), { recursive: true });
+    await cp(resolve("AGENTS.md"), join(root, "AGENTS.md"));
+    await cp(resolve("CLAUDE.md"), join(root, "CLAUDE.md"));
+
+    const args = [
+      "--dir",
+      root,
+      "--config",
+      join(root, "skillboard.config.yaml"),
+      "--skills",
+      join(root, "skills"),
+      "--workflow",
+      "codex-night-workflow"
+    ];
+    const beforeGuard = await runSkillboard([
+      "guard",
+      "use",
+      "anthropic.docx",
+      ...args,
+      "--json"
+    ]);
+    const blockedGuard = await runSkillboard([
+      "guard",
+      "use",
+      "matt.grill-me",
+      ...args,
+      "--json"
+    ]);
+    const before = await runSkillboard(["brief", ...args, "--include-actions", "--json"]);
+    const beforePayload = JSON.parse(before.stdout);
+    const guidance = beforePayload.assistant_guidance;
+    const selectedChoice = guidance.choices.find((choice) => {
+      return choice.action_id === "activate-skill:anthropic.docx";
+    });
+    const currentAction = beforePayload.actions.find((action) => {
+      return action.id === selectedChoice?.action_id;
+    });
+
+    assert.equal(beforeGuard.code, 2);
+    assertGuardDenied(JSON.parse(beforeGuard.stdout), /not active, preferred, or fallback/);
+    assert.equal(blockedGuard.code, 2);
+    assertGuardDenied(JSON.parse(blockedGuard.stdout), /blocks skill matt\.grill-me/);
+
+    assert.equal(before.code, 0);
+    assert.equal(guidance.status, "needs-decision");
+    assert.match(guidance.summary, /needs \d+ user decisions/);
+    assert.match(guidance.recommended_next_step, /Activate anthropic\.docx/);
+    assert.equal(selectedChoice.label, "Activate anthropic.docx in this workflow");
+    assert.equal(selectedChoice.requires_confirmation, true);
+    assert.equal(selectedChoice.risk, "medium");
+    assert.equal(selectedChoice.blocked_reason, null);
+    assert.equal(currentAction.id, selectedChoice.action_id);
+    assert.equal(currentAction.kind, "activate-skill");
+    assert.equal(currentAction.applies_to.id, "anthropic.docx");
+    assert.equal(currentAction.applies_to.workflow, "codex-night-workflow");
+
+    const apply = await runSkillboard([
+      "apply-action",
+      selectedChoice.action_id,
+      ...args,
+      "--yes",
+      "--json"
+    ]);
+    const applyPayload = JSON.parse(apply.stdout);
+    const returnedBrief = applyPayload.brief;
+    const postApplyChoiceIds = returnedBrief.assistant_guidance.choices.map((choice) => choice.action_id);
+    const afterGuard = await runSkillboard([
+      "guard",
+      "use",
+      "anthropic.docx",
+      ...args,
+      "--json"
+    ]);
+    const afterGuardPayload = JSON.parse(afterGuard.stdout);
+
+    assert.equal(apply.code, 0);
+    assert.equal(applyPayload.ok, true);
+    assert.equal(applyPayload.mode, "applied");
+    assert.equal(applyPayload.changed, true);
+    assert.equal(applyPayload.action.id, selectedChoice.action_id);
+    assert.equal(returnedBrief.schema_version, 1);
+    assert.equal(returnedBrief.health.policy.errors.length, 0);
+    assert.equal(postApplyChoiceIds.includes(selectedChoice.action_id), false);
+    assert.equal(postApplyChoiceIds.includes("block-skill:anthropic.docx"), true);
+    assert.ok(returnedBrief.skills.manual_allowed.some((skill) => skill.id === "anthropic.docx"));
+
+    assert.equal(afterGuard.code, 0);
+    assert.equal(afterGuardPayload.allowed, true);
+    assert.equal(afterGuardPayload.skill, "anthropic.docx");
+    assert.equal(afterGuardPayload.workflow, "codex-night-workflow");
+    assert.equal(afterGuardPayload.status, "active");
+    assert.deepEqual(afterGuardPayload.roles, ["active"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("README links to the reproducible value proof report", async () => {
   const readme = await readFile(resolve("README.md"), "utf8");
   const proof = await readFile(resolve("docs/value-proof.md"), "utf8");
@@ -127,6 +228,33 @@ test("README links to the reproducible value proof report", async () => {
   assert.match(proof, /action-card flow/);
   assert.match(proof, /usable skills: 2 -> 3/);
   assert.match(proof, /anthropic\.docx/);
+  assert.match(proof, /AI-mediated approved action proof/);
+  assert.match(proof, /assistant_guidance/);
+  assert.match(proof, /guard use anthropic\.docx/);
+  assert.match(proof, /guard use matt\.grill-me/);
+});
+
+test("README leads with ask-your-AI workflow before command details", async () => {
+  const readme = await readFile(resolve("README.md"), "utf8");
+  const firstScreen = readme.slice(0, readme.indexOf("## Why Not Just List `/skills`?"));
+  const quickStart = readme.slice(
+    readme.indexOf("## 5-Minute Quick Start"),
+    readme.indexOf("## What SkillBoard Gives You")
+  );
+
+  assert.match(firstScreen, /Ask your AI/i);
+  assert.match(firstScreen, /What skills can you use in this project\?/);
+  assert.match(firstScreen, /Can you make `anthropic\.docx` available for this workflow\?/);
+  assert.match(firstScreen, /behind the scenes/i);
+  assert.match(firstScreen, /You\s+do not need to memorize/i);
+
+  assert.match(quickStart, /Ask your AI/i);
+  assert.match(quickStart, /AI runs\s+SkillBoard behind the scenes/i);
+  assert.match(quickStart, /AI\/automation\/operator details/i);
+  assert.match(quickStart, /npx agent-skillboard init/);
+  assert.match(quickStart, /npx agent-skillboard brief/);
+  assert.match(quickStart, /npx agent-skillboard doctor --summary/);
+  assert.doesNotMatch(quickStart, /run these commands every time you need a skill/i);
 });
 
 async function runSkillboard(args) {
@@ -146,4 +274,11 @@ function skillRows(stdout) {
 
 function usableCount(brief) {
   return brief.skills.automatic_allowed.length + brief.skills.manual_allowed.length;
+}
+
+function assertGuardDenied(payload, reasonPattern) {
+  assert.equal(payload.allowed, false);
+  assert.equal(payload.workflow, "codex-night-workflow");
+  assert.ok(Array.isArray(payload.reasons));
+  assert.match(payload.reasons.join("\n"), reasonPattern);
 }

@@ -1,3 +1,4 @@
+// SIZE_OK: src/brief-renderer.mjs is pre-existing renderer debt; this change only adds narrow AI/automation copy until a broader renderer split.
 const SKILL_SECTIONS = [
   ["What your AI can use now", "automatic_allowed"],
   ["Manual only", "manual_allowed"],
@@ -215,6 +216,7 @@ function workflowOption(brief) {
 function emitActions(lines, brief, options) {
   const actions = actionsForTextBrief(brief);
   lines.push("## Suggested next actions", "");
+  lines.push("AI/automation operations should use current action ids from this brief, then ask for user confirmation before applying one action.", "");
   if (actions.length === 0) {
     lines.push("- none", "");
     return;
@@ -251,6 +253,7 @@ function emitActions(lines, brief, options) {
 
 function emitNextAction(lines, brief, options) {
   lines.push("## Next safe action", "");
+  lines.push("AI/automation should present this as the next confirmable operation, not as an automatic mutation.", "");
   const action = nextSafeAction(brief);
   if (action === null) {
     lines.push("- none", "");

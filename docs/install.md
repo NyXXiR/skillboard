@@ -3,10 +3,18 @@
 SkillBoard sits one layer above skill installers, plugin marketplaces, harness
 bundles, and local skill repositories.
 
+After install, ask your AI questions like "what skills can you use in this
+project?" or "can you make this reviewed skill available for the current
+workflow?" The AI runs SkillBoard behind the scenes: it reads the current brief,
+uses one current action id only after confirmation, and runs the guard before
+actual skill use. You do not need to memorize the SkillBoard command loop.
+
 ## Install From npm
 
 Use npx when you want to bootstrap a project without keeping a global
 SkillBoard binary installed:
+
+AI/automation/operator details:
 
 ```bash
 npx agent-skillboard init
@@ -29,6 +37,8 @@ npm exec --yes --package agent-skillboard -- skillboard doctor --summary
 
 For repeated local use, install the CLI globally:
 
+AI/automation/operator details:
+
 ```bash
 npm install -g agent-skillboard
 skillboard init
@@ -42,6 +52,8 @@ The executable remains `skillboard` even though the npm package name is
 
 Use GitHub npx only when you intentionally want the current repository state
 before the next npm release:
+
+AI/automation/operator details:
 
 ```bash
 npx --yes --package github:NyXXiR/skillboard skillboard init
@@ -59,6 +71,8 @@ npm exec --yes --package github:NyXXiR/skillboard -- skillboard doctor --summary
 ## Install From A Clone
 
 Use a clone when developing SkillBoard itself or testing unreleased changes:
+
+AI/automation/operator details:
 
 ```bash
 git clone https://github.com/NyXXiR/skillboard.git
@@ -120,16 +134,16 @@ CI or automation gate. Use `--json` for an agent-readable health payload, or
 report. `skillboard status` is the same report under a shorter command name.
 
 For AI-mediated use, the generated bridge tells agents to answer availability
-questions from `skillboard brief --json`, not from memory or from raw
-`SKILL.md` bodies. The brief is read-only and organizes the response around
-"What your AI can use now", decisions the user can make once, hard safety
-blocks, inactive installed skills, and suggested action cards. Text briefs show
-action cards by default; JSON keeps them opt-in with `--include-actions`. The
-default text brief is compact for large skill sets: it keeps counts, top
-categories, the next safe action, short section previews, and short action
-summaries. Use `skillboard brief --verbose` when you need the full list or full
-copyable command details. Agents should still run `skillboard guard use ...`
-immediately before an actual skill invocation.
+questions by reading the current brief with `skillboard brief --json`, not from
+memory or from raw `SKILL.md` bodies. The brief is read-only and organizes the
+response around "What your AI can use now", decisions the user can make once,
+hard safety blocks, inactive installed skills, and suggested action cards. Text
+briefs show action cards by default; JSON keeps them opt-in with
+`--include-actions`. The default text brief is compact for large skill sets: it
+keeps counts, top categories, the next safe action, short section previews, and
+short action summaries. Use `skillboard brief --verbose` when an operator needs
+the full list or full copyable command details. Agents should still run
+`skillboard guard use ...` immediately before an actual skill invocation.
 
 Action cards are change suggestions. Before an agent applies one that changes
 policy, trust, hooks, reset state, or skill references, it should request user

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { buildAssistantGuidance } from "../src/advisor/guidance.mjs";
 import { recommendTrustLevel } from "../src/advisor/trust-policy.mjs";
 import {
   actionByKindAndTarget,
@@ -166,6 +167,9 @@ test("brief actions ambiguous workflow removes every apply boundary", async () =
       assert.equal(action.application.apply, null);
       assert.match(action.application.blocked_reason, /workflow/i);
     }
+    assert.deepEqual(brief.assistant_guidance.choices, []);
+    assert.match(brief.assistant_guidance.recommended_next_step, /workflow/i);
+    assert.doesNotMatch(brief.assistant_guidance.recommended_next_step, /approve/i);
   });
 });
 
@@ -232,4 +236,101 @@ test("brief actions have deterministic ids and ordering", async () => {
     assert.deepEqual(second.actions.map((action) => action.id), first.actions.map((action) => action.id));
     assert.equal(JSON.stringify(second.actions), JSON.stringify(first.actions));
   });
+});
+
+test("assistant guidance only exposes currently applicable action choices", () => {
+  const guidance = buildAssistantGuidance({
+    ok: false,
+    health: {
+      config_path: "/tmp/skillboard.config.yaml",
+      skills_root: "/tmp/skills",
+      policy: { errors: [] }
+    },
+    workflow: {
+      selected: "agent",
+      needs_selection: false,
+      unknown: false
+    },
+    skills: {
+      automatic_allowed: [],
+      manual_allowed: [],
+      blocked: []
+    },
+    review_queue: [],
+    actions: [
+      {
+        id: "blocked-action:one",
+        label: "Blocked action",
+        reason: "Blocked.",
+        risk: "medium",
+        requires_user_confirmation: true,
+        blocked_reason: "Cannot apply.",
+        application: { apply: null, blocked_reason: "Cannot apply." }
+      },
+      {
+        id: "missing-apply:two",
+        label: "Missing apply",
+        reason: "Missing apply command.",
+        risk: "medium",
+        requires_user_confirmation: true,
+        blocked_reason: null,
+        application: { apply: null, blocked_reason: null }
+      },
+      {
+        id: "application-blocked:three",
+        label: "Application blocked",
+        reason: "Application cannot apply.",
+        risk: "medium",
+        requires_user_confirmation: true,
+        blocked_reason: null,
+        application: { apply: null, blocked_reason: "Select a workflow." }
+      },
+      {
+        id: "applicable:four",
+        label: "Applicable action",
+        reason: "Can apply.",
+        risk: "medium",
+        requires_user_confirmation: true,
+        blocked_reason: null,
+        application: {
+          apply: { argv: ["skillboard", "apply-action", "applicable:four"], display: "skillboard apply-action applicable:four" },
+          blocked_reason: null
+        }
+      }
+    ]
+  });
+
+  assert.deepEqual(guidance.choices.map((choice) => choice.action_id), ["applicable:four"]);
+  assert.equal(guidance.choices[0].blocked_reason, null);
+});
+
+test("assistant guidance shell-quotes guard command hint metacharacters", () => {
+  const guidance = buildAssistantGuidance({
+    ok: true,
+    health: {
+      config_path: "/tmp/config; touch owned.yaml",
+      skills_root: "/tmp/skills $(touch owned)",
+      policy: { errors: [] }
+    },
+    workflow: {
+      selected: "agent workflow; rm -rf /",
+      needs_selection: false,
+      unknown: false
+    },
+    skills: {
+      automatic_allowed: [],
+      manual_allowed: [],
+      blocked: []
+    },
+    review_queue: [],
+    actions: []
+  });
+
+  assert.equal(
+    guidance.guard.command_hint,
+    "skillboard guard use '<skill-id>' --workflow 'agent workflow; rm -rf /' --config '/tmp/config; touch owned.yaml' --skills '/tmp/skills $(touch owned)'"
+  );
+  assert.doesNotMatch(guidance.guard.command_hint, /--workflow [^'][^ ]*;/);
+  assert.doesNotMatch(guidance.guard.command_hint, /--config [^'][^ ]*;/);
+  assert.doesNotMatch(guidance.guard.command_hint, /--skills [^'][^ ]*\$\(/);
 });

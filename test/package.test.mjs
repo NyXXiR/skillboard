@@ -125,9 +125,9 @@ test("packed package runs through npm exec one-command bootstrap surface", async
     const help = await execNpm(["exec", "--yes", "--package", tarballPath, "--", "skillboard", "help"], { cwd: temp });
     const npxAlias = await execNpm(["exec", "--yes", "--package", tarballPath, "--", "agent-skillboard", "help"], { cwd: temp });
 
-    assert.match(help.stdout, /SkillBoard - workflow-scoped agent skill policy/);
+    assert.match(help.stdout, /^SkillBoard - AI-mediated workflow-scoped skill policy$/m);
     assert.match(help.stdout, /init \[--dir <path>\]/);
-    assert.match(npxAlias.stdout, /SkillBoard - workflow-scoped agent skill policy/);
+    assert.match(npxAlias.stdout, /^SkillBoard - AI-mediated workflow-scoped skill policy$/m);
   } finally {
     await rm(temp, { recursive: true, force: true });
   }

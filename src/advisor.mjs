@@ -52,7 +52,7 @@ export async function buildSkillBrief(options = {}) {
     return buildExpectedConfigError(configDoctor, paths, cleanup, {
       code: "invalid-config",
       message: configDoctor.config.error ?? "skillboard.config.yaml is invalid"
-    });
+    }, options);
   }
 
   let workspace;
@@ -62,7 +62,7 @@ export async function buildSkillBrief(options = {}) {
     return buildExpectedConfigError(configDoctor, paths, cleanup, {
       code: "invalid-config",
       message: error instanceof Error ? error.message : String(error)
-    });
+    }, options);
   }
 
   const doctor = await doctorProject({
@@ -97,9 +97,10 @@ export async function buildSkillBrief(options = {}) {
 
   const skills = skillsForWorkflow(workspace, workflow.selected, sourceAudit);
   const actionData = actionsForBrief({ options, paths, workflow, skills, reviewQueue, cleanup, workspace });
+  const availabilityOk = doctor.config.valid && doctor.policy.ok && doctor.sources.ok;
   return buildBrief({
-    ok: doctor.ok,
-    health: healthFromDoctor(doctor, paths),
+    ok: availabilityOk,
+    health: healthForBrief(doctor, paths, availabilityOk),
     workflow,
     skills,
     sources: summarizeSources(sourceAudit),
@@ -109,7 +110,18 @@ export async function buildSkillBrief(options = {}) {
   });
 }
 
-function buildExpectedConfigError(doctor, paths, cleanup, error) {
+function healthForBrief(doctor, paths, availabilityOk) {
+  const health = healthFromDoctor(doctor, paths);
+  if (!availabilityOk || health.mode !== "failed") {
+    return health;
+  }
+  return {
+    ...health,
+    mode: health.review_required ? "safe-mode" : "passed"
+  };
+}
+
+function buildExpectedConfigError(doctor, paths, cleanup, error, options = {}) {
   return buildBrief({
     ok: false,
     error,
@@ -118,7 +130,8 @@ function buildExpectedConfigError(doctor, paths, cleanup, error) {
     skills: emptySkillGroups(),
     sources: sourcesFromDoctor(doctor),
     reviewQueue: [],
-    cleanup
+    cleanup,
+    actions: requestedActions(options) ? [] : undefined
   });
 }
 

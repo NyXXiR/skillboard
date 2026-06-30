@@ -79,22 +79,29 @@ explicit policy decision rather than installation.
 
 ## AI-Mediated Availability
 
-`skillboard brief --json` is the AI-facing availability contract. It lets an
-agent answer "What your AI can use now" with grouped facts from the control
+`skillboard brief --json` is the AI-facing availability contract. The user does
+not need to know the command loop: they can ask their AI what skills are
+available, why something is blocked, or whether a reviewed skill can be made
+available for a workflow. Behind the scenes, the AI should read the current
+brief and answer "What your AI can use now" with grouped facts from the control
 plane instead of trusting installed `SKILL.md` text or inventing policy from the
-filesystem. Human brief text separates reviewable friction from hard blocks:
-"Needs your decision" means the user can make a source/skill/workflow decision
-once, while "Blocked for safety" means policy or provenance must change before
-the item is usable. The brief may include action cards when requested, but an
-action card is only a suggestion. It does not authorize invocation and it does
-not make unreviewed external skills safe for automatic use.
+filesystem.
+
+Human brief text separates reviewable friction from hard blocks: "Needs your
+decision" means the user can make a source/skill/workflow decision once, while
+"Blocked for safety" means policy or provenance must change before the item is
+usable. The brief may include action cards when requested, but an action card is
+only a suggestion. It does not authorize invocation and it does not make
+unreviewed external skills safe for automatic use.
 
 Risk-bearing action cards require user confirmation before apply. Any apply
 that mutates policy, trust, hooks, reset state, or skill references makes the
-previous brief stale, so the agent should rerun `skillboard brief --json` before
-answering another availability question or applying another action card. The
-runtime boundary remains `skillboard guard use ...`, run immediately before the
-actual skill invocation.
+previous brief stale, so the agent should use one current action id from the
+current brief and then rerun `skillboard brief --json` before answering another
+availability question or applying another action card. The runtime boundary
+remains `skillboard guard use ...`, run immediately before the actual skill
+invocation. CLI examples in this model are AI/automation/operator details, not
+a memorized user workflow.
 
 ## Workflow Activation
 

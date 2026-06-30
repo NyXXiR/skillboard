@@ -1,9 +1,19 @@
 # First-Time Skill Control Flow
 
-This flow assumes a user installed SkillBoard because they want to see and
-control which agent skills can affect a workflow.
+This flow assumes a user installed SkillBoard because they want to ask their AI
+which skills are safe to use and approve changes without learning the control
+plane internals.
+
+When you ask your AI "what skills can you use here?" or "make this reviewed
+skill available for this workflow," the AI should read the current brief, show
+the relevant choice, ask before applying one current action id, and run the
+final guard before invocation. You do not need to memorize the SkillBoard
+command loop. The command examples below are AI/automation/operator details for
+the agent, scripts, or people maintaining the setup.
 
 ## 1. Bootstrap The Control Plane
+
+AI/automation/operator details:
 
 ```bash
 skillboard init
@@ -25,17 +35,17 @@ safety". Use
 `skillboard doctor --strict` when review-needed safe-mode warnings should fail
 automation.
 
-When the user asks the agent what it can use, the agent should run
-`skillboard brief --json` first and answer from the brief rather than reading
-skill files directly. The user-facing text output uses sections such as "What
-your AI can use now", "Needs your decision", and "Blocked for safety"; text
-briefs include previewable action cards by default, while the JSON form keeps
-action cards opt-in. For large skill sets, the default text brief stays compact:
-counts, top categories, next safe action, short previews per section, and short
-action summaries. Use `skillboard brief --verbose` when you need every skill and
-full copyable command details. Those action cards are suggestions only: the
-agent should pick one current action id from the brief, request confirmation
-before applying risk-bearing changes, then run
+When the user asks the agent what it can use, the agent should read the current
+brief with `skillboard brief --json` first and answer from the brief rather than
+reading skill files directly. The user-facing text output uses sections such as
+"What your AI can use now", "Needs your decision", and "Blocked for safety";
+text briefs include previewable action cards by default, while the JSON form
+keeps action cards opt-in. For large skill sets, the default text brief stays
+compact: counts, top categories, next safe action, short previews per section,
+and short action summaries. Use `skillboard brief --verbose` when an operator
+needs every skill and full copyable command details. Those action cards are
+suggestions only: the agent should pick one current action id from the brief,
+request confirmation before applying risk-bearing changes, then run
 `skillboard apply-action <action-id> --config skillboard.config.yaml --skills skills --yes --json`
 with `--workflow <name>` when a workflow is selected. The agent should read the
 returned post-apply brief before making the next availability claim.
@@ -51,6 +61,8 @@ skillboard inventory refresh
 ```
 
 ## 2. Add A User-Owned Skill
+
+AI/automation/operator details:
 
 Create the skill under the project `skills/` directory:
 
@@ -97,6 +109,8 @@ does not grant automatic model invocation.
 
 ## 3. Inspect Influence Before Use
 
+AI/automation/operator details:
+
 ```bash
 skillboard explain user.helper \
   --config skillboard.config.yaml \
@@ -142,6 +156,8 @@ before an operator materializes the matching non-dry-run hook command.
 
 ## 4. Enable, Disable, Or Prefer
 
+AI/automation/operator details:
+
 Enable the skill only for the workflow that should see it:
 
 ```bash
@@ -176,6 +192,8 @@ skillboard prefer user.helper \
 
 ## 5. Remove Governance Without Deleting User Files
 
+AI/automation/operator details:
+
 First try the safe remove:
 
 ```bash
@@ -205,6 +223,8 @@ This removes SkillBoard policy references only. It does not delete
 `skills/user-helper/SKILL.md`.
 
 ## 6. Stop Using SkillBoard Safely
+
+AI/automation/operator details:
 
 ```bash
 skillboard uninstall --dry-run

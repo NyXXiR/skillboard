@@ -27,7 +27,17 @@ test("brief docs bridge orders brief before guard and confirmation before apply"
     const currentAgents = await readFile("AGENTS.md", "utf8");
     const currentClaude = await readFile("CLAUDE.md", "utf8");
 
+    for (const [name, text] of [
+      ["generated AGENTS.md", agents],
+      ["generated CLAUDE.md", claude],
+      ["root AGENTS.md", currentAgents],
+      ["root CLAUDE.md", currentClaude]
+    ]) {
+      assert.equal(text, `${bridge}\n`, `${name} must match bridgeBlock()`);
+    }
+
     for (const text of [agents, claude, bridge, currentAgents, currentClaude]) {
+      assertGeneratedBridgeIntentDriven(text);
       assertApprovalLoop(text);
       assert.match(text, /action card/i);
       assert.match(text, /raw action-card shell text/i);
@@ -93,7 +103,10 @@ test("brief docs help teaches the approval loop", async () => {
 
   assert.match(result.stdout, /brief \[--workflow <name>\]/);
   assert.match(result.stdout, /apply-action <action-id>/);
-  assert.match(result.stdout, /Approval loop:/);
+  assert.match(result.stdout, /AI\/automation approval loop:/);
+  assert.match(result.stdout, /Translate a user's skill request into the current brief/i);
+  assert.match(result.stdout, /current action id/i);
+  assert.match(result.stdout, /one confirmation/i);
   assertApprovalLoop(result.stdout);
 });
 
@@ -204,6 +217,19 @@ function assertApprovalLoop(text) {
   cursor = assertMatchAfter(text, /skillboard apply-action <action-id>[\s\S]{0,260}--yes[\s\S]{0,120}--json/i, cursor);
   cursor = assertMatchAfter(text, /post-apply brief/i, cursor);
   assertMatchAfter(text, /skillboard guard use/i, cursor);
+}
+
+function assertGeneratedBridgeIntentDriven(text) {
+  assert.match(text, /BEGIN SKILLBOARD/);
+  assert.match(text, /answer skill availability questions from SkillBoard/i);
+  assert.match(text, /translate user intent into current action ids/i);
+  assert.match(text, /ask for one confirmation/i);
+  assert.match(text, /apply one current action/i);
+  assert.match(text, /reread the post-apply brief/i);
+  assert.match(text, /guard before invocation/i);
+  assert.match(text, /current brief/i);
+  assert.match(text, /do not apply cached or stale action ids/i);
+  assert.match(text, /do not infer availability from `SKILL\.md` bodies/i);
 }
 
 function assertMatchAfter(text, pattern, startIndex) {

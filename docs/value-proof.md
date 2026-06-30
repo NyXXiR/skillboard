@@ -113,3 +113,35 @@ What this proves:
   approved change, then re-resolves the next availability state.
 - The user does not need to hand-edit YAML or infer enable/disable impact from
   raw `SKILL.md` files.
+
+## Case 3: AI-mediated approved action proof
+
+The test also simulates the product path without calling an external LLM:
+
+```bash
+node bin/skillboard.mjs brief ... --include-actions --json
+node bin/skillboard.mjs apply-action <current-action-id> ... --yes --json
+node bin/skillboard.mjs guard use anthropic.docx ... --json
+node bin/skillboard.mjs guard use matt.grill-me ... --json
+```
+
+Observed AI-mediated result:
+
+- The simulated user asks for `anthropic.docx` to be made available.
+- The AI reads `assistant_guidance.choices` from the current brief.
+- The chosen confirmation maps to the current
+  `activate-skill:anthropic.docx` action id.
+- `apply-action --yes --json` returns a post-apply brief.
+- The returned brief no longer offers the stale activate action and now offers
+  the matching disable action.
+- `guard use anthropic.docx --workflow codex-night-workflow` fails before the
+  approved action and succeeds after it.
+- `guard use matt.grill-me --workflow codex-night-workflow` stays denied
+  because the workflow blocks that skill.
+
+What this proves:
+
+- The proof uses the current `assistant_guidance` action id instead of cached
+  output.
+- SkillBoard keeps the guard as the final boundary before invocation.
+- Blocked skills still produce a non-zero, machine-readable denial.
