@@ -11,5 +11,5 @@
     "strict": false,
     "noImplicitAny": false
   },
-  "include": ["bin/**/*.mjs", "src/**/*.mjs", "test/**/*.mjs"]
+  "include": ["bin/**/*.mjs", "src/**/*.mjs", "test/**/*.mjs", ".github/scripts/**/*.mjs"]
 }

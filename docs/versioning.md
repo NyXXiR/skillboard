@@ -194,6 +194,9 @@ Before tagging a public release:
     publish.yml --allow-publish` cannot configure it from the CLI, use the npm
     package settings page and add a GitHub Actions trusted publisher with the
     same repository, workflow filename, and allowed action.
+  - The publish job uses GitHub Actions OIDC and `npm publish --provenance`
+    without `NPM_TOKEN`; do not add `NODE_AUTH_TOKEN` or a setup-node
+    `registry-url` that creates a token placeholder.
 - Push a version tag that exactly matches `package.json`, for example `v0.1.2`
   for package version `0.1.2`.
 - Let `.github/workflows/publish.yml` publish from the tag. The workflow runs

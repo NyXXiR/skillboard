@@ -91,6 +91,8 @@ test("docs/versioning.md documents tag-based npm release automation", async () =
   assert.match(text, /npm trust github agent-skillboard/);
   assert.match(text, /package settings page/);
   assert.match(text, /GitHub Actions trusted publisher/);
+  assert.match(text, /OIDC/);
+  assert.match(text, /without `NPM_TOKEN`/);
   assert.match(text, /exactly matches `package\.json`/);
   assert.match(text, /skips `npm publish` only when that exact version already exists on npm/);
 });

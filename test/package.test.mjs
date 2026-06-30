@@ -70,7 +70,7 @@ test("GitHub Actions publish workflow releases npm package from version tags", a
   assert.match(workflow, /id-token: write/);
   assert.match(workflow, /contents: read/);
   assert.match(workflow, /node-version: 24/);
-  assert.match(workflow, /registry-url: https:\/\/registry\.npmjs\.org/);
+  assert.doesNotMatch(workflow, /registry-url:/);
   assert.doesNotMatch(workflow, /cache: npm/);
   assert.match(workflow, /npm ci/);
   assert.match(workflow, /npm run check/);
@@ -79,8 +79,21 @@ test("GitHub Actions publish workflow releases npm package from version tags", a
   assert.match(workflow, /Check npm registry/);
   assert.match(workflow, /published=true/);
   assert.match(workflow, /already published; skipping npm publish/);
-  assert.match(workflow, /npm publish --access public/);
+  assert.match(workflow, /npm publish --provenance --access public/);
   assert.match(workflow, /if: steps\.registry\.outputs\.published != 'true'/);
+  assert.doesNotMatch(workflow, /NODE_AUTH_TOKEN/);
+  assert.doesNotMatch(workflow, /NPM_TOKEN/);
+});
+
+test("GitHub Actions check workflow runs package smoke through a cross-platform Node script", async () => {
+  const workflow = await readFile(resolve(".github/workflows/check.yml"), "utf8");
+
+  assert.match(workflow, /package and lifecycle smoke/);
+  assert.match(workflow, /node \.github\/scripts\/ci-package-lifecycle-smoke\.mjs/);
+  assert.doesNotMatch(workflow, /shell: bash/);
+  assert.doesNotMatch(workflow, /mktemp/);
+  assert.doesNotMatch(workflow, /grep -q/);
+  assert.doesNotMatch(workflow, /file:\/\/\$\{?repo/);
 });
 
 test("npm pack dry-run includes public runtime files and excludes work artifacts", async () => {
