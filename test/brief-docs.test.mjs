@@ -17,6 +17,14 @@ const HOOK_ACTION_CARD_DOCS = [
   "src/lifecycle-content.mjs"
 ];
 
+test("root bridge files are checked out with LF endings on Windows", async () => {
+  const attributes = await readFile(".gitattributes", "utf8");
+
+  for (const file of ["AGENTS.md", "CLAUDE.md"]) {
+    assert.match(attributes, new RegExp(`^${escapeRegExp(file)}\\s+text\\s+eol=lf$`, "m"));
+  }
+});
+
 test("brief docs bridge orders brief before guard and confirmation before apply", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-brief-docs-bridge-"));
   try {
