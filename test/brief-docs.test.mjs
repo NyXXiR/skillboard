@@ -17,8 +17,10 @@ const HOOK_ACTION_CARD_DOCS = [
   "src/lifecycle-content.mjs"
 ];
 
-test("root bridge files are checked out with LF endings on Windows", async () => {
+test("markdown docs are checked out with LF endings on Windows", async () => {
   const attributes = await readFile(".gitattributes", "utf8");
+
+  assert.match(attributes, /^\*\.md\s+text\s+eol=lf$/m);
 
   for (const file of ["AGENTS.md", "CLAUDE.md"]) {
     assert.match(attributes, new RegExp(`^${escapeRegExp(file)}\\s+text\\s+eol=lf$`, "m"));
