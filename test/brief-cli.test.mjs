@@ -14,6 +14,7 @@ import {
   sectionBetween,
   withInitializedEmptyProject
 } from "./helpers/brief-cli.mjs";
+import { displayCommand } from "./helpers/expected-command.mjs";
 
 test("brief command renders readable text sections", async () => {
   await withBriefFixture(async ({ configPath, skillsRoot }) => {
@@ -162,7 +163,13 @@ test("brief command intent json asks after use when an allowed fallback is selec
         skill: "user.tdd",
         workflow: "daily-workflow",
         capability: "test-first-implementation",
-        command_hint: `skillboard prefer user.tdd --workflow daily-workflow --capability test-first-implementation --config ${configPath} --skills ${skillsRoot}`
+        command_hint: displayCommand([
+          "skillboard", "prefer", "user.tdd",
+          "--workflow", "daily-workflow",
+          "--capability", "test-first-implementation",
+          "--config", configPath,
+          "--skills", skillsRoot
+        ])
       }
     });
   });

@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { preferSkill } from "../src/index.mjs";
 import { routeSkill } from "../src/route.mjs";
 import { loadWorkspace } from "../src/workspace.mjs";
+import { displayCommand } from "./helpers/expected-command.mjs";
 
 test("routeSkill uses default paths for fallback post-use policy commands", async () => {
   await withFallbackRouteFixture(async ({ configPath, skillsRoot }) => {
@@ -22,7 +23,13 @@ test("routeSkill uses default paths for fallback post-use policy commands", asyn
     );
     assert.equal(
       result.post_use_policy_suggestion.suggested_policy.command_hint,
-      "skillboard prefer user.tdd --workflow daily-workflow --capability test-first-implementation --config skillboard.config.yaml --skills skills"
+      displayCommand([
+        "skillboard", "prefer", "user.tdd",
+        "--workflow", "daily-workflow",
+        "--capability", "test-first-implementation",
+        "--config", "skillboard.config.yaml",
+        "--skills", "skills"
+      ])
     );
   });
 });
@@ -30,17 +37,28 @@ test("routeSkill uses default paths for fallback post-use policy commands", asyn
 test("post-use policy suggestion can be remembered for the next route", async () => {
   await withFallbackRouteFixture(async ({ configPath, skillsRoot }) => {
     const beforeWorkspace = await loadWorkspace({ configPath, skillsRoot });
+    const displayConfigPath = "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\skillboard-route-api-defaults\\skillboard.config.yaml";
+    const displaySkillsRoot = "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\skillboard-route-api-defaults\\skills";
     const before = routeSkill(beforeWorkspace, {
       intent: "write tests before implementation",
       workflow: "daily-workflow",
-      configPath,
-      skillsRoot
+      configPath: displayConfigPath,
+      skillsRoot: displaySkillsRoot
     });
     const suggestion = before.post_use_policy_suggestion;
 
     assert.equal(before.recommended_skill, "user.tdd");
     assert.equal(suggestion.requires_confirmation, true);
-    assert.equal(suggestion.suggested_policy.command_hint, `skillboard prefer user.tdd --workflow daily-workflow --capability test-first-implementation --config ${configPath} --skills ${skillsRoot}`);
+    assert.equal(
+      suggestion.suggested_policy.command_hint,
+      displayCommand([
+        "skillboard", "prefer", "user.tdd",
+        "--workflow", "daily-workflow",
+        "--capability", "test-first-implementation",
+        "--config", displayConfigPath,
+        "--skills", displaySkillsRoot
+      ])
+    );
 
     const result = await preferSkill({
       skillId: suggestion.suggested_policy.skill,

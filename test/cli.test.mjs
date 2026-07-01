@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import YAML from "yaml";
+import { displayCommand } from "./helpers/expected-command.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -2056,7 +2057,13 @@ test("cli route explains preferred denied fallback allowed decisions", async () 
         skill: "user.tdd",
         workflow: "daily-workflow",
         capability: "test-first-implementation",
-        command_hint: `skillboard prefer user.tdd --workflow daily-workflow --capability test-first-implementation --config ${configPath} --skills ${skillsRoot}`
+        command_hint: displayCommand([
+          "skillboard", "prefer", "user.tdd",
+          "--workflow", "daily-workflow",
+          "--capability", "test-first-implementation",
+          "--config", configPath,
+          "--skills", skillsRoot
+        ])
       }
     });
     assert.deepEqual(payload.route_candidates.map((candidate) => ({
