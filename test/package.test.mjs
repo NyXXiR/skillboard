@@ -70,7 +70,7 @@ test("GitHub Actions publish workflow releases npm package from version tags", a
   assert.match(workflow, /id-token: write/);
   assert.match(workflow, /contents: read/);
   assert.match(workflow, /node-version: 24/);
-  assert.doesNotMatch(workflow, /registry-url:/);
+  assert.match(workflow, /registry-url: https:\/\/registry\.npmjs\.org/);
   assert.doesNotMatch(workflow, /cache: npm/);
   assert.match(workflow, /npm ci/);
   assert.match(workflow, /npm run check/);
@@ -81,8 +81,7 @@ test("GitHub Actions publish workflow releases npm package from version tags", a
   assert.match(workflow, /already published; skipping npm publish/);
   assert.match(workflow, /npm publish --provenance --access public/);
   assert.match(workflow, /if: steps\.registry\.outputs\.published != 'true'/);
-  assert.doesNotMatch(workflow, /NODE_AUTH_TOKEN/);
-  assert.doesNotMatch(workflow, /NPM_TOKEN/);
+  assert.match(workflow, /NODE_AUTH_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}/);
 });
 
 test("GitHub Actions check workflow runs package smoke through a cross-platform Node script", async () => {

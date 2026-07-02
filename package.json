@@ -1,6 +1,6 @@
 {
   "name": "agent-skillboard",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Let AI agents pick and use allowed skills in each workflow.",
   "keywords": [
     "ai-agent",

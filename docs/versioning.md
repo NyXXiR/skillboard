@@ -8,7 +8,7 @@ source profiles, and the generated lockfile.
 
 ## Status
 
-Current package version: `0.2.0`
+Current package version: `0.2.1`
 
 Current config schema version:
 
@@ -59,7 +59,7 @@ must call them out clearly.
 Suggested tags:
 
 - `v0.1.0-alpha`: first public GitHub alpha.
-- `v0.2.0`: ask-after skill routing, README benefit-first positioning,
+- `v0.2.1`: ask-after skill routing, README benefit-first positioning,
   source inventory refresh, doctor/status, source pin refresh,
   installer/config detection, resilient detector warnings, and richer dry-run
   plans.
@@ -188,18 +188,13 @@ Before tagging a public release:
 - Run at least one CLI smoke test through the public surface.
 - Confirm docs mention any breaking config, profile, or CLI changes.
 - Update package version and release notes.
-- Confirm npm Trusted Publisher is configured for package `agent-skillboard`,
-  repository `NyXXiR/skillboard`, workflow filename `publish.yml`, and allowed
-  action `npm publish`.
-  - If `npm trust github agent-skillboard --repo NyXXiR/skillboard --file
-    publish.yml --allow-publish` cannot configure it from the CLI, use the npm
-    package settings page and add a GitHub Actions trusted publisher with the
-    same repository, workflow filename, and allowed action.
-  - The publish job uses GitHub Actions OIDC and `npm publish --provenance`
-    without `NPM_TOKEN`; do not add `NODE_AUTH_TOKEN` or a setup-node
-    `registry-url` that creates a token placeholder.
-- Push a version tag that exactly matches `package.json`, for example `v0.2.0`
-  for package version `0.2.0`.
+- Confirm the repository `NPM_TOKEN` secret can publish `agent-skillboard`.
+  The publish job uses that token for npm authentication and requests
+  provenance with GitHub Actions OIDC, so keep `permissions.id-token: write`,
+  the npm registry URL in `setup-node`, and
+  `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` on the publish step.
+- Push a version tag that exactly matches `package.json`, for example `v0.2.1`
+  for package version `0.2.1`.
 - Let `.github/workflows/publish.yml` publish from the tag. The workflow runs
   the full check suite, validates that the tag matches the package version, and
   skips `npm publish` only when that exact version already exists on npm.
@@ -233,7 +228,7 @@ completion notes:
 - update README quick-start to verify the installed version before running
   policy commands.
 
-## 0.2.0 Completion Notes
+## 0.2.1 Completion Notes
 
 - add ask-after route policy suggestions for safe ambiguous workflow skill
   matches while preserving the public route JSON contract;

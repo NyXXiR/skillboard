@@ -98,16 +98,14 @@ test("docs/versioning.md documents tag-based npm release automation", async () =
   const text = await readFile(resolve("docs/versioning.md"), "utf8");
 
   assert.match(text, /Release Checklist/);
-  assert.match(text, /npm Trusted Publisher/);
   assert.match(text, /agent-skillboard/);
-  assert.match(text, /NyXXiR\/skillboard/);
   assert.match(text, /publish\.yml/);
   assert.match(text, /npm publish/);
-  assert.match(text, /npm trust github agent-skillboard/);
-  assert.match(text, /package settings page/);
-  assert.match(text, /GitHub Actions trusted publisher/);
+  assert.match(text, /NPM_TOKEN/);
+  assert.match(text, /NODE_AUTH_TOKEN/);
+  assert.match(text, /registry URL in `setup-node`/);
   assert.match(text, /OIDC/);
-  assert.match(text, /without `NPM_TOKEN`/);
+  assert.match(text, /provenance/);
   assert.match(text, /exactly matches `package\.json`/);
   assert.match(text, /skips `npm publish` only when that exact version already exists on npm/);
 });
