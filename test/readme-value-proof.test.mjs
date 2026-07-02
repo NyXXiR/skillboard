@@ -336,7 +336,16 @@ test("README leads with ask-your-AI workflow before command details", async () =
     readme.indexOf("## What SkillBoard Gives You")
   );
 
-  assert.match(firstScreen, /Let your AI use allowed skills without interruption/i);
+  assert.match(firstScreen, /Use the right AI-agent skills without managing another checklist/i);
+  assert.match(firstScreen, /ask your AI normal questions/i);
+  assert.match(firstScreen, /No global install is required/i);
+  assert.match(firstScreen, /Most use is read-only/i);
+  assert.match(firstScreen, /Nothing changes until you approve a policy action/i);
+  assert.match(firstScreen, /cleanup is conservative and previewable/i);
+  assert.match(firstScreen, /uninstall --dry-run/i);
+  assert.match(firstScreen, /workflow-scoped skill policy and routing for AI\s+agents/i);
+  assert.match(firstScreen, /separates `installed` from `allowed`/i);
+  assert.match(firstScreen, /checks\s+workflow policy and\s+guard state before use/i);
   assert.match(firstScreen, /What skills can you use in this project\?/);
   assert.match(firstScreen, /Can you make `anthropic\.docx` available for this workflow\?/);
   assert.match(firstScreen, /behind the scenes/i);
@@ -348,6 +357,10 @@ test("README leads with ask-your-AI workflow before command details", async () =
 
   assert.match(quickStart, /Ask your AI/i);
   assert.match(quickStart, /AI runs\s+SkillBoard behind the scenes/i);
+  assert.match(quickStart, /Use without a global install/i);
+  assert.match(quickStart, /Remove the project bridge when you are done/i);
+  assert.match(quickStart, /skillboard uninstall --dir \/path\/to\/your\/project --dry-run/);
+  assert.match(quickStart, /preserves local skills and policy files by default/i);
   assert.match(quickStart, /AI\/automation\/operator details/i);
   assert.match(quickStart, /npx --yes --package agent-skillboard skillboard init/);
   assert.match(quickStart, /npx --yes --package agent-skillboard skillboard doctor --summary/);

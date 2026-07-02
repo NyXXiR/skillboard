@@ -1,7 +1,24 @@
 # SkillBoard
 
-Let your AI use allowed skills without interruption, with a clear record of
-which skills it used.
+Use the right AI-agent skills without managing another checklist.
+
+Ask your AI normal questions: "what skills can you use?", "which skill should
+write tests first?", or "can you make this reviewed skill available here?"
+SkillBoard runs behind the scenes so you get the benefit: the right allowed
+skill, a short disclosure of what was used, and fewer setup interruptions.
+
+The burden stays low:
+
+- No global install is required; use `npx --yes --package agent-skillboard`.
+- Most use is read-only: `brief`, `route`, `doctor`, and `guard use` answer
+  what is safe now.
+- Nothing changes until you approve a policy action.
+- Project cleanup is conservative and previewable with `skillboard uninstall --dry-run`.
+
+Under the hood, SkillBoard is workflow-scoped skill policy and routing for AI
+agents. It separates `installed` from `allowed`, checks workflow policy and
+guard state before use, and leaves a clear record of which skill influenced the
+answer.
 
 Start with normal requests:
 
@@ -22,11 +39,6 @@ A normal allowed-skill turn can look like this:
 - You: "Which skill should you use to write tests first?"
 - AI: "I will use matt.tdd for this request."
 - AI: "I used matt.tdd for this request."
-
-SkillBoard is a control board for AI-agent skills. It turns installed
-`SKILL.md` files, plugin skills, hooks, MCP servers, harnesses, and local skill
-folders into a checked answer about what this AI can use in this workflow, why,
-and what would change if a skill were enabled or disabled.
 
 Names you may see in setup and logs:
 
@@ -71,6 +83,8 @@ Ask your AI to set up SkillBoard in the project you want to manage. The AI runs
 SkillBoard behind the scenes, then answers from the generated brief instead of
 from memory or raw skill files.
 
+Use without a global install:
+
 AI/automation/operator details:
 
 ```bash
@@ -86,6 +100,16 @@ run the unscoped `brief` command it prints instead. Trusted user-local skills
 start as manual-only. Runtime, plugin, and external skills stay quarantined or
 blocked until reviewed. The explicit package/binary spelling avoids an extra npx
 install prompt and keeps the `skillboard` executable name clear.
+
+Remove the project bridge when you are done:
+
+```bash
+npx --yes --package agent-skillboard skillboard uninstall --dir /path/to/your/project --dry-run
+npx --yes --package agent-skillboard skillboard uninstall --dir /path/to/your/project
+```
+
+Uninstall preserves local skills and policy files by default, and reports what
+it removed or preserved.
 
 See [docs/install.md](docs/install.md) for global installs, `--dir`, GitHub
 builds, clone-based development, Hermes bridge setup, refresh, and uninstall.
