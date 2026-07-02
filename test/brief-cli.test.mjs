@@ -175,6 +175,79 @@ test("brief command intent json asks after use when an allowed fallback is selec
   });
 });
 
+test("brief command intent json asks after use when allowed ambiguity is selected", async () => {
+  await withAmbiguousAllowedRouteFixture(async ({ configPath, skillsRoot }) => {
+    const result = await runCli([
+      "brief",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot,
+      "--workflow",
+      "daily-workflow",
+      "--intent",
+      "write tests before implementation",
+      "--json"
+    ]);
+    const payload = JSON.parse(result.stdout);
+
+    assert.equal(result.code, 0);
+    assert.equal(payload.assistant_guidance.status, "ready");
+    assert.equal(
+      payload.assistant_guidance.recommended_next_step,
+      "Use user.tdd for this request after the guard check passes."
+    );
+    assert.equal(payload.assistant_guidance.route.recommended_skill, "user.tdd");
+    assert.equal(payload.assistant_guidance.route.guard_allowed, true);
+    assert.equal(payload.assistant_guidance.route.usage_disclosure.confirmation_required, false);
+    assert.deepEqual(payload.assistant_guidance.route.route_candidates.map((candidate) => ({
+      skill: candidate.skill,
+      role: candidate.role,
+      selected: candidate.selected,
+      guard_allowed: candidate.guard_allowed,
+      guard_roles: candidate.guard_roles,
+      capability_roles: candidate.capability_roles
+    })), [
+      {
+        skill: "user.tdd",
+        role: "preferred",
+        selected: true,
+        guard_allowed: true,
+        guard_roles: ["active"],
+        capability_roles: []
+      },
+      {
+        skill: "private.tdd-work-continuity",
+        role: "fallback",
+        selected: false,
+        guard_allowed: true,
+        guard_roles: ["active"],
+        capability_roles: []
+      }
+    ]);
+    assert.deepEqual(payload.assistant_guidance.route.post_use_policy_suggestion, {
+      timing: "after_use",
+      mode: "ask_after_use",
+      reason: "SkillBoard found multiple allowed skills for test-first-implementation and selected user.tdd. After completing the task, ask whether to remember user.tdd as the preferred skill for test-first-implementation in daily-workflow to reduce future ambiguity.",
+      question: "Should I remember user.tdd as the preferred skill for similar test-first-implementation requests in daily-workflow?",
+      requires_confirmation: true,
+      suggested_policy: {
+        kind: "prefer-skill",
+        skill: "user.tdd",
+        workflow: "daily-workflow",
+        capability: "test-first-implementation",
+        command_hint: displayCommand([
+          "skillboard", "prefer", "user.tdd",
+          "--workflow", "daily-workflow",
+          "--capability", "test-first-implementation",
+          "--config", configPath,
+          "--skills", skillsRoot
+        ])
+      }
+    });
+  });
+});
+
 test("brief command intent text renders suggested skill without hiding guard boundary", async () => {
   await withIntentRouteFixture(async ({ configPath, skillsRoot }) => {
     const result = await runCli([
@@ -209,6 +282,31 @@ test("brief command intent text renders suggested skill without hiding guard bou
     );
     assert.match(result.stdout, /Say before use: "I will use matt\.tdd for this request\."/);
     assert.match(result.stdout, /Say after completion: "I used matt\.tdd for this request\."/);
+  });
+});
+
+test("brief command intent text renders ask-after preference after allowed ambiguity", async () => {
+  await withAmbiguousAllowedRouteFixture(async ({ configPath, skillsRoot }) => {
+    const result = await runCli([
+      "brief",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot,
+      "--workflow",
+      "daily-workflow",
+      "--intent",
+      "write tests before implementation"
+    ]);
+
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Recommended skill: `user\.tdd`/);
+    assert.match(result.stdout, /`user\.tdd` \(preferred, selected, allowed\)/);
+    assert.match(result.stdout, /`private\.tdd-work-continuity` \(fallback, allowed\)/);
+    assert.doesNotMatch(result.stdout, /ask before use/i);
+    assert.match(result.stdout, /No extra user approval is needed when the guard allows it\./);
+    assert.match(result.stdout, /After completion: ask whether to remember user\.tdd as the preferred skill for similar test-first-implementation requests in daily-workflow\./);
+    assert.match(result.stdout, /Policy command after confirmation: `skillboard prefer user\.tdd --workflow daily-workflow --capability test-first-implementation/);
   });
 });
 
@@ -976,6 +1074,71 @@ async function withIntentRouteFixture(run) {
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+}
+
+async function withAmbiguousAllowedRouteFixture(run) {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-brief-ambiguous-route-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    await mkdir(join(skillsRoot, "user-tdd"), { recursive: true });
+    await mkdir(join(skillsRoot, "private-tdd"), { recursive: true });
+    await writeFile(
+      join(skillsRoot, "user-tdd", "SKILL.md"),
+      "---\nname: user-tdd\ndescription: Write tests before implementation with local project conventions.\n---\n# user-tdd\n",
+      "utf8"
+    );
+    await writeFile(
+      join(skillsRoot, "private-tdd", "SKILL.md"),
+      "---\nname: private-tdd\ndescription: Keep TDD work continuous while writing tests before implementation.\n---\n# private-tdd\n",
+      "utf8"
+    );
+    await writeFile(configPath, ambiguousAllowedRouteConfig(), "utf8");
+    return await run({ configPath, root, skillsRoot });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+function ambiguousAllowedRouteConfig() {
+  return `version: 1
+defaults:
+  invocation_policy: deny-by-default
+  allow_model_invocation: false
+  require_explicit_workflow: true
+skills:
+  user.tdd:
+    path: user-tdd
+    status: active
+    invocation: manual-only
+    exposure: exported
+    category: testing
+  private.tdd-work-continuity:
+    path: private-tdd
+    status: active
+    invocation: manual-only
+    exposure: exported
+    category: testing
+capabilities:
+  test-first-implementation:
+    canonical: user.tdd
+    alternatives:
+      - private.tdd-work-continuity
+    default_policy: manual-only
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - daily-workflow
+workflows:
+  daily-workflow:
+    harness: codex
+    active_skills:
+      - user.tdd
+      - private.tdd-work-continuity
+    blocked_skills: []
+install_units: {}
+`;
 }
 
 function intentRouteConfig() {

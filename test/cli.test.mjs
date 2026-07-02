@@ -2109,6 +2109,99 @@ test("cli route explains preferred denied fallback allowed decisions", async () 
   }
 });
 
+test("CLI route renders ask-after preference after allowed ambiguity", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-route-ambiguous-allowed-cli-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    await mkdir(join(skillsRoot, "user-tdd"), { recursive: true });
+    await mkdir(join(skillsRoot, "private-tdd"), { recursive: true });
+    await writeFile(
+      join(skillsRoot, "user-tdd", "SKILL.md"),
+      "---\nname: user-tdd\ndescription: Write tests before implementation with local project conventions.\n---\n# user-tdd\n",
+      "utf8"
+    );
+    await writeFile(
+      join(skillsRoot, "private-tdd", "SKILL.md"),
+      "---\nname: private-tdd\ndescription: Keep TDD work continuous while writing tests before implementation.\n---\n# private-tdd\n",
+      "utf8"
+    );
+    await writeFile(configPath, ambiguousAllowedRouteConfig(), "utf8");
+
+    const result = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "route",
+      "write tests before implementation",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot,
+      "--workflow",
+      "daily-workflow",
+      "--json"
+    ]);
+    const payload = JSON.parse(result.stdout);
+
+    assert.equal(payload.matched_capability, "test-first-implementation");
+    assert.equal(payload.recommended_skill, "user.tdd");
+    assert.equal(payload.guard.allowed, true);
+    assert.equal(payload.usage_disclosure.confirmation_required, false);
+    assert.deepEqual(payload.route_candidates.map((candidate) => ({
+      skill: candidate.skill,
+      role: candidate.role,
+      selected: candidate.selected,
+      guard_allowed: candidate.guard_allowed
+    })), [
+      {
+        skill: "user.tdd",
+        role: "preferred",
+        selected: true,
+        guard_allowed: true
+      },
+      {
+        skill: "private.tdd-work-continuity",
+        role: "fallback",
+        selected: false,
+        guard_allowed: true
+      }
+    ]);
+    assert.equal(payload.post_use_policy_suggestion.timing, "after_use");
+    assert.equal(payload.post_use_policy_suggestion.mode, "ask_after_use");
+    assert.equal(payload.post_use_policy_suggestion.requires_confirmation, true);
+    assert.match(payload.post_use_policy_suggestion.reason, /multiple allowed skills/);
+    assert.equal(
+      payload.post_use_policy_suggestion.suggested_policy.command_hint,
+      displayCommand([
+        "skillboard", "prefer", "user.tdd",
+        "--workflow", "daily-workflow",
+        "--capability", "test-first-implementation",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ])
+    );
+
+    const text = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "route",
+      "write tests before implementation",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot,
+      "--workflow",
+      "daily-workflow"
+    ]);
+    assert.match(text.stdout, /user\.tdd .*preferred, selected, allowed/);
+    assert.match(text.stdout, /private\.tdd-work-continuity .*fallback, allowed/);
+    assert.match(text.stdout, /Disclosure: run the guard automatically/);
+    assert.match(text.stdout, /Say before use: "I will use user\.tdd for this request\."/);
+    assert.match(text.stdout, /After completion: ask whether to remember user\.tdd as the preferred skill for similar test-first-implementation requests in daily-workflow\./);
+    assert.match(text.stdout, /Policy command after confirmation: skillboard prefer user\.tdd --workflow daily-workflow --capability test-first-implementation/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("cli route uses skill metadata to break overlapping capability ties", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-route-overlap-cli-"));
   try {
@@ -2201,6 +2294,185 @@ test("cli route returns clarification-friendly no-match JSON", async () => {
   assert.match(payload.recommendation_reason, /No workflow capability or skill metadata matched/);
   assert.equal(payload.guard_command, null);
   assert.ok(payload.possible_skills.some((skill) => skill.id === "matt.tdd"));
+});
+
+test("CLI route keeps no-match as clarification without post-use policy suggestion", async () => {
+  const result = await execFileAsync(process.execPath, [
+    "bin/skillboard.mjs",
+    "route",
+    "draw a logo",
+    "--config",
+    "examples/multi-source.config.yaml",
+    "--skills",
+    "examples/multi-source-skills",
+    "--workflow",
+    "codex-night-workflow",
+    "--json"
+  ]);
+  const payload = JSON.parse(result.stdout);
+
+  assert.equal(payload.ok, true);
+  assert.equal(payload.match_source, "none");
+  assert.equal(payload.recommended_skill, null);
+  assert.equal(payload.guard_command, null);
+  assert.equal(payload.usage_disclosure, null);
+  assert.equal(payload.post_use_policy_suggestion, null);
+  assert.match(payload.recommendation_reason, /Ask a clarifying question/);
+});
+
+test("brief intent learns ask-after preference through explicit prefer command and ask-after routing end-to-end CLI smoke", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-ask-after-e2e-cli-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    await mkdir(join(skillsRoot, "user-tdd"), { recursive: true });
+    await mkdir(join(skillsRoot, "private-tdd"), { recursive: true });
+    await writeFile(
+      join(skillsRoot, "user-tdd", "SKILL.md"),
+      "---\nname: user-tdd\ndescription: Write tests before implementation with local project conventions.\n---\n# user-tdd\n",
+      "utf8"
+    );
+    await writeFile(
+      join(skillsRoot, "private-tdd", "SKILL.md"),
+      "---\nname: private-tdd\ndescription: Keep TDD work continuous while writing tests before implementation.\n---\n# private-tdd\n",
+      "utf8"
+    );
+    await writeFile(configPath, ambiguousAllowedRouteConfig(), "utf8");
+    const baseArgs = ["--config", configPath, "--skills", skillsRoot, "--workflow", "daily-workflow"];
+
+    const route = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "route",
+      "write tests before implementation",
+      ...baseArgs,
+      "--json"
+    ]);
+    const routePayload = JSON.parse(route.stdout);
+    assert.equal(routePayload.recommended_skill, "user.tdd");
+    assert.equal(routePayload.post_use_policy_suggestion.suggested_policy.capability, "test-first-implementation");
+
+    const brief = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "brief",
+      "--intent",
+      "write tests before implementation",
+      ...baseArgs,
+      "--json"
+    ]);
+    const briefPayload = JSON.parse(brief.stdout);
+    const selectedSkill = briefPayload.assistant_guidance.route.recommended_skill;
+    const matchedCapability = briefPayload.assistant_guidance.route.matched_capability;
+    assert.equal(selectedSkill, "user.tdd");
+    assert.equal(matchedCapability, "test-first-implementation");
+    assert.equal(briefPayload.assistant_guidance.route.post_use_policy_suggestion.requires_confirmation, true);
+
+    const guard = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "guard",
+      "use",
+      selectedSkill,
+      ...baseArgs,
+      "--json"
+    ]);
+    const guardPayload = JSON.parse(guard.stdout);
+    assert.equal(guardPayload.allowed, true);
+
+    const preference = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "prefer",
+      selectedSkill,
+      "--capability",
+      matchedCapability,
+      ...baseArgs,
+      "--json"
+    ]);
+    const preferencePayload = JSON.parse(preference.stdout);
+    assert.equal(preferencePayload.changed, true);
+    assert.match(preferencePayload.message, /Preferred user\.tdd/);
+
+    const secondBrief = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "brief",
+      "--intent",
+      "write tests before implementation",
+      ...baseArgs,
+      "--json"
+    ]);
+    const secondPayload = JSON.parse(secondBrief.stdout);
+    assert.equal(secondPayload.assistant_guidance.route.recommended_skill, "user.tdd");
+    assert.equal(secondPayload.assistant_guidance.route.post_use_policy_suggestion, null);
+
+    const reroute = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "route",
+      "write tests before implementation",
+      ...baseArgs,
+      "--json"
+    ]);
+    const reroutePayload = JSON.parse(reroute.stdout);
+    assert.equal(reroutePayload.recommended_skill, "user.tdd");
+    assert.equal(reroutePayload.post_use_policy_suggestion, null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("brief intent suppresses ask-after suggestions for no-match and guard-denied routes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-ask-after-suppression-cli-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    await mkdir(join(skillsRoot, "user-test-first"), { recursive: true });
+    await writeFile(
+      join(skillsRoot, "user-test-first", "SKILL.md"),
+      "---\nname: user-test-first\ndescription: Write tests before implementation.\n---\n# user-test-first\n",
+      "utf8"
+    );
+    await writeFile(configPath, deniedRouteConfig(), "utf8");
+    const baseArgs = ["--config", configPath, "--skills", skillsRoot, "--workflow", "daily-workflow"];
+
+    let denied;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "brief",
+        "--intent",
+        "write tests before implementation",
+        ...baseArgs,
+        "--json"
+      ]);
+    } catch (caught) {
+      denied = caught;
+    }
+    assert.equal(denied.code, 1);
+    const deniedPayload = JSON.parse(denied.stdout);
+    assert.equal(deniedPayload.assistant_guidance.route.recommended_skill, "user.test-first");
+    assert.equal(deniedPayload.assistant_guidance.route.guard_allowed, false);
+    assert.equal(deniedPayload.assistant_guidance.route.usage_disclosure, null);
+    assert.equal(deniedPayload.assistant_guidance.route.post_use_policy_suggestion, null);
+
+    let noMatch;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "brief",
+        "--intent",
+        "draw a logo",
+        ...baseArgs,
+        "--json"
+      ]);
+    } catch (caught) {
+      noMatch = caught;
+    }
+    assert.equal(noMatch.code, 1);
+    const noMatchPayload = JSON.parse(noMatch.stdout);
+    assert.equal(noMatchPayload.assistant_guidance.route.recommended_skill, null);
+    assert.equal(noMatchPayload.assistant_guidance.route.guard_command, null);
+    assert.equal(noMatchPayload.assistant_guidance.route.usage_disclosure, null);
+    assert.equal(noMatchPayload.assistant_guidance.route.post_use_policy_suggestion, null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("cli guard, brief, and impact surface active workflow conflicts", async () => {
@@ -2361,6 +2633,47 @@ install_units:
     trust_level: unreviewed
     permission_risk: medium
     rollback: reinstall
+`;
+}
+
+function ambiguousAllowedRouteConfig() {
+  return `version: 1
+defaults:
+  invocation_policy: deny-by-default
+  allow_model_invocation: false
+  require_explicit_workflow: true
+skills:
+  user.tdd:
+    path: user-tdd
+    status: active
+    invocation: manual-only
+    exposure: exported
+    category: testing
+  private.tdd-work-continuity:
+    path: private-tdd
+    status: active
+    invocation: manual-only
+    exposure: exported
+    category: testing
+capabilities:
+  test-first-implementation:
+    canonical: user.tdd
+    alternatives:
+      - private.tdd-work-continuity
+    default_policy: manual-only
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - daily-workflow
+workflows:
+  daily-workflow:
+    harness: codex
+    active_skills:
+      - user.tdd
+      - private.tdd-work-continuity
+    blocked_skills: []
+install_units: {}
 `;
 }
 

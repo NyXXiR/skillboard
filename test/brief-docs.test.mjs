@@ -126,6 +126,49 @@ test("brief docs help teaches the disclosure-first control loop", async () => {
   assertApprovalLoop(result.stdout);
 });
 
+test("generated bridge tells agents to use routed skill first and ask after completion", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-brief-docs-ask-after-"));
+  try {
+    await initProject({ root, scanInstalled: false });
+    const agents = await readFile(join(root, "AGENTS.md"), "utf8");
+    const claude = await readFile(join(root, "CLAUDE.md"), "utf8");
+    const bridge = bridgeBlock();
+    const routingDocs = await readFile("docs/routing.md", "utf8");
+
+    for (const text of [agents, claude, bridge]) {
+      assert.match(text, /work first with the allowed routed skill/i);
+      assert.match(text, /ask after completion whether to remember the suggested policy/i);
+      assert.match(text, /For an already-allowed skill, do not ask for another approval/i);
+      assert.match(text, /Run `skillboard guard use <skill-id>[\s\S]*automatically/i);
+    }
+    assert.match(routingDocs, /multiple\s+allowed workflow-bound skills match/i);
+    assert.match(routingDocs, /keep the task moving with the allowed routed\s+skill/i);
+    assert.match(routingDocs, /suggested policy command is informational until the user\s+confirms it/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("bridge text does not ask before guard-allowed routed skill use", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-brief-docs-no-preprompt-"));
+  try {
+    await initProject({ root, scanInstalled: false });
+    const agents = await readFile(join(root, "AGENTS.md"), "utf8");
+    const claude = await readFile(join(root, "CLAUDE.md"), "utf8");
+    const bridge = bridgeBlock();
+    const docs = await combinedText(["docs/routing.md", "docs/user-flow.md", "docs/install.md"]);
+
+    for (const text of [agents, claude, bridge, docs]) {
+      assert.doesNotMatch(text, /infer availability from raw `?SKILL\.md`? bodies/i);
+      assert.doesNotMatch(text, /ask (?:the user )?for approval when the guard allows/i);
+      assert.doesNotMatch(text, /ask before ordinary allowed skill use/i);
+    }
+    assert.match(`${agents}\n${claude}\n${bridge}\n${docs}`, /do not ask for another approval/i);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 async function combinedText(files) {
   const parts = [];
   for (const file of files) {

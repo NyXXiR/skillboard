@@ -68,12 +68,11 @@ export function routeSkill(workspace, options) {
     role: index === 0 ? "preferred" : "fallback",
     guard: canUseSkill(workspace, skillId, workflow.name)
   }));
-  const recommended = routedSkills.find((entry) => entry.guard.allowed) ?? routedSkills[0] ?? null;
-  const fallbackSkills = routedSkills
-    .filter((entry) => entry.guard.allowed && entry.skill !== recommended?.skill)
-    .map((entry) => entry.skill);
-  const postUsePolicySuggestion = postUsePolicySuggestionForFallback({
+  const recommended = selectedRouteSkill(routedSkills);
+  const fallbackSkills = allowedFallbackSkills(routedSkills, recommended);
+  const postUsePolicySuggestion = postUsePolicySuggestionForCapabilityRoute({
     matchedCapability: best.capability,
+    routeMatch: best,
     recommended,
     routedSkills,
     workflowName: workflow.name,
@@ -142,9 +141,7 @@ function skillRoute({ intent, workflow, candidate, candidates, skillCandidates, 
     }));
   const selectedCandidate = routeCandidates.find((entry) => entry.skill === candidate.skill_id);
   const guard = selectedCandidate?.guard ?? canUseSkill(workspace, candidate.skill_id, workflow.name);
-  const fallbackSkills = routeCandidates
-    .filter((entry) => entry.guard.allowed && entry.skill !== candidate.skill_id)
-    .map((entry) => entry.skill);
+  const fallbackSkills = allowedFallbackSkills(routeCandidates, selectedCandidate);
   return {
     ok: true,
     intent,
@@ -197,7 +194,34 @@ function usageDisclosure(skillId) {
   };
 }
 
-function postUsePolicySuggestionForFallback({ matchedCapability, recommended, routedSkills, workflowName, options }) {
+function selectedRouteSkill(routedSkills) {
+  return routedSkills.find((entry) => entry.guard.allowed) ?? routedSkills[0] ?? null;
+}
+
+function allowedFallbackSkills(routedSkills, recommended) {
+  return routedSkills
+    .filter((entry) => entry.guard.allowed && entry.skill !== recommended?.skill)
+    .map((entry) => entry.skill);
+}
+
+function postUsePolicySuggestionForCapabilityRoute({ matchedCapability, routeMatch, recommended, routedSkills, workflowName, options }) {
+  return postUsePolicySuggestionForDeniedPreferredFallback({
+    matchedCapability,
+    recommended,
+    routedSkills,
+    workflowName,
+    options
+  }) ?? postUsePolicySuggestionForAllowedAmbiguity({
+    matchedCapability,
+    routeMatch,
+    recommended,
+    routedSkills,
+    workflowName,
+    options
+  });
+}
+
+function postUsePolicySuggestionForDeniedPreferredFallback({ matchedCapability, recommended, routedSkills, workflowName, options }) {
   if (recommended === null || recommended.role !== "fallback" || recommended.guard.allowed !== true) {
     return null;
   }
@@ -209,6 +233,36 @@ function postUsePolicySuggestionForFallback({ matchedCapability, recommended, ro
     timing: "after_use",
     mode: "ask_after_use",
     reason: `SkillBoard selected fallback ${recommended.skill} because preferred skill ${preferred.skill} is denied. After completing the task, ask whether to remember ${recommended.skill} as the preferred skill for ${matchedCapability} in ${workflowName}.`,
+    question: `Should I remember ${recommended.skill} as the preferred skill for similar ${matchedCapability} requests in ${workflowName}?`,
+    requires_confirmation: true,
+    suggested_policy: {
+      kind: "prefer-skill",
+      skill: recommended.skill,
+      workflow: workflowName,
+      capability: matchedCapability,
+      command_hint: command([
+        "skillboard", "prefer", recommended.skill,
+        "--workflow", workflowName,
+        "--capability", matchedCapability,
+        "--config", routeConfigPath(options),
+        "--skills", routeSkillsRoot(options)
+      ]).display
+    }
+  };
+}
+
+function postUsePolicySuggestionForAllowedAmbiguity({ matchedCapability, routeMatch, recommended, routedSkills, workflowName, options }) {
+  if (recommended === null || recommended.guard.allowed !== true || routeMatch.required_by_workflow) {
+    return null;
+  }
+  const allowedSkills = routedSkills.filter((entry) => entry.guard.allowed);
+  if (allowedSkills.length < 2) {
+    return null;
+  }
+  return {
+    timing: "after_use",
+    mode: "ask_after_use",
+    reason: `SkillBoard found multiple allowed skills for ${matchedCapability} and selected ${recommended.skill}. After completing the task, ask whether to remember ${recommended.skill} as the preferred skill for ${matchedCapability} in ${workflowName} to reduce future ambiguity.`,
     question: `Should I remember ${recommended.skill} as the preferred skill for similar ${matchedCapability} requests in ${workflowName}?`,
     requires_confirmation: true,
     suggested_policy: {

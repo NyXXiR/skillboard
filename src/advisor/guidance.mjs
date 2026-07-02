@@ -176,7 +176,9 @@ function routeGuidance(route) {
       role: candidate.role,
       selected: candidate.selected,
       guard_allowed: candidate.guard_allowed,
-      guard_reasons: candidate.guard_reasons
+      guard_reasons: candidate.guard_reasons,
+      guard_roles: candidate.guard_roles,
+      capability_roles: candidate.capability_roles
     })),
     usage_disclosure: route.usage_disclosure ?? null,
     post_use_policy_suggestion: route.post_use_policy_suggestion ?? null,

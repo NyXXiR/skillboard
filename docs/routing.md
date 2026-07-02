@@ -43,11 +43,14 @@ shows the candidate skill, whether it was selected, whether the guard currently
 allows it, and the guard reason when it is denied. This is the field that tells
 an AI why a preferred skill was skipped and an allowed fallback was selected.
 
-When a preferred skill is denied but an allowed fallback is selected, SkillBoard
-may return `post_use_policy_suggestion`. The AI should keep the task moving with
-the allowed fallback, then ask after completion whether to remember the fallback
-as the preferred workflow policy. The suggested policy command is informational
-until the user confirms it.
+When routing is safe but policy learning would reduce future ambiguity,
+SkillBoard may return `post_use_policy_suggestion`. This includes cases where a
+preferred skill is denied and an allowed fallback is selected, or where multiple
+allowed workflow-bound skills match and one allowed skill is selected
+deterministically. The AI should keep the task moving with the allowed routed
+skill, then ask after completion whether to remember that skill as the preferred
+workflow policy. The suggested policy command is informational until the user
+confirms it.
 
 Use `route` directly when an automation layer only needs the recommendation
 payload:
