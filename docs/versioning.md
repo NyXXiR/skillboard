@@ -8,7 +8,7 @@ source profiles, and the generated lockfile.
 
 ## Status
 
-Current package version: `0.1.2`
+Current package version: `0.2.0`
 
 Current config schema version:
 
@@ -59,7 +59,8 @@ must call them out clearly.
 Suggested tags:
 
 - `v0.1.0-alpha`: first public GitHub alpha.
-- `v0.2.0-alpha`: source inventory refresh, doctor/status, source pin refresh,
+- `v0.2.0`: ask-after skill routing, README benefit-first positioning,
+  source inventory refresh, doctor/status, source pin refresh,
   installer/config detection, resilient detector warnings, and richer dry-run
   plans.
 - `v0.3.0-alpha`: signed remote source verification hardening and migration
@@ -197,8 +198,8 @@ Before tagging a public release:
   - The publish job uses GitHub Actions OIDC and `npm publish --provenance`
     without `NPM_TOKEN`; do not add `NODE_AUTH_TOKEN` or a setup-node
     `registry-url` that creates a token placeholder.
-- Push a version tag that exactly matches `package.json`, for example `v0.1.2`
-  for package version `0.1.2`.
+- Push a version tag that exactly matches `package.json`, for example `v0.2.0`
+  for package version `0.2.0`.
 - Let `.github/workflows/publish.yml` publish from the tag. The workflow runs
   the full check suite, validates that the tag matches the package version, and
   skips `npm publish` only when that exact version already exists on npm.
@@ -231,3 +232,15 @@ completion notes:
 - add a dedicated test for the version flags;
 - update README quick-start to verify the installed version before running
   policy commands.
+
+## 0.2.0 Completion Notes
+
+- add ask-after route policy suggestions for safe ambiguous workflow skill
+  matches while preserving the public route JSON contract;
+- carry route candidate guard and capability roles into AI-facing brief
+  guidance;
+- keep no-match and guard-denied routes free of use disclosures or post-use
+  policy suggestions;
+- update README positioning around user benefit, no-global-install usage,
+  read-only normal checks, explicit approval for policy changes, and
+  conservative previewable cleanup.
