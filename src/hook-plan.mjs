@@ -58,10 +58,10 @@ function renderGuardHookScript(options) {
   return `#!/usr/bin/env sh
 set -eu
 
-SKILLBOARD_BIN=\${SKILLBOARD_BIN:-${shellQuote(options.command)}}
-SKILLBOARD_CONFIG=\${SKILLBOARD_CONFIG:-${shellQuote(options.configPath)}}
-SKILLBOARD_SKILLS=\${SKILLBOARD_SKILLS:-${shellQuote(options.skillsRoot)}}
-SKILLBOARD_WORKFLOW=\${SKILLBOARD_WORKFLOW:-${shellQuote(options.workflow)}}
+SKILLBOARD_BIN=${shellQuote(options.command)}
+SKILLBOARD_CONFIG=${shellQuote(options.configPath)}
+SKILLBOARD_SKILLS=${shellQuote(options.skillsRoot)}
+SKILLBOARD_WORKFLOW=${shellQuote(options.workflow)}
 
 if [ "\${SKILLBOARD_SKILL_ID:-}" != "" ]; then
   skill_id="$SKILLBOARD_SKILL_ID"
@@ -72,8 +72,8 @@ else
   exit 64
 fi
 
-# Split SKILLBOARD_BIN so local hook configs can use commands like:
-#   SKILLBOARD_BIN="node bin/skillboard.mjs"
+# Split the install-time command so hooks can use commands like:
+#   --skillboard-bin "node bin/skillboard.mjs"
 # Paths containing spaces should be provided through an environment wrapper.
 set -- $SKILLBOARD_BIN
 exec "$@" guard use "$skill_id" --workflow "$SKILLBOARD_WORKFLOW" --config "$SKILLBOARD_CONFIG" --skills "$SKILLBOARD_SKILLS"
@@ -143,7 +143,7 @@ function modeToPermissions(mode) {
 }
 
 function shellQuote(value) {
-  return `'${value.replaceAll("'", "'\\''")}'`;
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 function safeHookFilePart(value) {

@@ -1,4 +1,4 @@
-import YAML from "yaml";
+// allow: SIZE_OK - control command split is deferred from the 0.2.7 release gate.
 import {
   EXPOSURE_VALUES,
   INVOCATION_VALUES,
@@ -28,6 +28,7 @@ import {
 import { canUseSkill } from "./can-use-guard.mjs";
 
 const WRITABLE_INVOCATIONS = new Set(["manual-only", "router-only", "workflow-auto", "global-auto"]);
+const NON_ACTIVATABLE_STATUSES = new Set(["blocked", "deprecated", "archived", "removed"]);
 
 export async function activateSkill(options) {
   const { document, originalText } = await loadConfig(options.configPath);
@@ -38,6 +39,7 @@ export async function activateSkill(options) {
   if (!WRITABLE_INVOCATIONS.has(mode) || mode === "global-auto") {
     throw new Error(`activate requires --mode manual-only, router-only, or workflow-auto; got ${mode}`);
   }
+  ensureCanActivateSkill(options.skillId, skill, mode);
   skill.set("status", "active");
   skill.set("invocation", mode);
   addUnique(ensureSeq(workflow, "active_skills", document), options.skillId);
@@ -193,6 +195,7 @@ export async function preferSkill(options) {
   if (capabilityDefinition === undefined) {
     throw new Error(`Unknown capability: ${options.capability}`);
   }
+  ensureCanPreferSkill(options.skillId, skill);
   const required = ensureRequiredCapability(workflow, options.capability, document);
   const previousPreferred = readMapString(required, "preferred", "");
   if (previousPreferred.length > 0 && previousPreferred !== options.skillId) {
@@ -202,23 +205,37 @@ export async function preferSkill(options) {
   removeValue(ensureSeq(required, "fallback", document), options.skillId);
   addUnique(ensureSeq(workflow, "active_skills", document), options.skillId);
   removeValue(ensureSeq(workflow, "blocked_skills", document), options.skillId);
-  const status = readMapString(skill, "status", "vendor");
-  const invocation = readMapString(skill, "invocation", "manual-only");
-  if (status === "quarantined" || status === "blocked") {
-    skill.set("status", "active");
-  }
-  if (invocation === "blocked" || invocation === "deprecated") {
-    const requiredPolicy = readMapString(required, "policy", "");
-    const defaultPolicy = YAML.isMap(capabilityDefinition) ? readMapString(capabilityDefinition, "default_policy", "manual-only") : "manual-only";
-    skill.set("invocation", requiredPolicy.length > 0 ? requiredPolicy : defaultPolicy);
-  }
-
   return await writeCheckedConfig(
     document,
     originalText,
     { ...options, validateUse: { skillId: options.skillId, workflow: options.workflow } },
     `Preferred ${options.skillId} for ${options.capability} in ${options.workflow}`
   );
+}
+
+function ensureCanActivateSkill(skillId, skill, mode) {
+  const status = readMapString(skill, "status", "vendor");
+  const invocation = readMapString(skill, "invocation", "manual-only");
+  if (NON_ACTIVATABLE_STATUSES.has(status)) {
+    throw new Error(`Cannot activate non-callable skill ${skillId} with status: ${status}`);
+  }
+  if (status === "quarantined" && mode !== "manual-only") {
+    throw new Error(`Cannot activate quarantined skill ${skillId} as ${mode}; use manual-only after source review`);
+  }
+  if (NON_CALLABLE_WORKFLOW_INVOCATIONS.has(invocation) && !(status === "quarantined" && invocation === "blocked" && mode === "manual-only")) {
+    throw new Error(`Cannot activate non-callable skill ${skillId} with invocation: ${invocation}`);
+  }
+}
+
+function ensureCanPreferSkill(skillId, skill) {
+  const status = readMapString(skill, "status", "vendor");
+  const invocation = readMapString(skill, "invocation", "manual-only");
+  if (NON_CALLABLE_WORKFLOW_STATUSES.has(status)) {
+    throw new Error(`Cannot prefer non-callable skill ${skillId} with status: ${status}`);
+  }
+  if (NON_CALLABLE_WORKFLOW_INVOCATIONS.has(invocation)) {
+    throw new Error(`Cannot prefer non-callable skill ${skillId} with invocation: ${invocation}`);
+  }
 }
 
 function requireConfigSkill(document, skillId) {

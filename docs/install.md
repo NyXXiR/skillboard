@@ -3,22 +3,80 @@
 SkillBoard sits one layer above skill installers, plugin marketplaces, harness
 bundles, and local skill repositories.
 
-After install, ask your AI questions like "what skills can you use in this
-project?" or "can you make this reviewed skill available for the current
-workflow?" The AI runs SkillBoard behind the scenes: it reads the current brief,
-uses one current action id only after confirmation when policy would change, and
-runs the guard automatically before actual skill use. For already-allowed
-skills, the AI should tell you which skill it is about to use and which skill it
-used in the result instead of asking for another approval. That disclosure is an
-audit trace, not a permission prompt. You do not need to memorize the SkillBoard
-command loop.
+After install, ask your AI questions like "what skills can you use here?" or
+"which skill should you use for this task?" The AI runs SkillBoard behind the
+scenes when skill choices overlap or workflow priority matters. Installed user
+skills are usable by default unless runtime, user, or local instructions disable
+them; SkillBoard should not turn every skill choice into a permission prompt.
+When it selects a skill, the AI should briefly say which skill it will use and
+which skill it used. You do not need to memorize the SkillBoard command loop.
 
 ## Install From npm
 
-Use no-prompt npx package execution when you want to bootstrap a project
-without keeping a global SkillBoard binary installed:
+Global install auto-runs agent integration. Installing the package makes the
+CLI available and the postinstall step runs agent-layer setup for detected
+Codex, Claude, OpenCode, and Hermes user skill roots. The setup is best-effort:
+it never fails the package install, does not edit agent config files, and does
+not create project policy files.
+
+The published CLI supports Node.js 14.21 or newer. Node 12 and older are not
+supported without a transpiled bundle because the source uses modern ESM and
+syntax such as nullish coalescing.
 
 AI/automation/operator details:
+
+```bash
+npm install -g agent-skillboard
+```
+
+If your system npm requires elevated permissions, this is also supported:
+
+```bash
+sudo npm install -g agent-skillboard
+```
+
+Under sudo, the postinstall setup resolves `SUDO_USER` and targets that user's
+agent homes instead of writing guidance under `/root`. The executable prefix is
+still decided by the npm command you run, so use the same npm/Node environment
+you expect to provide `skillboard` on `PATH`. Managed guidance files and
+directories written under the user's home are restored to the invoking user's
+`SUDO_UID:SUDO_GID` ownership.
+
+The install-time setup writes a user-level SkillBoard guidance skill under
+detected agent homes such as `CODEX_HOME`, `AGENTS_HOME`, `CLAUDE_HOME`,
+`OPENCODE_HOME`, and `HERMES_HOME`. Codex detection also checks
+`~/.agents/skills` and `~/.codex/skills`.
+If `~/.agents` exists but `~/.agents/skills` does not, setup creates the
+`skills` directory and installs the guidance skill there so Codex profiles that
+read the shared agent skill tree can see SkillBoard after restart.
+No separate setup command is required after a normal global install or update.
+When npm runs lifecycle scripts, package updates rerun the agent-home scan,
+refresh managed SkillBoard guidance files, and add newly detected supported
+agent roots.
+
+Run `skillboard setup` later when you add another supported agent, enable a new
+agent home, intentionally skipped lifecycle scripts, or need to repair the
+agent-layer guidance install:
+
+```bash
+skillboard setup
+skillboard setup --agent codex,claude,opencode,hermes --yes
+```
+
+After setup, the target agent can reuse a skill from another supported agent:
+
+```bash
+skillboard import-skill --from codex --to opencode --skill <skill> --json
+```
+
+If the source skill can be used as-is, the agent installs it with `--yes`. If
+SkillBoard reports `needs-adaptation`, the agent explains why, asks before
+changing the skill body for the target runtime, then installs the approved
+adapted file with `--adapted-file <path> --yes`.
+
+Use no-prompt npx package execution only when you intentionally want to create
+or inspect local workspace policy files without keeping a global SkillBoard
+binary installed:
 
 ```bash
 npx --yes --package agent-skillboard skillboard init
@@ -26,13 +84,16 @@ npx --yes --package agent-skillboard skillboard doctor --summary
 npx --yes --package agent-skillboard skillboard brief --workflow <workflow-from-init>
 ```
 
-SkillBoard does not make installed skills automatically callable. It imports
-trusted local skills as manual-only and keeps runtime/plugin skills quarantined
-until reviewed. When `init` creates or discovers workflows, use one of the
-workflow names it prints for the first brief. If `init` does not print a
-workflow, run the unscoped `brief` command it prints instead. The explicit
-package/binary spelling avoids an extra npx install prompt and keeps the
-executable name clear.
+Local workspace policy files can be stricter than the first agent-layer setup.
+When you intentionally run `init`, it imports trusted local skills as
+manual-only and keeps runtime/plugin skills quarantined until their source is
+reviewed. The brief presents unreviewed runtime sources as one-time review
+decisions rather than default block recommendations; after review, individual
+quarantined skills can be activated as manual-only workflow skills. When `init`
+creates or discovers workflows, use one of the workflow names it prints for the
+first brief. If `init` does not print a workflow, run the unscoped `brief`
+command it prints instead. The explicit package/binary spelling avoids an extra
+npx install prompt and keeps the executable name clear.
 
 The equivalent `npm exec` spelling is also no-prompt and works well in scripts:
 
@@ -48,8 +109,7 @@ AI/automation/operator details:
 
 ```bash
 npm install -g agent-skillboard
-skillboard init
-skillboard doctor
+skillboard setup --agent codex,claude,opencode,hermes --yes
 ```
 
 The executable remains `skillboard` even though the npm package name is
@@ -93,10 +153,9 @@ node bin/skillboard.mjs brief --dir /path/to/your/project --workflow <workflow-f
 
 ## What init Does
 
-`skillboard init` is the safe mutating step. npm installation itself does not
-modify a project, but init creates the files that let agents discover the control
-plane without a manual prompt and inventories already installed local agent
-skills.
+`skillboard init` is the optional local policy-file generation step. npm
+installation and `skillboard setup` do not modify a project, but init creates
+local files for teams that intentionally keep workflow policy in a workspace.
 
 Created project files:
 
@@ -119,12 +178,16 @@ manual-only` and attached to a generated local manual workflow when the project
 has no workflow metadata yet. That lets a first-time user keep their existing
 manual skills usable through `skillboard can-use` and guard checks without
 granting automatic model invocation or creating legacy-state warning noise.
-System, plugin, and other runtime-supplied skills are written with `status: quarantined` and
-`invocation: blocked`. Plugin hooks, MCP servers, commands, and modified config files are
-recorded on the owning install unit when manifest metadata exposes them, which
-lets policy checks flag high-risk runtime extensions without flattening them
-into loose skills. Use `--no-scan-installed` for a scaffold-only bootstrap, or
-`--scan-root <dir>[,<dir>]` to add server-specific skill roots during bootstrap.
+System, plugin, and other runtime-supplied skills are written with `status:
+quarantined` and `invocation: blocked`. Plugin hooks, MCP servers, commands, and
+modified config files are recorded on the owning install unit when manifest
+metadata exposes them, which lets policy checks flag high-risk runtime
+extensions without flattening them into loose skills. After the owning source is
+reviewed, action cards can activate a quarantined runtime skill into a workflow
+as `manual-only`; automatic preference should still be remembered later through
+the normal ask-after-use policy loop. Use `--no-scan-installed` for a
+scaffold-only bootstrap, or `--scan-root <dir>[,<dir>]` to add server-specific
+skill roots during bootstrap.
 
 After init, run:
 
@@ -178,7 +241,10 @@ so stale action ids and cached action-card shell text are not replayed.
 For hook action cards specifically, keep `apply-action` as the action-card
 primary flow. Raw `skillboard hook install ... --dry-run --json` previews and
 the matching non-dry-run command are underlying manual detail for operators who
-need to inspect or materialize an executable guard hook directly.
+need to inspect or materialize an executable guard hook directly. Generated hooks
+pin the install-time SkillBoard command, config, skills root, and workflow; set
+those values with hook install options such as `--skillboard-bin`, not with
+runtime environment overrides.
 
 ## Hermes System Prompt Bridge
 
@@ -303,6 +369,20 @@ Default uninstall behavior is conservative:
   hooks, and modified files by default. Empty generated directories can be
   removed.
 
+Use `--purge` when you want SkillBoard's influence removed from the project
+instead of merely disconnecting the bridge:
+
+```bash
+skillboard uninstall --dir /path/to/your/project --purge --dry-run
+skillboard uninstall --dir /path/to/your/project --purge
+```
+
+`--purge` removes SkillBoard config, bridge blocks, and the entire
+`.skillboard/` project state directory, including reports, hooks, source caches,
+rollout logs, variant snapshots, and profiles. It preserves local `skills/`
+files because skills that were created or deleted are outside the uninstall
+scope.
+
 Use `--remove-config` to delete `skillboard.config.yaml` only when it still
 matches the untouched default config. If the config contains scanned skills or
 user edits, uninstall preserves it and reports it under `Preserved`.
@@ -322,7 +402,9 @@ Add `--remove-hooks` only when a reset should also delete the entire
 `.skillboard/hooks/` directory contents. This is explicit because hook scripts
 may be wired into local agent/runtime configuration. Combine `--reset-config`,
 `--remove-reports`, and `--remove-hooks` for a clean test reset that removes
-SkillBoard-owned lifecycle scaffolding while preserving local `skills/`.
+the most common SkillBoard-owned lifecycle scaffolding while preserving local
+`skills/`. Use `--purge` instead when no `.skillboard/` project state should
+remain at all.
 
 ## Upper-Layer Control
 
@@ -370,8 +452,8 @@ skillboard review install-unit github.mattpocock.skills \
 
 Automatic invocation remains blocked for unreviewed non-user sources. The user
 experience should still be a one-time decision queue: review, trust, or block
-the install unit once, then revisit only when the source, skill, or workflow
-changes.
+the install unit once, activate only the needed quarantined skills as
+manual-only, then revisit only when the source, skill, or workflow changes.
 
 ```yaml
 install_units:

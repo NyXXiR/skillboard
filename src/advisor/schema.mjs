@@ -56,6 +56,7 @@ export async function buildCleanup(root) {
     resetConfig: true,
     removeReports: true,
     removeHooks: true,
+    removeProjectState: true,
     removeEmptyDirs: true
   });
   return {

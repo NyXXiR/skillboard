@@ -1,3 +1,4 @@
 *.md text eol=lf
+*.mjs text eol=lf
 AGENTS.md text eol=lf
 CLAUDE.md text eol=lf

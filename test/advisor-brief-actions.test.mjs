@@ -1,3 +1,4 @@
+// allow: SIZE_OK - advisor action test split is deferred from the 0.2.7 release gate.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildAssistantGuidance } from "../src/advisor/guidance.mjs";
@@ -11,10 +12,12 @@ import {
   parsedBrief,
   pathExists,
   withActionsFixture,
-  withMissingProvenanceFixture
+  withMissingProvenanceFixture,
+  withReviewedBlockedFixture,
+  withReviewedQuarantinedFixture
 } from "./helpers/advisor-brief-actions.mjs";
 
-test("trust recommendation blocks high-risk skill and harness bundles", () => {
+test("trust recommendation reviews high-risk skill and harness bundles", () => {
   assert.equal(
     recommendTrustLevel({
       id: "risky.skill.pack",
@@ -23,7 +26,7 @@ test("trust recommendation blocks high-risk skill and harness bundles", () => {
       permissionRisk: "high",
       trustLevel: "unreviewed"
     }),
-    "blocked"
+    "reviewed"
   );
   assert.equal(
     recommendTrustLevel({
@@ -33,7 +36,7 @@ test("trust recommendation blocks high-risk skill and harness bundles", () => {
       permissionRisk: "high",
       trustLevel: "unreviewed"
     }),
-    "blocked"
+    "reviewed"
   );
 });
 
@@ -58,24 +61,62 @@ test("brief actions reviewed mattpocock skill can be activated with command obje
   });
 });
 
-test("brief actions unreviewed high-risk source gets block action before activation", async () => {
+test("brief actions unreviewed high-risk source gets review action before activation", async () => {
   await withActionsFixture(async (paths) => {
     const brief = await parsedBrief(paths, { workflow: "agent" });
+    const reviewAction = actionByKindAndTarget(brief, "review-install-unit", "omo.pack");
     const blockAction = actionByKindAndTarget(brief, "block-install-unit", "omo.pack");
     const omoActivate = actionByKindAndTarget(brief, "activate-skill", "omo.runtime");
 
     assert.ok(brief.review_queue.some((entry) => entry.id === "install_unit:omo.pack"));
-    assert.ok(blockAction);
-    assert.match(blockAction.label, /Decide whether to block source omo\.pack/);
-    assert.match(blockAction.reason, /one-time decision/i);
-    assert.equal(blockAction.requires_user_confirmation, true);
-    assertCommandObject(blockAction.dry_run);
-    assertCommandObject(blockAction.apply);
-    assertApplicationCommandObject(blockAction.application.preview, blockAction.id);
-    assertApplicationCommandObject(blockAction.application.apply, blockAction.id);
-    assert.ok(blockAction.dry_run.argv.includes("--trust-level"));
-    assert.ok(blockAction.dry_run.argv.includes("blocked"));
+    assert.equal(blockAction, undefined);
+    assert.ok(reviewAction);
+    assert.match(reviewAction.label, /Review source omo\.pack/);
+    assert.match(reviewAction.reason, /Review the source/i);
+    assert.equal(reviewAction.requires_user_confirmation, true);
+    assertCommandObject(reviewAction.dry_run);
+    assertCommandObject(reviewAction.apply);
+    assertApplicationCommandObject(reviewAction.application.preview, reviewAction.id);
+    assertApplicationCommandObject(reviewAction.application.apply, reviewAction.id);
+    assert.ok(reviewAction.dry_run.argv.includes("--trust-level"));
+    assert.ok(reviewAction.dry_run.argv.includes("reviewed"));
     assert.equal(omoActivate?.apply ?? null, null);
+  });
+});
+
+test("brief actions reviewed quarantined runtime skills can be activated manually", async () => {
+  await withReviewedQuarantinedFixture(async (paths) => {
+    const brief = await parsedBrief(paths, { workflow: "agent" });
+    const action = actionByKindAndTarget(brief, "activate-skill", "omo:programming");
+    const removeAction = actionByKindAndTarget(brief, "remove-skill-force", "omo:programming");
+
+    assert.ok(action);
+    assert.equal(action.risk, "high");
+    assert.equal(action.requires_user_confirmation, true);
+    assertCommandObject(action.dry_run);
+    assertCommandObject(action.apply);
+    assertApplicationCommandObject(action.application.preview, action.id);
+    assertApplicationCommandObject(action.application.apply, action.id);
+    assert.ok(action.dry_run.argv.includes("--mode"));
+    assert.ok(action.dry_run.argv.includes("manual-only"));
+    assert.ok(action.apply.argv.includes("--mode"));
+    assert.ok(action.apply.argv.includes("manual-only"));
+    assert.equal(action.advanced.mode, "manual-only");
+    assert.equal(removeAction, undefined);
+  });
+});
+
+test("brief actions reviewed blocked runtime skills cannot be activated", async () => {
+  await withReviewedBlockedFixture(async (paths) => {
+    const brief = await parsedBrief(paths, { workflow: "agent" });
+    const action = actionByKindAndTarget(brief, "activate-skill", "omo:blocked");
+    const removeAction = actionByKindAndTarget(brief, "remove-skill-force", "omo:blocked");
+
+    assert.equal(action, undefined);
+    assert.ok(removeAction);
+    assert.equal(removeAction.risk, "high");
+    assertCommandObject(removeAction.dry_run);
+    assertCommandObject(removeAction.apply);
   });
 });
 
@@ -84,7 +125,7 @@ test("brief actions link review queue entries to recommended install-unit action
     const brief = await parsedBrief(paths, { workflow: "agent" });
     const expectedActionByUnit = new Map([
       ["medium.pack", "review-install-unit:medium.pack"],
-      ["omo.pack", "block-install-unit:omo.pack"],
+      ["omo.pack", "review-install-unit:omo.pack"],
       ["runtime.low", "review-install-unit:runtime.low"],
       ["safe.pack", "trust-install-unit:safe.pack"]
     ]);
@@ -224,6 +265,8 @@ test("brief actions force remove and reset cleanup require high-risk confirmatio
       assertApplicationCommandObject(action.application.preview, action.id);
       assertApplicationCommandObject(action.application.apply, action.id);
     }
+    assert.ok(resetAction.dry_run.argv.includes("--purge"));
+    assert.ok(resetAction.apply.argv.includes("--purge"));
     assert.ok(resetAction.application.apply.argv.includes("--allow-destructive"));
   });
 });

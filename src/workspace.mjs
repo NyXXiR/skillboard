@@ -51,7 +51,7 @@ async function discoverInstalledSkills(skillsRoot, declaredSkills, options = {})
     const skillFiles = await findSkillFiles(skillsRoot);
     for (const file of skillFiles) {
       const frontmatter = parseSkillFrontmatter(await readFile(file, "utf8"));
-      const path = relative(skillsRoot, file).replaceAll("\\", "/").replace(/\/SKILL\.md$/, "");
+      const path = relative(skillsRoot, file).replace(/\\/g, "/").replace(/\/SKILL\.md$/, "");
       const declared = declaredSkills.find((skill) => skill.path === path);
       appendInstalledSkill(installed, installedKeys, {
         id: declared?.id ?? frontmatter.name ?? path,

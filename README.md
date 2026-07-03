@@ -4,8 +4,9 @@ Use the right AI-agent skills without managing another checklist.
 
 Ask your AI normal questions: "what skills can you use?", "which skill should
 write tests first?", or "can you make this reviewed skill available here?"
-SkillBoard runs behind the scenes so you get the benefit: the right allowed
-skill, a short disclosure of what was used, and fewer setup interruptions.
+SkillBoard runs behind the scenes so you get the benefit: the right skill, a
+short disclosure of what was used, and fewer setup interruptions when skills
+overlap.
 
 The burden stays low:
 
@@ -13,12 +14,16 @@ The burden stays low:
 - Most use is read-only: `brief`, `route`, `doctor`, and `guard use` answer
   what is safe now.
 - Nothing changes until you approve a policy action.
-- Project cleanup is conservative and previewable with `skillboard uninstall --dry-run`.
+- Project cleanup is conservative and previewable with `skillboard uninstall --dry-run`;
+  `--purge` removes SkillBoard's policy footprint while preserving local skills.
 
-Under the hood, SkillBoard is workflow-scoped skill policy and routing for AI
-agents. It separates `installed` from `allowed`, checks workflow policy and
-guard state before use, and leaves a clear record of which skill influenced the
-answer.
+Status: public alpha. The current config schema is config schema v1; breaking
+changes may still happen before `1.0.0` and are documented in release notes.
+
+Under the hood, SkillBoard is workflow-scoped skill priority and routing for AI
+agents. Installed user skills are usable by default unless runtime, user, or
+local instructions disable them; SkillBoard helps agents resolve overlap,
+policy, and workflow priority instead of guessing from raw skill files.
 
 Start with normal requests:
 
@@ -79,27 +84,58 @@ See [Tested Value Proof](#tested-value-proof) for the executable proof.
 
 ## 5-Minute Quick Start
 
-Ask your AI to set up SkillBoard in the project you want to manage. The AI runs
-SkillBoard behind the scenes, then answers from the generated brief instead of
-from memory or raw skill files.
-
-Use without a global install:
+Install the CLI. On a normal global install, SkillBoard auto-connects the
+agent layer for detected Codex, Claude, OpenCode, and Hermes user skill roots:
 
 AI/automation/operator details:
+
+```bash
+npm install -g agent-skillboard
+```
+
+If your system npm requires elevated permissions, `sudo npm install -g
+agent-skillboard` is also supported. In that flow, install-time setup resolves
+`SUDO_USER` and writes the user-level guidance skill under the invoking user's
+agent homes. Managed guidance files written under the user's home are restored
+to the invoking user's ownership, while the `skillboard` binary still lands in
+the global prefix used by that npm command.
+
+The install-time setup writes a user-level `skillboard` guidance skill under
+detected agent homes. For Codex, detection includes `CODEX_HOME/skills`,
+`AGENTS_HOME/skills`, `~/.agents/skills`, and `~/.codex/skills`.
+If `~/.agents` already exists, setup creates `~/.agents/skills` because that is
+the shared Codex-visible skill tree in LazyCodex-style environments.
+It does not create `skillboard.config.yaml`,
+`.skillboard/`, `AGENTS.md`, or `CLAUDE.md` in projects.
+No separate setup command is required after a normal global install or update:
+npm lifecycle scripts rerun the agent-home scan, refresh managed SkillBoard
+guidance files, and add newly detected supported agent roots.
+
+Run `skillboard setup --agent codex,claude,opencode,hermes --yes` later only
+after adding another supported agent, enabling a new agent home, or installing
+with lifecycle scripts disabled. Restart or refresh agents that cache user
+skills, then ask normal questions:
+
+- "Which skill should you use to write tests first?"
+- "What skills can you use here?"
+- "Use the Codex test-first skill in OpenCode too."
+- "When two skills overlap, which one should take priority?"
+
+When a target agent needs a skill from another agent, it can use
+`skillboard import-skill --from codex --to opencode --skill <skill> --json`
+behind the scenes. Compatible skills are copied into the target agent's user
+skill root. If the source contains agent-specific instructions, the agent asks
+before creating an adapted target-agent `SKILL.md` and installs that file with
+provenance.
+
+If you intentionally maintain local workspace policy files, use the explicit
+operator commands for that layer:
 
 ```bash
 npx --yes --package agent-skillboard skillboard init
 npx --yes --package agent-skillboard skillboard doctor --summary
 npx --yes --package agent-skillboard skillboard brief --workflow <workflow-from-init>
 ```
-
-`init` creates the local control-plane files, scans known local skill roots,
-and writes agent bridge instructions. It prints the workflows it found and a
-copyable workflow-scoped `brief` command. If `init` does not print a workflow,
-run the unscoped `brief` command it prints instead. Trusted user-local skills
-start as manual-only. Runtime, plugin, and external skills stay quarantined or
-blocked until reviewed. The explicit package/binary spelling avoids an extra npx
-install prompt and keeps the `skillboard` executable name clear.
 
 Remove the project bridge when you are done:
 
@@ -111,6 +147,17 @@ npx --yes --package agent-skillboard skillboard uninstall --dir /path/to/your/pr
 Uninstall preserves local skills and policy files by default, and reports what
 it removed or preserved.
 
+Remove SkillBoard's policy influence entirely while keeping local skill files:
+
+```bash
+npx --yes --package agent-skillboard skillboard uninstall --dir /path/to/your/project --purge --dry-run
+npx --yes --package agent-skillboard skillboard uninstall --dir /path/to/your/project --purge
+```
+
+`--purge` deletes SkillBoard config, bridge blocks, and the entire
+`.skillboard/` project state directory while leaving `skills/*/SKILL.md` in
+place.
+
 See [docs/install.md](docs/install.md) for global installs, `--dir`, GitHub
 builds, clone-based development, Hermes bridge setup, refresh, and uninstall.
 
@@ -119,6 +166,7 @@ builds, clone-based development, Hermes bridge setup, refresh, and uninstall.
 - Inventory that separates installed skills from callable skills.
 - Workflow-scoped policy instead of global "everything is active" behavior.
 - `brief`, `route`, `can-use`, and `guard use` surfaces for AI-mediated selection and availability.
+- `import-skill` for agent-layer skill reuse across Codex, Claude, OpenCode, and Hermes.
 - Workflow conflict checks so overlapping skills cannot quietly degrade an answer.
 - Action cards that apply one approved policy change, then re-resolve state.
 - Source and install-unit review for plugins, hooks, MCP servers, harnesses,
@@ -127,8 +175,10 @@ builds, clone-based development, Hermes bridge setup, refresh, and uninstall.
 - Manual skill variant lifecycle for relationships such as `a -> claude.a`,
   with draft, approval, drift, and reset checkpoints.
 
-SkillBoard is deny-by-default. Installing a skill does not make it automatically
-callable. A workflow, source, and invocation decision must make that explicit.
+SkillBoard is priority-first at the agent layer: installed user skills are
+usable unless runtime, user, or local instructions disable them. Local workspace
+policy files can still model stricter workflow, source, and invocation
+decisions when a team needs that control.
 For action cards, use `skillboard apply-action <action-id> --yes --json`; raw
 `skillboard hook install ... --dry-run --json` previews are underlying manual
 operator detail, not the primary action-card flow.
@@ -145,6 +195,7 @@ SkillBoard currently supports:
 - Disable-impact analysis and reconcile plans.
 - Workflow-scoped activation, blocking, preference, and guard checks.
 - Action-card approval and post-apply brief refresh.
+- Agent-layer skill import with compatible copy or user-approved AI-mediated adaptation.
 - Manual variant registration, fork, status, approval, and reset.
 
 For the full command catalog and config shape, use

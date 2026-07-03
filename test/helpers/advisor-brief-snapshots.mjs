@@ -154,7 +154,7 @@ const SOURCE_REVIEW_QUEUE = [
   ["source_finding", "source_finding:acme.pack:error:unreviewed-source-owns-model-selectable-skills-vendor-auto", "unreviewed source owns model-selectable skills: vendor.auto", "high", "error"],
   ["source_finding", "source_finding:acme.pack:warning:high-risk-source-is-not-reviewed-or-trusted", "high-risk source is not reviewed or trusted", "high", "warning"],
   ["source_finding", "source_finding:acme.pack:warning:runtime-extension-source-is-unreviewed", "runtime extension source is unreviewed", "high", "warning"],
-  ["install_unit", "install_unit:acme.pack", "Source is enabled but not reviewed. Recommended trust level: blocked.", "high", null],
+  ["install_unit", "install_unit:acme.pack", "Source is enabled but not reviewed. Recommended trust level: reviewed.", "high", null],
   ["source_finding", "source_finding:acme.pack:warning:source-is-not-pinned-by-digest-or-signature", "source is not pinned by digest or signature", "medium", "warning"]
 ];
 
@@ -201,7 +201,7 @@ export const EXPECTED_SOURCE_REVIEW_CONTRACT = {
 
 function reviewQueueEntry([kind, id, reason, risk, severity]) {
   const advanced = severity === null
-    ? { install_unit: "acme.pack", source_class: "external-package", trust_level: "unreviewed", recommended_trust_level: "blocked" }
+    ? { install_unit: "acme.pack", source_class: "external-package", trust_level: "unreviewed", recommended_trust_level: "reviewed" }
     : { source_id: "acme.pack", severity };
   return {
     keys: ["kind", "id", "label", "reason", "risk", "action_ids", "advanced"],

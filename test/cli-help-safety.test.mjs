@@ -15,6 +15,14 @@ test("direct source cli help renders AI-mediated help", async () => {
 
   assert.equal(result.code, 0, commandFailure(result));
   assert.match(result.stdout, /^SkillBoard - AI-mediated workflow-scoped skill policy/m);
+  assert.match(result.stdout, /After global install:/);
+  assert.match(result.stdout, /npm install -g agent-skillboard/);
+  assert.match(result.stdout, /sudo npm install -g agent-skillboard is also supported/);
+  assert.match(result.stdout, /SUDO_USER's agent homes/);
+  assert.match(result.stdout, /postinstall auto-runs agent-layer guidance setup on install and update/);
+  assert.match(result.stdout, /Run skillboard setup later after adding another supported agent/);
+  assert.match(result.stdout, /import-skill --from <agent> --to <agent>/);
+  assert.match(result.stdout, /opencode/);
   assert.match(result.stdout, /AI\/automation control loop/);
   assert.doesNotMatch(result.stdout, /AI\/automation approval loop/);
   assert.match(result.stdout, /For an already-allowed skill, disclose the selected skill at start and completion/i);
@@ -35,6 +43,16 @@ test("primary AI-loop commands expose safe command-local help", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-primary-help-"));
   try {
     const cases = [
+      {
+        args: ["bin/skillboard.mjs", "setup", "--agent", "codex", "--help"],
+        usage: /^Usage: skillboard setup /m,
+        forbidden: /SkillBoard agent integration installed/
+      },
+      {
+        args: ["bin/skillboard.mjs", "import-skill", "--help"],
+        usage: /^Usage: skillboard import-skill --from <agent> --to <agent>/m,
+        forbidden: /Imported skill/
+      },
       {
         args: ["bin/skillboard.mjs", "init", "--dir", root, "--help"],
         usage: /^Usage: skillboard init /m,

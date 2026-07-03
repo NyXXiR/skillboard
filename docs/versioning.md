@@ -8,7 +8,7 @@ source profiles, and the generated lockfile.
 
 ## Status
 
-Current package version: `0.2.1`
+Current package version: `0.2.7`
 
 Current config schema version:
 
@@ -59,7 +59,8 @@ must call them out clearly.
 Suggested tags:
 
 - `v0.1.0-alpha`: first public GitHub alpha.
-- `v0.2.1`: ask-after skill routing, README benefit-first positioning,
+- `v0.2.7`: one-time runtime source review before manual activation, ask-after
+  skill routing, purge uninstall, README benefit-first positioning,
   source inventory refresh, doctor/status, source pin refresh,
   installer/config detection, resilient detector warnings, and richer dry-run
   plans.
@@ -193,8 +194,8 @@ Before tagging a public release:
   provenance with GitHub Actions OIDC, so keep `permissions.id-token: write`,
   the npm registry URL in `setup-node`, and
   `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` on the publish step.
-- Push a version tag that exactly matches `package.json`, for example `v0.2.1`
-  for package version `0.2.1`.
+- Push a version tag that exactly matches `package.json`, for example `v0.2.7`
+  for package version `0.2.7`.
 - Let `.github/workflows/publish.yml` publish from the tag. The workflow runs
   the full check suite, validates that the tag matches the package version, and
   skips `npm publish` only when that exact version already exists on npm.
@@ -228,8 +229,44 @@ completion notes:
 - update README quick-start to verify the installed version before running
   policy commands.
 
-## 0.2.1 Completion Notes
+## 0.2.7 Completion Notes
 
+- reject direct `skillboard activate` and `skillboard prefer` attempts for
+  reviewed runtime/plugin skills that remain `status: blocked`, while
+  preserving reviewed quarantined manual-only activation.
+
+## 0.2.6 Completion Notes
+
+- keep reviewed `status: blocked` runtime/plugin skills non-activatable while
+  preserving the reviewed quarantined runtime/plugin manual activation path.
+
+## 0.2.5 Completion Notes
+
+- align reset-cleanup action-card preview and apply internals with the full
+  `.skillboard/` purge semantics used by `skillboard uninstall --purge`.
+
+## 0.2.4 Completion Notes
+
+- broaden `skillboard uninstall --purge` from reports/hooks cleanup to removal
+  of the full `.skillboard/` project state directory, covering source caches,
+  rollout logs, variant snapshots, profiles, hooks, and reports while preserving
+  local skill files.
+
+## 0.2.3 Completion Notes
+
+- add `skillboard uninstall --purge` for users who want SkillBoard's policy
+  influence and generated footprint removed while preserving local skill files;
+- document the lifecycle split between conservative bridge cleanup and full
+  SkillBoard policy-footprint removal;
+- show purge in cleanup action cards so users do not need to remember the
+  older `--reset-config --remove-reports --remove-hooks` sequence.
+
+## 0.2.2 Completion Notes
+
+- recommend one-time review, not default blocking, for high-risk runtime/plugin
+  install units;
+- after source review, allow quarantined runtime/plugin skills to be activated
+  as `manual-only` workflow skills before any ask-after preference is recorded;
 - add ask-after route policy suggestions for safe ambiguous workflow skill
   matches while preserving the public route JSON contract;
 - carry route candidate guard and capability roles into AI-facing brief

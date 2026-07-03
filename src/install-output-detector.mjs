@@ -315,9 +315,9 @@ function normalizePath(value, root) {
 
 function displayPath(path, root) {
   if (!isAbsolute(path)) {
-    return path.replaceAll("\\", "/");
+    return path.replace(/\\/g, "/");
   }
-  const rel = relative(root, path).replaceAll("\\", "/");
+  const rel = relative(root, path).replace(/\\/g, "/");
   return rel.startsWith("..") ? path : rel;
 }
 

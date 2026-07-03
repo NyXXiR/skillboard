@@ -5,7 +5,7 @@ export function normalizeSkillPath(value, label = "skill path") {
   if (value.includes("\0")) {
     throw new Error(`${label} must not contain null bytes`);
   }
-  const normalized = value.replaceAll("\\", "/");
+  const normalized = value.replace(/\\/g, "/");
   if (normalized.startsWith("/") || normalized.startsWith("//") || /^[A-Za-z]:\//.test(normalized)) {
     throw new Error(`${label} must be relative to the skills root`);
   }

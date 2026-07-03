@@ -565,8 +565,8 @@ function workflowSummary(workflow) {
 }
 
 function safeText(value, maxLength = 180) {
-  const compact = String(value).replaceAll(/\s+/g, " ").trim();
-  const withoutTicks = compact.replaceAll("`", "'");
+  const compact = String(value).replace(/\s+/g, " ").trim();
+  const withoutTicks = compact.replace(/`/g, "'");
   return withoutTicks.length > maxLength ? `${withoutTicks.slice(0, maxLength - 3)}...` : withoutTicks;
 }
 

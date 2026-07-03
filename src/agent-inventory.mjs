@@ -38,7 +38,10 @@ export const agentInventoryDetectors = Object.freeze([
   {
     id: "codex-user-skills",
     matches(path) {
-      return path.endsWith("/.codex/skills") || path.endsWith("\\.codex\\skills");
+      return path.endsWith("/.codex/skills")
+        || path.endsWith("\\.codex\\skills")
+        || path.endsWith("/.agents/skills")
+        || path.endsWith("\\.agents\\skills");
     },
     async discover(path, home) {
       return await discoverSkillDirectory(path, userCodexUnit(path, home), { excludeSystem: true });
@@ -239,7 +242,7 @@ function localWorkflowTarget(unit) {
     const profile = unit.id.slice("hermes.profile.".length, -".skills".length);
     return { harness: "hermes", workflow: `hermes-${profile}-local-manual` };
   }
-  const base = safeSegment(unit?.id ?? "local").replaceAll(".", "-");
+  const base = safeSegment(unit?.id ?? "local").replace(/\./g, "-");
   return { harness: "local", workflow: `${base}-local-manual` };
 }
 
@@ -492,7 +495,7 @@ async function findSkillFiles(root, base, options, seen = new Set()) {
   const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
   for (const entry of entries) {
     const path = join(root, entry.name);
-    const rel = relative(base, path).replaceAll("\\", "/");
+    const rel = relative(base, path).replace(/\\/g, "/");
     if (options.excludeSystem === true && (rel === ".system" || rel.startsWith(".system/"))) {
       continue;
     }
@@ -536,7 +539,7 @@ function skillIdFor(unit, root, file, frontmatter) {
 }
 
 function skillPath(root, file) {
-  return relative(root, dirname(file)).replaceAll("\\", "/");
+  return relative(root, dirname(file)).replace(/\\/g, "/");
 }
 
 function skillNode(skill, defaults = {}) {

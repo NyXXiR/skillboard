@@ -45,7 +45,7 @@ export async function doctorProject(options = {}) {
   };
 
   if (!configExists) {
-    return finalizeDoctor(base, ["run skillboard init"]);
+    return finalizeDoctor(base, ["run skillboard setup once per user/agent install if agents should use SkillBoard for skill priority"]);
   }
 
   let workspace;

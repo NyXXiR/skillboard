@@ -1,17 +1,18 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
+import { runSetupCommand } from "../src/lifecycle-cli.mjs";
 
 const execFileAsync = promisify(execFile);
 
 test("package manifest excludes internal work artifacts from npm pack", async () => {
   const manifest = JSON.parse(await readFile(resolve("package.json"), "utf8"));
 
-  assert.deepEqual(manifest.files, ["bin", "src", "docs/*.md", "docs/plans", "examples", "profiles", "README.md", "CONTRIBUTING.md", "CHANGELOG.md", "LICENSE", "tsconfig.lsp.json"]);
+  assert.deepEqual(manifest.files, ["bin", "src", "docs/*.md", "examples", "profiles", "README.md", "CONTRIBUTING.md", "CHANGELOG.md", "LICENSE", "tsconfig.lsp.json"]);
 });
 
 test("package manifest is publishable as the SkillBoard CLI", async () => {
@@ -24,6 +25,7 @@ test("package manifest is publishable as the SkillBoard CLI", async () => {
     skillboard: "bin/skillboard.mjs",
     "agent-skillboard": "bin/skillboard.mjs"
   });
+  assert.equal(manifest.scripts.postinstall, "node bin/postinstall.mjs");
   assert.equal(manifest.publishConfig.access, "public");
   assert.deepEqual(manifest.repository, {
     type: "git",
@@ -48,6 +50,15 @@ test("source-tree SkillBoard CLI entrypoint is executable for generated hooks", 
   const stats = await stat(resolve("bin/skillboard.mjs"));
 
   assert.equal(stats.mode & 0o111, 0o111);
+});
+
+test("repository attributes keep script and docs line endings stable", async () => {
+  const attributes = await readFile(resolve(".gitattributes"), "utf8");
+
+  assert.match(attributes, /^\*\.md text eol=lf$/m);
+  assert.match(attributes, /^\*\.mjs text eol=lf$/m);
+  assert.match(attributes, /^AGENTS\.md text eol=lf$/m);
+  assert.match(attributes, /^CLAUDE\.md text eol=lf$/m);
 });
 
 test("package manifest includes the rollout operator runbook", async () => {
@@ -87,6 +98,9 @@ test("GitHub Actions publish workflow releases npm package from version tags", a
 test("GitHub Actions check workflow runs package smoke through a cross-platform Node script", async () => {
   const workflow = await readFile(resolve(".github/workflows/check.yml"), "utf8");
 
+  assert.match(workflow, /-\s+20/);
+  assert.match(workflow, /-\s+22/);
+  assert.match(workflow, /-\s+24/);
   assert.match(workflow, /package and lifecycle smoke/);
   assert.match(workflow, /node \.github\/scripts\/ci-package-lifecycle-smoke\.mjs/);
   assert.doesNotMatch(workflow, /shell: bash/);
@@ -103,6 +117,7 @@ test("npm pack dry-run includes public runtime files and excludes work artifacts
   const paths = pack.files.map((file) => file.path);
 
   assert.ok(paths.includes("bin/skillboard.mjs"));
+  assert.ok(paths.includes("bin/postinstall.mjs"));
   assert.ok(paths.includes("src/doctor.mjs"));
   assert.ok(paths.includes("src/source-cache.mjs"));
   assert.ok(paths.includes("src/install-output-detector.mjs"));
@@ -111,9 +126,353 @@ test("npm pack dry-run includes public runtime files and excludes work artifacts
   assert.ok(paths.includes("docs/rollout-runbook.md"));
   assert.equal(paths.includes("skillboard.png"), false);
   assert.equal(paths.some((path) => path.startsWith("docs/plan/")), false);
+  assert.equal(paths.some((path) => path.startsWith("docs/plans/")), false);
   assert.equal(paths.some((path) => path.startsWith(".omo/")), false);
   assert.equal(paths.some((path) => path.startsWith("test/")), false);
   assert.equal(paths.includes("package-lock.json"), false);
+});
+
+test("postinstall auto-runs agent setup for global installs without project files", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-postinstall-global-"));
+  try {
+    const home = join(root, "home");
+    const project = join(root, "project");
+    const result = await execFileAsync(process.execPath, ["bin/postinstall.mjs"], {
+      env: {
+        ...process.env,
+        HOME: home,
+        INIT_CWD: project,
+        CODEX_HOME: join(home, ".codex"),
+        OPENCODE_HOME: join(home, ".config", "opencode"),
+        npm_config_global: "true"
+      }
+    });
+    const codexSkill = await readFile(join(home, ".codex", "skills", "skillboard", "SKILL.md"), "utf8");
+    const openCodeSkill = await readFile(join(home, ".config", "opencode", "skills", "skillboard", "SKILL.md"), "utf8");
+
+    assert.equal(result.stdout, "");
+    assert.match(result.stderr, /SkillBoard installed/);
+    assert.match(result.stderr, /Auto-running agent setup/);
+    assert.match(result.stderr, /SkillBoard agent integration installed/);
+    assert.match(result.stderr, /setup later after adding another supported agent/i);
+    assert.match(codexSkill, /SkillBoard Agent Integration/);
+    assert.equal(openCodeSkill, codexSkill);
+    assert.doesNotMatch(result.stderr, /skillboard init --dir/);
+    assert.equal(await readFile(join(project, "skillboard.config.yaml"), "utf8").catch(() => null), null);
+    assert.equal(await readFile(join(project, "AGENTS.md"), "utf8").catch(() => null), null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("postinstall global update refreshes managed guidance and new agent roots", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-postinstall-update-"));
+  try {
+    const home = join(root, "home");
+    const project = join(root, "project");
+    const codexSkillPath = join(home, ".codex", "skills", "skillboard", "SKILL.md");
+    const agentsSkillPath = join(home, ".agents", "skills", "skillboard", "SKILL.md");
+    await mkdir(join(home, ".agents"), { recursive: true });
+    await mkdir(join(home, ".codex", "skills", "skillboard"), { recursive: true });
+    await writeFile(codexSkillPath, [
+      "---",
+      "name: skillboard",
+      "description: old managed guidance",
+      "---",
+      "<!-- BEGIN SKILLBOARD AGENT INTEGRATION -->",
+      "# Old SkillBoard Integration",
+      "old update guidance",
+      "<!-- END SKILLBOARD AGENT INTEGRATION -->",
+      ""
+    ].join("\n"), "utf8");
+
+    const result = await execFileAsync(process.execPath, ["bin/postinstall.mjs"], {
+      env: {
+        ...process.env,
+        HOME: home,
+        INIT_CWD: project,
+        CODEX_HOME: join(home, ".codex"),
+        npm_config_global: "true"
+      }
+    });
+    const codexSkill = await readFile(codexSkillPath, "utf8");
+    const agentsSkill = await readFile(agentsSkillPath, "utf8");
+
+    assert.equal(result.stdout, "");
+    assert.match(result.stderr, /Auto-running agent setup/);
+    assert.match(result.stderr, /Updated: .*\.codex\/skills\/skillboard\/SKILL\.md/);
+    assert.match(result.stderr, /Created: .*\.agents\/skills\/skillboard\/SKILL\.md/);
+    assert.match(codexSkill, /SkillBoard Agent Integration/);
+    assert.doesNotMatch(codexSkill, /old update guidance/);
+    assert.equal(agentsSkill, codexSkill);
+    assert.equal(await readFile(join(project, "skillboard.config.yaml"), "utf8").catch(() => null), null);
+    assert.equal(await readFile(join(project, "AGENTS.md"), "utf8").catch(() => null), null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("postinstall sudo global setup targets the invoking user's agent home", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), "skillboard-postinstall-sudo-"));
+  try {
+    const sudoUser = "skillboardsudo";
+    const rootHome = join(root, "root-home");
+    const userHome = join(root, "user-home");
+    const fakeBin = join(root, "bin");
+    await mkdir(join(userHome, ".agents", "skills"), { recursive: true });
+    await mkdir(rootHome, { recursive: true });
+    await mkdir(fakeBin, { recursive: true });
+    const getent = join(fakeBin, "getent");
+    await writeFile(getent, [
+      "#!/bin/sh",
+      `if [ "$1" = "passwd" ] && [ "$2" = "${sudoUser}" ]; then`,
+      `  printf '%s\\n' '${sudoUser}:x:1000:1000:SkillBoard:${userHome}:/bin/sh'`,
+      "  exit 0",
+      "fi",
+      "exit 2",
+      ""
+    ].join("\n"), "utf8");
+    await chmod(getent, 0o755);
+
+    const result = await execFileAsync(process.execPath, ["bin/postinstall.mjs"], {
+      env: {
+        HOME: rootHome,
+        INIT_CWD: root,
+        LOGNAME: "root",
+        PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+        SUDO_GID: "1000",
+        SUDO_UID: "1000",
+        SUDO_USER: sudoUser,
+        USER: "root",
+        npm_config_global: "true"
+      }
+    });
+    const userSkill = await readFile(join(userHome, ".agents", "skills", "skillboard", "SKILL.md"), "utf8");
+
+    assert.equal(result.stdout, "");
+    assert.match(result.stderr, /Auto-running agent setup/);
+    assert.match(result.stderr, /SkillBoard agent integration installed/);
+    assert.match(userSkill, /SkillBoard Agent Integration/);
+    assert.equal(await readFile(join(rootHome, ".agents", "skills", "skillboard", "SKILL.md"), "utf8").catch(() => null), null);
+    assert.equal(await readFile(join(root, "skillboard.config.yaml"), "utf8").catch(() => null), null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup under sudo chowns managed guidance to the invoking user", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), "skillboard-sudo-chown-"));
+  try {
+    const rootHome = join(root, "root-home");
+    const userHome = join(root, "user-home");
+    const codexHome = join(userHome, ".codex");
+    await mkdir(rootHome, { recursive: true });
+    const chowns = [];
+    const stdout = [];
+
+    const code = await runSetupCommand(new Map([
+      ["yes", "true"],
+      ["agent", "codex"]
+    ]), {
+      write(chunk) {
+        stdout.push(chunk);
+      }
+    }, {
+      cwd: root,
+      entrypointPath: "skillboard",
+      env: {
+        HOME: rootHome,
+        CODEX_HOME: codexHome,
+        LOGNAME: "root",
+        SUDO_GID: "5678",
+        SUDO_HOME: userHome,
+        SUDO_UID: "1234",
+        SUDO_USER: "skillboardsudo",
+        USER: "root"
+      },
+      packageSpec: "agent-skillboard",
+      chown(path, uid, gid) {
+        chowns.push({ path, uid, gid });
+        return Promise.resolve();
+      }
+    });
+    const skillPath = join(codexHome, "skills", "skillboard", "SKILL.md");
+    const skill = await readFile(skillPath, "utf8");
+
+    assert.equal(code, 0);
+    assert.match(stdout.join(""), /SkillBoard agent integration installed/);
+    assert.match(skill, /SkillBoard Agent Integration/);
+    assert.deepEqual(chowns.find((entry) => entry.path === skillPath), {
+      path: skillPath,
+      uid: 1234,
+      gid: 5678
+    });
+    assert.ok(chowns.some((entry) => entry.path === join(codexHome, "skills", "skillboard")));
+    assert.ok(chowns.every((entry) => entry.uid === 1234 && entry.gid === 5678));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup under sudo chowns unchanged managed guidance to the invoking user", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), "skillboard-sudo-chown-unchanged-"));
+  try {
+    const rootHome = join(root, "root-home");
+    const userHome = join(root, "user-home");
+    const codexHome = join(userHome, ".codex");
+    await mkdir(rootHome, { recursive: true });
+
+    const firstCode = await runSetupCommand(new Map([
+      ["yes", "true"],
+      ["agent", "codex"]
+    ]), {
+      write() {}
+    }, {
+      cwd: root,
+      entrypointPath: "skillboard",
+      env: {
+        HOME: userHome,
+        CODEX_HOME: codexHome
+      },
+      packageSpec: "agent-skillboard"
+    });
+    assert.equal(firstCode, 0);
+
+    const chowns = [];
+    const stdout = [];
+    const secondCode = await runSetupCommand(new Map([
+      ["yes", "true"],
+      ["agent", "codex"]
+    ]), {
+      write(chunk) {
+        stdout.push(chunk);
+      }
+    }, {
+      cwd: root,
+      entrypointPath: "skillboard",
+      env: {
+        HOME: rootHome,
+        CODEX_HOME: codexHome,
+        LOGNAME: "root",
+        SUDO_GID: "5678",
+        SUDO_HOME: userHome,
+        SUDO_UID: "1234",
+        SUDO_USER: "skillboardsudo",
+        USER: "root"
+      },
+      packageSpec: "agent-skillboard",
+      chown(path, uid, gid) {
+        chowns.push({ path, uid, gid });
+        return Promise.resolve();
+      }
+    });
+    const skillPath = join(codexHome, "skills", "skillboard", "SKILL.md");
+
+    assert.equal(secondCode, 0);
+    assert.match(stdout.join(""), /Unchanged: `codex:/);
+    assert.deepEqual(chowns.find((entry) => entry.path === skillPath), {
+      path: skillPath,
+      uid: 1234,
+      gid: 5678
+    });
+    assert.ok(chowns.every((entry) => entry.uid === 1234 && entry.gid === 5678));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup under sudo does not chown agent guidance outside the invoking user's home", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), "skillboard-sudo-chown-boundary-"));
+  try {
+    const rootHome = join(root, "root-home");
+    const userHome = join(root, "user-home");
+    const codexHome = join(root, "outside-codex");
+    await mkdir(rootHome, { recursive: true });
+    const chowns = [];
+
+    const code = await runSetupCommand(new Map([
+      ["yes", "true"],
+      ["agent", "codex"]
+    ]), {
+      write() {}
+    }, {
+      cwd: root,
+      entrypointPath: "skillboard",
+      env: {
+        HOME: rootHome,
+        CODEX_HOME: codexHome,
+        LOGNAME: "root",
+        SUDO_GID: "5678",
+        SUDO_HOME: userHome,
+        SUDO_UID: "1234",
+        SUDO_USER: "skillboardsudo",
+        USER: "root"
+      },
+      packageSpec: "agent-skillboard",
+      chown(path, uid, gid) {
+        chowns.push({ path, uid, gid });
+        return Promise.resolve();
+      }
+    });
+    const skillPath = join(codexHome, "skills", "skillboard", "SKILL.md");
+    const skill = await readFile(skillPath, "utf8");
+
+    assert.equal(code, 0);
+    assert.match(skill, /SkillBoard Agent Integration/);
+    assert.deepEqual(chowns, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("postinstall non-global lifecycle is visible but non-mutating", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-postinstall-target-"));
+  try {
+    const home = join(root, "home");
+    const result = await execFileAsync(process.execPath, ["bin/postinstall.mjs"], {
+      env: {
+        ...process.env,
+        HOME: home,
+        INIT_CWD: root,
+        CODEX_HOME: join(home, ".codex")
+      }
+    });
+
+    assert.equal(result.stdout, "");
+    assert.match(result.stderr, /SkillBoard installed/);
+    assert.match(result.stderr, /Global installs and updates auto-run agent setup/);
+    assert.match(result.stderr, /skillboard setup/);
+    assert.match(result.stderr, /later after adding another supported agent/i);
+    assert.doesNotMatch(result.stderr, /skillboard init --dir/);
+    assert.equal(await readFile(join(home, ".codex", "skills", "skillboard", "SKILL.md"), "utf8").catch(() => null), null);
+    assert.equal(await readFile(join(root, "skillboard.config.yaml"), "utf8").catch(() => null), null);
+    assert.equal(await readFile(join(root, "AGENTS.md"), "utf8").catch(() => null), null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("release notes include the current package version", async () => {
+  const manifest = JSON.parse(await readFile(resolve("package.json"), "utf8"));
+  const changelog = await readFile(resolve("CHANGELOG.md"), "utf8");
+
+  assert.match(changelog, new RegExp(`## ${manifest.version.replaceAll(".", "\\.")}\\b`));
 });
 
 test("packed package runs through npm exec one-command bootstrap surface", async () => {

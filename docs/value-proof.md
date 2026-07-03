@@ -35,6 +35,10 @@ examples/skillboard.config.yaml
 examples/skills
 ```
 
+`examples/skillboard.config.yaml` is an intentional policy-failure fixture. It
+is not the passing starter example; it exists to prove that SkillBoard refuses a
+raw-list availability claim when policy health fails.
+
 Workflow:
 
 ```bash

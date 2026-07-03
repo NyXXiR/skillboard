@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { buildSkillBrief, initProject } from "../../src/index.mjs";
 import {
   actionsConfig,
-  missingProvenanceConfig
+  missingProvenanceConfig,
+  reviewedBlockedConfig,
+  reviewedQuarantinedConfig
 } from "./advisor-brief-action-fixtures.mjs";
 
 export async function withActionsFixture(run) {
@@ -26,6 +28,20 @@ export async function withActionsFixture(run) {
 export async function withMissingProvenanceFixture(run) {
   return await withFixture("skillboard-brief-missing-provenance-test-", missingProvenanceConfig(), async (paths) => {
     await writeFixtureSkills(paths.skillsRoot, ["broken-auto"]);
+    return await run(paths);
+  });
+}
+
+export async function withReviewedQuarantinedFixture(run) {
+  return await withFixture("skillboard-brief-reviewed-quarantined-test-", reviewedQuarantinedConfig(), async (paths) => {
+    await writeFixtureSkills(paths.skillsRoot, ["omo-programming"]);
+    return await run(paths);
+  });
+}
+
+export async function withReviewedBlockedFixture(run) {
+  return await withFixture("skillboard-brief-reviewed-blocked-test-", reviewedBlockedConfig(), async (paths) => {
+    await writeFixtureSkills(paths.skillsRoot, ["omo-blocked"]);
     return await run(paths);
   });
 }

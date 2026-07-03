@@ -1,3 +1,4 @@
+// allow: SIZE_OK - brief CLI integration suite split is deferred from the 0.2.7 release gate.
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -357,7 +358,7 @@ test("brief command treats reviewable source friction as a decision queue, not h
     assert.match(result.stdout, /Blocked for safety: 0/);
     assert.match(result.stdout, /## Needs your decision/);
     assert.match(result.stdout, /vendor\.auto/);
-    assert.match(result.stdout, /Decide whether to block source acme\.pack/);
+    assert.match(result.stdout, /Review source acme\.pack/);
     assert.doesNotMatch(result.stdout, /Action cards not requested/);
   });
 });

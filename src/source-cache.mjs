@@ -164,7 +164,7 @@ function resolveUnderRoot(root, path) {
 }
 
 function relativePath(root, path) {
-  const rel = relative(root, path).replaceAll("\\", "/");
+  const rel = relative(root, path).replace(/\\/g, "/");
   return rel.startsWith("..") ? path : rel;
 }
 

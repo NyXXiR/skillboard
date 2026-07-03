@@ -15,6 +15,17 @@ memorize the SkillBoard command loop. The command examples below are
 AI/automation/operator details for the agent, scripts, or people maintaining the
 setup.
 
+If you ask OpenCode to use a skill you previously used in Codex, the target
+agent should call:
+
+```bash
+skillboard import-skill --from codex --to opencode --skill <skill> --json
+```
+
+Compatible skills are installed into the target agent's user skill root. When
+the source is agent-specific, the agent should explain the compatibility issue
+and ask before producing a target-agent adapted `SKILL.md`.
+
 Before changing this routing or workflow UX, read
 [`docs/ai-skill-routing-goal.md`](ai-skill-routing-goal.md). The goal is to keep
 SkillBoard non-blocking: observe the request, route to the current best skill,
@@ -191,7 +202,10 @@ skillboard hook install --workflow daily-workflow --config skillboard.config.yam
 ```
 
 For direct manual hook installation, inspect the JSON `planned.preview.shell`
-before an operator materializes the matching non-dry-run hook command.
+before an operator materializes the matching non-dry-run hook command. Generated
+hooks pin the install-time SkillBoard command, config, skills root, and workflow;
+set those values with hook install options such as `--skillboard-bin`, not with
+runtime environment overrides.
 
 ## 4. Enable, Disable, Or Prefer
 
@@ -258,8 +272,8 @@ skillboard remove skill user.helper \
   --force
 ```
 
-This removes SkillBoard policy references only. It does not delete
-`skills/user-helper/SKILL.md`.
+This removes SkillBoard policy references only and leaves
+`skills/user-helper/SKILL.md` in place.
 
 ## 6. Stop Using SkillBoard Safely
 
@@ -277,14 +291,14 @@ content in bridge files.
 For a fresh policy lifecycle during testing, use:
 
 ```bash
-skillboard uninstall --reset-config --remove-reports --remove-hooks --dry-run
-skillboard uninstall --reset-config --remove-reports --remove-hooks
+skillboard uninstall --purge --dry-run
+skillboard uninstall --purge
 skillboard init
 ```
 
-`--reset-config` discards the current SkillBoard config even if it contains
-imported skills or workflow edits. `--remove-reports` also discards generated
-dashboard and impact reports. `--remove-hooks` discards the entire
-`.skillboard/hooks/` directory contents when you explicitly want a full test or
-test reset, so `.skillboard/` can disappear when no other SkillBoard state
-remains. These reset flags do not delete local `skills/` files.
+Use `--purge` when you want SkillBoard's allow/block/preference influence gone
+from the project while keeping local skill files. It discards the current
+SkillBoard config even if it contains imported skills or workflow edits,
+removes generated dashboard and impact reports, and removes the entire
+`.skillboard/` project state directory, including hooks, source caches, rollout
+logs, variant snapshots, and profiles. Local `skills/` files stay in place.

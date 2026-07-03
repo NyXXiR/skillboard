@@ -21,9 +21,11 @@ export function recommendTrustLevel(unit) {
     return "trusted";
   }
 
-  // High-risk sources should not be activated from advisor suggestions without explicit blocking/review.
+  // High-risk sources require explicit review, not a default block. Blocking is
+  // still available as a recorded trust policy, but the advisor keeps the work
+  // moving by asking for a one-time source review first.
   if (risk === "high") {
-    return "blocked";
+    return "reviewed";
   }
 
   // Unknown risk always requires at least a review before any automatic use.
@@ -54,7 +56,7 @@ export function trustRecommendationAction(recommended) {
     return {
       kind: "block-install-unit",
       label: "Decide whether to block source",
-      reason: "High-risk or runtime-extending source needs a one-time decision before its skills appear again."
+      reason: "Source is blocked by trust policy and needs an explicit decision before its skills appear again."
     };
   }
   return {

@@ -1,3 +1,4 @@
+// allow: SIZE_OK - uninstall lifecycle split is deferred from the 0.2.7 release gate.
 import { access, lstat, readFile, readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { BRIDGE_END, BRIDGE_START, defaultConfig, hookReadme, profileReadme } from "./lifecycle-content.mjs";
@@ -19,14 +20,6 @@ export async function uninstallProject(options) {
     recordFileResult(filename, result, { removed, updated, preserved });
   }
 
-  for (const entry of generatedFiles(root)) {
-    const result = await removeGeneratedFile(entry.path, entry.expected, dryRun);
-    if (result === "removed") {
-      plannedRemovedPaths.add(entry.path);
-    }
-    recordFileResult(entry.label, result, { removed, updated, preserved });
-  }
-
   if (options.resetConfig === true) {
     const path = join(root, "skillboard.config.yaml");
     const result = await removeConfigFile(path, dryRun);
@@ -45,7 +38,24 @@ export async function uninstallProject(options) {
     preserved.push("skillboard.config.yaml");
   }
 
-  if (options.removeReports === true) {
+  if (options.removeProjectState === true) {
+    const path = join(root, ".skillboard");
+    const result = await removeProjectStateDir(path, dryRun);
+    if (result === "removed") {
+      plannedRemovedPaths.add(path);
+    }
+    recordFileResult(".skillboard", result, { removed, updated, preserved });
+  } else {
+    for (const entry of generatedFiles(root)) {
+      const result = await removeGeneratedFile(entry.path, entry.expected, dryRun);
+      if (result === "removed") {
+        plannedRemovedPaths.add(entry.path);
+      }
+      recordFileResult(entry.label, result, { removed, updated, preserved });
+    }
+  }
+
+  if (options.removeReports === true && options.removeProjectState !== true) {
     const path = join(root, ".skillboard", "reports");
     const result = await removeGeneratedDir(path, dryRun);
     if (result === "removed") {
@@ -54,7 +64,7 @@ export async function uninstallProject(options) {
     recordFileResult(".skillboard/reports", result, { removed, updated, preserved });
   }
 
-  if (options.removeHooks === true) {
+  if (options.removeHooks === true && options.removeProjectState !== true) {
     const path = join(root, ".skillboard", "hooks");
     const result = await removeGeneratedDir(path, dryRun);
     if (result === "removed") {
@@ -66,7 +76,8 @@ export async function uninstallProject(options) {
   if (options.removeEmptyDirs !== false) {
     for (const dir of emptyDirs(root, {
       skipReports: options.removeReports === true,
-      skipHooks: options.removeHooks === true
+      skipHooks: options.removeHooks === true,
+      skipSkillboard: options.removeProjectState === true
     })) {
       const result = await removeEmptyDir(dir.path, dryRun, plannedRemovedPaths);
       if (result === "removed") {
@@ -107,6 +118,9 @@ function emptyDirs(root, options = {}) {
       return false;
     }
     if (options.skipHooks === true && dir.label === ".skillboard/hooks") {
+      return false;
+    }
+    if (options.skipSkillboard === true && dir.label.startsWith(".skillboard")) {
       return false;
     }
     return true;
@@ -202,6 +216,26 @@ async function removeGeneratedDir(path, dryRun) {
     return "absent";
   }
   if (stats.isSymbolicLink() || !stats.isDirectory()) {
+    return "preserved";
+  }
+  if (!dryRun) {
+    await rm(path, { recursive: true });
+  }
+  return "removed";
+}
+
+async function removeProjectStateDir(path, dryRun) {
+  const stats = await pathStats(path);
+  if (stats === null) {
+    return "absent";
+  }
+  if (stats.isSymbolicLink()) {
+    if (!dryRun) {
+      await rm(path);
+    }
+    return "removed";
+  }
+  if (!stats.isDirectory()) {
     return "preserved";
   }
   if (!dryRun) {

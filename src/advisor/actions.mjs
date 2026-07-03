@@ -1,3 +1,4 @@
+// allow: SIZE_OK - action-card construction split is deferred from the 0.2.7 release gate.
 import {
   applyOrNull,
   blockedByWorkflow,
@@ -12,6 +13,7 @@ import { buildSetupGuidanceActions } from "./setup-actions.mjs";
 import { trustRecommendationAction } from "./trust-policy.mjs";
 
 const WRITABLE_MODES = new Set(["manual-only", "router-only", "workflow-auto"]);
+const NON_ACTIVATABLE_STATUSES = new Set(["blocked", "deprecated", "archived", "removed"]);
 
 export function buildInitActions(paths) {
   return [makeAction({
@@ -82,7 +84,10 @@ function reviewInstallUnitActions({ paths, workflow, reviewQueue }) {
 }
 
 function activateSkillActions({ paths, workflow, skills, workspace }) {
-  const candidates = [...skills.not_in_workflow, ...skills.blocked.filter((skill) => missingProvenance(workspace, skill.id))];
+  const candidates = [
+    ...skills.not_in_workflow,
+    ...skills.blocked.filter((skill) => missingProvenance(workspace, skill.id) || canActivate(skill))
+  ];
   return candidates.flatMap((skill) => {
     if (missingProvenance(workspace, skill.id)) {
       return [blockedActivateAction(paths, workflow, skill)];
@@ -90,7 +95,7 @@ function activateSkillActions({ paths, workflow, skills, workspace }) {
     if (!canActivate(skill)) {
       return [];
     }
-    const mode = skill.advanced.invocation;
+    const mode = activationMode(skill);
     const risk = riskFromSkill(skill);
     const dryRun = command([
       "skillboard", "activate", skill.id, "--workflow", workflow.selected, "--mode", mode,
@@ -169,6 +174,7 @@ function hookInstallActions({ paths, workflow }) {
 function removeSkillForceActions({ paths, workflow, skills, workspace }) {
   return skills.blocked
     .filter((skill) => !missingProvenance(workspace, skill.id))
+    .filter((skill) => !canActivate(skill))
     .map((skill) => {
       const dryRun = command([
         "skillboard", "remove", "skill", skill.id, "--force",
@@ -194,19 +200,17 @@ function removeSkillForceActions({ paths, workflow, skills, workspace }) {
 
 function resetCleanupAction({ paths, workflow, cleanup }) {
   const dryRun = command([
-    "skillboard", "uninstall", "--dir", paths.root, "--dry-run",
-    "--reset-config", "--remove-reports", "--remove-hooks"
+    "skillboard", "uninstall", "--dir", paths.root, "--purge", "--dry-run"
   ]);
   return makeAction({
     kind: "reset-cleanup",
     targetId: paths.root,
-    label: "Reset SkillBoard generated project files",
-    reason: "Preview full SkillBoard cleanup before applying it.",
+    label: "Purge SkillBoard project footprint",
+    reason: "Preview full SkillBoard policy cleanup before applying it.",
     risk: "destructive",
     dryRun,
     apply: applyOrNull(workflow, dryRun, [
-      "skillboard", "uninstall", "--dir", paths.root,
-      "--reset-config", "--remove-reports", "--remove-hooks"
+      "skillboard", "uninstall", "--dir", paths.root, "--purge"
     ]),
     appliesTo: { kind: "project", id: paths.root },
     blockedReason: blockedByWorkflow(workflow),
@@ -230,7 +234,25 @@ function blockedActivateAction(paths, workflow, skill) {
 }
 
 function canActivate(skill) {
-  return WRITABLE_MODES.has(skill.advanced.invocation) && skill.advanced.trust.reviewed === true;
+  return activationMode(skill) !== null && skill.advanced.trust.reviewed === true;
+}
+
+function activationMode(skill) {
+  if (NON_ACTIVATABLE_STATUSES.has(skill.advanced.status)) {
+    return null;
+  }
+  if (WRITABLE_MODES.has(skill.advanced.invocation)) {
+    return skill.advanced.invocation;
+  }
+  if (
+    skill.advanced.owner_install_unit !== undefined
+    && skill.advanced.owner_install_unit !== null
+    && skill.advanced.status === "quarantined"
+    && skill.advanced.invocation === "blocked"
+  ) {
+    return "manual-only";
+  }
+  return null;
 }
 
 function missingProvenance(workspace, skillId) {

@@ -24,6 +24,12 @@ npm exec --yes --package agent-skillboard -- skillboard doctor --summary
 npm exec --yes --package agent-skillboard -- skillboard brief --workflow <workflow-from-init>
 ```
 
+After a global install, postinstall auto-runs agent-layer setup for detected
+supported agent homes. Use `skillboard setup` later when you add another
+supported agent, skipped lifecycle scripts, or need to repair user-level agent
+guidance. This is agent-layer integration; it does not initialize, attach, or
+manage individual projects.
+
 If `init` does not print a workflow, run the unscoped `brief` command it prints
 instead.
 
@@ -51,8 +57,10 @@ node bin/skillboard.mjs brief --dir /path/to/your/project --workflow <workflow-f
 ## Commands
 
 ```bash
+skillboard setup [--yes] [--agent codex[,claude,opencode,hermes]]
+skillboard import-skill --from <agent> --to <agent> --skill <id-or-dir> [--target-skill <id-or-dir>] [--adapted-file <path>] [--dry-run] [--yes] [--replace] [--json]
 skillboard init [--dir <path>] [--scan-root <dir>[,<dir>]] [--no-scan-installed]
-skillboard uninstall [--dir <path>] [--dry-run] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs]
+skillboard uninstall [--dir <path>] [--dry-run] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs]
 skillboard inventory refresh [--dir <path>] [--config <path>] [--scan-root <dir>[,<dir>]] [--dry-run] [--json]
 skillboard inventory detect --unit <id> --config <path> [--install-output <path>] [--config-file a,b] [--source <value>] [--kind <kind>] [--scope <scope>] [--dry-run] [--json]
 skillboard sources refresh [--dir <path>] [--config <path>] [--unit <id>[,<id>]] [--cache-dir <dir>] [--dry-run] [--json]
@@ -91,6 +99,41 @@ skillboard dashboard --config <path> --skills <dir> [--out <path>]
 skillboard reconcile --config <path> --skills <dir> [--actual-harnesses a,b] [--out <path>]
 skillboard impact disable <skill-id> --config <path> --skills <dir> [--out <path>] [--json]
 ```
+
+## Agent Skill Reuse
+
+`import-skill` operates above projects. It reads one supported agent's user
+skill root and writes to another supported agent's user skill root:
+
+```bash
+skillboard import-skill --from codex --to opencode --skill test-first --json
+skillboard import-skill --from codex --to opencode --skill test-first --yes --json
+```
+
+Supported agents are `codex`, `claude`, `opencode`, and `hermes`. Roots come
+from `CODEX_HOME`, `AGENTS_HOME`, `CLAUDE_HOME`, `OPENCODE_HOME`, and
+`HERMES_HOME`, or from their default user locations. Codex source scanning also
+checks `~/.agents/skills` and `~/.codex/skills`.
+
+If the source skill contains markers for another agent runtime, the command
+returns `status: "needs-adaptation"` with compatibility reasons and no writes.
+The target agent should ask the user before changing the skill body. After
+approval, it writes an adapted `SKILL.md` and installs it with provenance:
+
+```bash
+skillboard import-skill \
+  --from codex \
+  --to opencode \
+  --skill codex-hook \
+  --target-skill opencode-hook \
+  --adapted-file /tmp/opencode-hook.SKILL.md \
+  --yes \
+  --json
+```
+
+This is separate from `variant` commands. `import-skill` installs a target-agent
+user skill file; `variant` records project-local policy relationships,
+snapshots, and workflow preferences.
 
 ## Capability Routing
 

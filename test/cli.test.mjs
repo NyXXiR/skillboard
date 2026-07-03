@@ -1,3 +1,4 @@
+// allow: SIZE_OK - legacy CLI integration suite split is deferred from the 0.2.7 release gate.
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -949,7 +950,7 @@ test("cli doctor reports an uninitialized project without mutating it", async ()
     assert.equal(payload.workspace.installUnits.bySourceClass["runtime-extension"], 0);
     assert.equal(payload.bridges.every((bridge) => bridge.status === "absent"), true);
     assert.deepEqual(await readdir(root), []);
-    assert.ok(payload.recommendations.includes("run skillboard init"));
+    assert.ok(payload.recommendations.includes("run skillboard setup once per user/agent install if agents should use SkillBoard for skill priority"));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -1309,10 +1310,10 @@ test("cli init scans installed local user skills into manual workflow state", as
     assert.match(init.stdout, /Added harnesses: `codex`/);
     assert.match(init.stdout, /Added managed skills: 3/);
     assert.match(init.stdout, /- `local-helper`/);
-    assert.match(init.stdout, /Safety default:/);
+    assert.match(init.stdout, /Skill selection default:/);
     assert.match(init.stdout, /No automatic model invocation was enabled/);
-    assert.match(init.stdout, /Imported local skills are manual-only/);
-    assert.match(init.stdout, /Runtime\/plugin\/system skills are quarantined until reviewed/);
+    assert.match(init.stdout, /Imported local skills are available on request in generated local policy/);
+    assert.match(init.stdout, /Runtime\/plugin\/system skills require source review before automatic invocation/);
     assert.match(init.stdout, /automatic skills enabled/);
     assert.match(init.stdout, /manual-only skills available/);
     assert.match(init.stdout, /blocked\/quarantined for safety/);
@@ -1434,6 +1435,33 @@ test("cli init scanned local skills remain routable by SKILL description metadat
     assert.equal(unrelatedPayload.match_source, "none");
     assert.equal(unrelatedPayload.recommended_skill, null);
     assert.deepEqual(unrelatedPayload.matched_terms, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli init scans Codex-visible .agents skills into manual workflow state", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-init-agents-root-test-"));
+  try {
+    const home = join(root, "home");
+    const project = join(root, "project");
+    const agentsSkills = join(home, ".agents", "skills");
+    await mkdir(join(agentsSkills, "test-first"), { recursive: true });
+    await writeFile(
+      join(agentsSkills, "test-first", "SKILL.md"),
+      "---\nname: test-first\ndescription: Write failing tests before implementation.\n---\n# test-first\n",
+      "utf8"
+    );
+
+    const env = testAgentEnv(home);
+    delete env.CODEX_HOME;
+    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", project], { env });
+    const configPath = join(project, "skillboard.config.yaml");
+    const config = await readFile(configPath, "utf8");
+
+    assert.match(config, /owner_install_unit: codex\.user-skills/);
+    assert.match(config, /codex-local-manual:/);
+    assert.match(config, /test-first/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -3866,7 +3894,7 @@ test("cli variant add help shows public command usage", async () => {
   assert.match(result.stdout, /\[--owner-install-unit <unit-id>\]/);
 });
 
-test("cli prefer refuses unusable unreviewed automatic external skills", async () => {
+test("cli prefer refuses unusable unreviewed external skills", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-prefer-trust-test-"));
   try {
     const configPath = join(root, "skillboard.config.yaml");
@@ -3874,15 +3902,15 @@ test("cli prefer refuses unusable unreviewed automatic external skills", async (
 skills:
   vendor.router:
     path: vendor/router
-    status: quarantined
-    invocation: blocked
+    status: active
+    invocation: manual-only
     exposure: exported
     owner_install_unit: github.vendor.skills
 capabilities:
   code-review:
     canonical: vendor.router
     alternatives: []
-    default_policy: workflow-auto
+    default_policy: manual-only
 workflows:
   review-workflow:
     harness: codex
@@ -3892,7 +3920,7 @@ workflows:
       code-review:
         preferred: ""
         fallback: []
-        policy: workflow-auto
+        policy: manual-only
 harnesses:
   codex:
     status: primary
@@ -3935,7 +3963,83 @@ install_units:
 
     assert.equal(error.code, 1);
     assert.match(error.stderr, /Control update would not be usable/);
-    assert.match(error.stderr, /source github\.vendor\.skills is unreviewed/);
+    assert.match(error.stderr, /unreviewed non-user source github\.vendor\.skills/);
+    assert.equal(await readFile(configPath, "utf8"), original);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli prefer refuses reviewed blocked runtime skills", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-prefer-blocked-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const original = `version: 1
+skills:
+  omo.blocked:
+    path: omo/blocked
+    status: blocked
+    invocation: blocked
+    exposure: exported
+    owner_install_unit: omo.runtime
+capabilities:
+  coding:
+    canonical: omo.blocked
+    alternatives: []
+    default_policy: manual-only
+workflows:
+  review-workflow:
+    harness: codex
+    active_skills: []
+    blocked_skills: []
+    required_capabilities:
+      coding:
+        preferred: ""
+        fallback: []
+        policy: manual-only
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - review-workflow
+install_units:
+  omo.runtime:
+    kind: plugin
+    source: ~/.codex/plugins/cache/sisyphuslabs/omo
+    scope: user-global
+    provided_components:
+      - skills
+      - hook
+    components:
+      skills:
+        - omo.blocked
+    enabled: true
+    trust_level: reviewed
+    permission_risk: high
+`;
+    await writeFile(configPath, original, "utf8");
+
+    let error;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "prefer",
+        "omo.blocked",
+        "--workflow",
+        "review-workflow",
+        "--capability",
+        "coding",
+        "--config",
+        configPath,
+        "--skills",
+        join(root, "skills")
+      ]);
+    } catch (caught) {
+      error = caught;
+    }
+
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /status: blocked/);
     assert.equal(await readFile(configPath, "utf8"), original);
   } finally {
     await rm(root, { recursive: true, force: true });

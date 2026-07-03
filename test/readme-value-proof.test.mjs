@@ -343,9 +343,9 @@ test("README leads with ask-your-AI workflow before command details", async () =
   assert.match(firstScreen, /Nothing changes until you approve a policy action/i);
   assert.match(firstScreen, /cleanup is conservative and previewable/i);
   assert.match(firstScreen, /uninstall --dry-run/i);
-  assert.match(firstScreen, /workflow-scoped skill policy and routing for AI\s+agents/i);
-  assert.match(firstScreen, /separates `installed` from `allowed`/i);
-  assert.match(firstScreen, /checks\s+workflow policy and\s+guard state before use/i);
+  assert.match(firstScreen, /workflow-scoped skill priority and routing for AI\s+agents/i);
+  assert.match(firstScreen, /Installed user skills are usable by default/i);
+  assert.match(firstScreen, /resolve overlap,\s+policy,\s+and workflow priority/i);
   assert.match(firstScreen, /What skills can you use in this project\?/);
   assert.match(firstScreen, /Can you make `anthropic\.docx` available for this workflow\?/);
   assert.match(firstScreen, /behind the scenes/i);
@@ -355,9 +355,14 @@ test("README leads with ask-your-AI workflow before command details", async () =
   assert.match(firstScreen, /policy-changing action/i);
   assert.match(firstScreen, /You\s+do\s+not need to\s+memorize/i);
 
-  assert.match(quickStart, /Ask your AI/i);
-  assert.match(quickStart, /AI runs\s+SkillBoard behind the scenes/i);
-  assert.match(quickStart, /Use without a global install/i);
+  assert.match(quickStart, /Install the CLI/i);
+  assert.match(quickStart, /auto-connects the\s+agent layer/i);
+  assert.match(quickStart, /detected Codex, Claude, OpenCode,\s+and Hermes user skill roots/i);
+  assert.match(quickStart, /npm install -g agent-skillboard/);
+  assert.match(quickStart, /No separate setup\s+command is required after a normal global install/i);
+  assert.match(quickStart, /skillboard setup --agent codex,claude,opencode,hermes --yes/);
+  assert.match(quickStart, /does not create `skillboard\.config\.yaml`,\s+`\.skillboard\/`, `AGENTS\.md`, or `CLAUDE\.md` in projects/i);
+  assert.match(quickStart, /ask normal questions/i);
   assert.match(quickStart, /Remove the project bridge when you are done/i);
   assert.match(quickStart, /skillboard uninstall --dir \/path\/to\/your\/project --dry-run/);
   assert.match(quickStart, /preserves local skills and policy files by default/i);
@@ -365,7 +370,6 @@ test("README leads with ask-your-AI workflow before command details", async () =
   assert.match(quickStart, /npx --yes --package agent-skillboard skillboard init/);
   assert.match(quickStart, /npx --yes --package agent-skillboard skillboard doctor --summary/);
   assert.match(quickStart, /npx --yes --package agent-skillboard skillboard brief --workflow <workflow-from-init>/);
-  assert.match(quickStart, /copyable workflow-scoped `brief` command/);
   assert.doesNotMatch(quickStart, /npx agent-skillboard init/);
   assert.doesNotMatch(quickStart, /run these commands every time you need a skill/i);
 });

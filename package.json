@@ -1,6 +1,6 @@
 {
   "name": "agent-skillboard",
-  "version": "0.2.1",
+  "version": "0.2.15",
   "description": "Let AI agents pick and use allowed skills in each workflow.",
   "keywords": [
     "ai-agent",
@@ -25,7 +25,6 @@
     "bin",
     "src",
     "docs/*.md",
-    "docs/plans",
     "examples",
     "profiles",
     "README.md",
@@ -42,6 +41,7 @@
     "access": "public"
   },
   "scripts": {
+    "postinstall": "node bin/postinstall.mjs",
     "test": "node --test",
     "test:unit": "node --test test/advisor-brief-actions.test.mjs test/advisor-brief.test.mjs test/ecosystem-docs.test.mjs test/install-units.test.mjs test/package.test.mjs test/policy.test.mjs test/skillboard.test.mjs",
     "test:integration": "node --test test/brief-cli.test.mjs test/cli.test.mjs test/control-exports.test.mjs test/first-time-ux.test.mjs test/hook-dry-run.test.mjs test/hook-install-cli.test.mjs test/hook-json-errors.test.mjs test/install-units.test.mjs test/lifecycle-cli.test.mjs test/lifecycle-reset-cli.test.mjs test/multi-source-integration.test.mjs test/package.test.mjs test/policy-hardening.test.mjs test/review-cli.test.mjs test/source-profiles.test.mjs",
@@ -52,7 +52,7 @@
     "yaml": "^2.8.1"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=14.21"
   },
   "license": "MIT",
   "devDependencies": {

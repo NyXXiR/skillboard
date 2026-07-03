@@ -1,16 +1,17 @@
-import { readdir } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { agentSkillRootCandidates } from "./agent-skill-roots.mjs";
 
 export async function defaultScanRoots(home, env) {
   const codexHome = env.CODEX_HOME ?? join(home, ".codex");
-  const hermesHome = env.HERMES_HOME ?? join(home, ".hermes");
+  const agentRoots = await Promise.all([
+    agentSkillRootCandidates("codex", home, env),
+    agentSkillRootCandidates("claude", home, env),
+    agentSkillRootCandidates("hermes", home, env)
+  ]);
   return [
     join(codexHome, "skills", ".system"),
-    join(codexHome, "skills"),
     join(codexHome, "plugins", "cache"),
-    join(home, ".claude", "skills"),
-    join(hermesHome, "skills"),
-    ...(await hermesProfileSkillRoots(hermesHome))
+    ...agentRoots.flat().map((root) => root.skillRoot)
   ];
 }
 
@@ -42,7 +43,7 @@ export function userHermesUnit(path, home) {
 }
 
 export function hermesProfileUnit(path, home) {
-  const profile = safeSegment(basename(dirname(path))).replaceAll(".", "-");
+  const profile = safeSegment(basename(dirname(path))).replace(/\./g, "-");
   return userSkillUnit(`hermes.profile.${profile}.skills`, path, home);
 }
 
@@ -54,7 +55,7 @@ export function customUserUnit(path, home) {
 }
 
 export function isHermesProfileSkillsPath(path) {
-  const normalized = path.replaceAll("\\", "/");
+  const normalized = path.replace(/\\/g, "/");
   return /\/\.hermes\/profiles\/[^/]+\/skills$/u.test(normalized);
 }
 
@@ -71,17 +72,9 @@ export function displayPath(path, home) {
     return "~";
   }
   if (!rel.startsWith("..") && !isAbsolute(rel)) {
-    return `~/${rel.replaceAll("\\", "/")}`;
+    return `~/${rel.replace(/\\/g, "/")}`;
   }
   return resolvedPath;
-}
-
-async function hermesProfileSkillRoots(hermesHome) {
-  const profilesRoot = join(hermesHome, "profiles");
-  const entries = await readdir(profilesRoot, { withFileTypes: true }).catch(() => []);
-  return entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => join(profilesRoot, entry.name, "skills"));
 }
 
 function userSkillUnit(id, path, home) {

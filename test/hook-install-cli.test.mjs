@@ -8,11 +8,11 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-async function execHookScript(path, args) {
+async function execHookScript(path, args, options = {}) {
   if (process.platform === "win32") {
-    return await execFileAsync("bash", [path, ...args]);
+    return await execFileAsync("bash", [path, ...args], options);
   }
-  return await execFileAsync(path, args);
+  return await execFileAsync(path, args, options);
 }
 
 function isPosixExecutableBitSupported() {
@@ -48,6 +48,16 @@ test("cli hook install emits an executable guard script", async () => {
       assert.equal((mode & 0o111) !== 0, true);
     }
     assert.equal(guard.stdout, "allow\n");
+    const guardWithEnvOverrideAttempt = await execHookScript(hookPath, ["private.tdd-work-continuity"], {
+      env: {
+        ...process.env,
+        SKILLBOARD_BIN: process.platform === "win32" ? "cmd /c exit 0" : "/bin/true",
+        SKILLBOARD_CONFIG: join(root, "fake-config.yaml"),
+        SKILLBOARD_SKILLS: join(root, "fake-skills"),
+        SKILLBOARD_WORKFLOW: "fake-workflow"
+      }
+    });
+    assert.equal(guardWithEnvOverrideAttempt.stdout, "allow\n");
 
     const commandHook = join(root, "codex-night-guard-node.sh");
     await execFileAsync(process.execPath, [

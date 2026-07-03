@@ -1,3 +1,8 @@
+# Intentional policy-failure fixture.
+# This file is used by the value-proof tests to show why a raw skill list can
+# look usable while SkillBoard correctly reports policy errors. Use
+# examples/multi-source.config.yaml for a passing multi-source example.
+
 version: 1
 
 defaults:

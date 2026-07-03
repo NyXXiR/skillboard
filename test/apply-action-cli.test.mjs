@@ -1,11 +1,12 @@
+// allow: SIZE_OK - apply-action CLI test split is deferred from the 0.2.7 release gate.
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { withActionsFixture } from "./helpers/advisor-brief-actions.mjs";
+import { withActionsFixture, withReviewedBlockedFixture } from "./helpers/advisor-brief-actions.mjs";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -156,9 +157,64 @@ test("apply-action destructive reset requires both --yes and --allow-destructive
   );
 });
 
+test("apply-action destructive reset purges all SkillBoard project state while preserving local skills", async () => {
+  await withActionsFixture(async (paths) => {
+    await mkdir(join(paths.root, "skills", "local-helper"), { recursive: true });
+    await writeFile(
+      join(paths.root, "skills", "local-helper", "SKILL.md"),
+      "---\nname: local-helper\ndescription: Apply cleanup fixture.\n---\n# Local helper\n",
+      "utf8"
+    );
+    await mkdir(join(paths.root, ".skillboard", "sources", "example"), { recursive: true });
+    await mkdir(join(paths.root, ".skillboard", "rollouts", "txn-1"), { recursive: true });
+    await mkdir(join(paths.root, ".skillboard", "variant-snapshots"), { recursive: true });
+    await writeFile(join(paths.root, ".skillboard", "sources", "example", "cache.txt"), "cache\n", "utf8");
+    await writeFile(join(paths.root, ".skillboard", "rollouts", "txn-1", "plan.json"), "{}\n", "utf8");
+    await writeFile(join(paths.root, ".skillboard", "variant-snapshots", "snapshot.md"), "snapshot\n", "utf8");
+    await writeFile(join(paths.root, ".skillboard", "profiles", "custom.yaml"), "id: custom\n", "utf8");
+
+    const result = await runSkillboard([
+      "apply-action",
+      `reset-cleanup:${paths.root}`,
+      ...workflowArgs(paths),
+      "--yes",
+      "--allow-destructive",
+      "--json"
+    ]);
+
+    assert.equal(result.exitCode, 0, commandFailure(result));
+    const payload = parseJson(result);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.mode, "applied");
+    assert.equal(payload.action.kind, "reset-cleanup");
+    assert.equal(await pathExists(join(paths.root, "skillboard.config.yaml")), false);
+    assert.equal(await pathExists(join(paths.root, ".skillboard")), false);
+    assert.equal(await pathExists(join(paths.root, "skills", "local-helper", "SKILL.md")), true);
+  });
+});
+
 test("apply-action cannot apply unresolved or unknown workflow actions", async () => {
   await assertWorkflowActionRejected([], /workflow|select/i);
   await assertWorkflowActionRejected(["--workflow", "missing-workflow"], /unknown workflow|workflow/i);
+});
+
+test("apply-action cannot activate a reviewed blocked runtime skill", async () => {
+  await withReviewedBlockedFixture(async (paths) => {
+    const originalConfig = await readFile(paths.configPath, "utf8");
+    const result = await runSkillboard([
+      "apply-action",
+      "activate-skill:omo:blocked",
+      ...workflowArgs(paths),
+      "--yes",
+      "--json"
+    ]);
+    const afterConfig = await readFile(paths.configPath, "utf8");
+
+    assert.equal(afterConfig, originalConfig);
+    assert.notEqual(result.exitCode, 0);
+    const payload = parseJson(result);
+    assertStructuredError(payload, "stale-action", /current|stale|not found/i);
+  });
 });
 
 async function assertDestructiveResetRejected(extraArgs, expectedCode, messagePattern) {
@@ -215,6 +271,10 @@ function workflowArgs(paths) {
     "--skills",
     paths.skillsRoot
   ];
+}
+
+async function pathExists(path) {
+  return access(path).then(() => true, () => false);
 }
 
 async function runSkillboard(args) {

@@ -1,3 +1,4 @@
+// allow: SIZE_OK - legacy CLI dispatcher split is deferred from the 0.2.7 release gate.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
@@ -51,17 +52,20 @@ import {
 } from "./index.mjs";
 // SIZE_OK: src/cli.mjs is pre-existing command-router debt; brief behavior delegates to src/brief-cli.mjs and hook planning delegates through src/hook-plan.mjs until a broader router split.
 import { ApplyActionError, applyActionErrorPayload, applyAdvisorAction } from "./advisor/apply-action.mjs";
+import { importAgentSkill, renderImportAgentSkill } from "./agent-skill-import.mjs";
 import { runBriefCommand } from "./brief-cli.mjs";
 import { renderSkillBrief } from "./brief-renderer.mjs";
 import { planGuardHookInstall } from "./control.mjs";
 import { writeCheckedConfig } from "./control/config-write.mjs";
-import { runInitCommand, runUninstallCommand } from "./lifecycle-cli.mjs";
+import { runInitCommand, runSetupCommand, runUninstallCommand } from "./lifecycle-cli.mjs";
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
 const APPLY_ACTION_VALUE_OPTIONS = new Set(["workflow", "dir", "config", "skills", "out", "skillboard-bin"]);
 const COMMAND_USAGE = new Map([
-  ["uninstall", ["uninstall [--dir <path>] [--dry-run] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs]"]],
+  ["setup", ["setup [--yes] [--agent codex[,claude,opencode,hermes]]"]],
+  ["import-skill", ["import-skill --from <agent> --to <agent> --skill <id-or-dir> [--target-skill <id-or-dir>] [--adapted-file <path>] [--dry-run] [--yes] [--replace] [--json]"]],
+  ["uninstall", ["uninstall [--dir <path>] [--dry-run] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs]"]],
   [
     "inventory",
     [
@@ -94,19 +98,19 @@ const COMMAND_USAGE = new Map([
 ]);
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  process.exitCode = await main(process.argv.slice(2), process.stdout, process.stderr);
+  process.exitCode = await main(process.argv.slice(2), process.stdout, process.stderr, process.stdin);
 }
 
-export async function main(argv, stdout, stderr) {
+export async function main(argv, stdout, stderr, stdin = process.stdin) {
   try {
-    return await run(argv, stdout, stderr);
+    return await run(argv, stdout, stderr, stdin);
   } catch (error) {
     stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     return Number.isInteger(error?.exitCode) ? error.exitCode : 1;
   }
 }
 
-async function run(argv, stdout, stderr) {
+async function run(argv, stdout, stderr, stdin) {
   const command = argv[0] ?? "help";
   const commandArgs = argv.slice(1);
   const options = parseOptions(commandArgs);
@@ -116,6 +120,17 @@ async function run(argv, stdout, stderr) {
     return 0;
   }
   switch (command) {
+    case "setup":
+      return await runSetupCommand(options, stdout, {
+        cwd: process.cwd(),
+        env: process.env,
+        entrypointPath: process.argv[1],
+        packageSpec: process.env.npm_config_package,
+        stdin,
+        stdout
+      });
+    case "import-skill":
+      return await importSkillCommand(options, stdout);
     case "init":
       return await runInitCommand(options, stdout);
     case "uninstall":
@@ -254,6 +269,22 @@ async function mergeImport(options, imported, stdout) {
   };
   writeOutput(stdout, result, options, () => renderImportMerge(result));
   return 0;
+}
+
+async function importSkillCommand(options, stdout) {
+  const result = await importAgentSkill({
+    from: options.get("from"),
+    to: options.get("to"),
+    skill: options.get("skill"),
+    targetSkill: options.get("target-skill"),
+    adaptedFile: options.get("adapted-file"),
+    dryRun: options.get("dry-run") === "true",
+    yes: options.get("yes") === "true",
+    replace: options.get("replace") === "true",
+    env: process.env
+  });
+  writeOutput(stdout, result, options, () => renderImportAgentSkill(result));
+  return result.status === "needs-adaptation" ? 2 : 0;
 }
 
 async function inventory(argv, options, stdout) {
@@ -1065,6 +1096,10 @@ function formatList(values) {
   return values.length === 0 ? "none" : values.map((value) => `\`${value}\``).join(", ");
 }
 
+function shellQuote(value) {
+  return /^[A-Za-z0-9_./:=@-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 function readCsv(value) {
   if (value === undefined || value.trim() === "") {
     return [];
@@ -1446,6 +1481,7 @@ function renderDoctorSummary(result) {
       lines.push(`- ${concern}`);
     }
   }
+  appendNotInitializedAttachGuidance(lines, result);
   if (result.recommendations.length > 0) {
     lines.push("Recommendations:");
     for (const recommendation of result.recommendations.slice(0, 3)) {
@@ -1477,6 +1513,7 @@ function renderDoctor(result) {
     `Runtime extension units: ${formatList(result.workspace.installUnits.runtimeExtensions)}`,
     `Uninstall dry run: remove ${result.uninstall.removed.length}, update ${result.uninstall.updated.length}, preserve ${result.uninstall.preserved.length}`
   ];
+  appendNotInitializedAttachGuidance(lines, result);
   if (result.recommendations.length > 0) {
     lines.push("Recommendations:");
     for (const recommendation of result.recommendations) {
@@ -1485,6 +1522,16 @@ function renderDoctor(result) {
   }
   lines.push("");
   return lines.join("\n");
+}
+
+function appendNotInitializedAttachGuidance(lines, result) {
+  if (result.mode !== "not-initialized") {
+    return;
+  }
+  lines.push("SkillBoard state:");
+  lines.push("- No local SkillBoard policy file was found in this directory.");
+  lines.push("- That is OK: project management belongs to the agent/workspace layer.");
+  lines.push("- Global install normally runs agent setup automatically; run skillboard setup later only after adding another supported agent or if install scripts were skipped.");
 }
 
 function renderCounts(counts) {
@@ -1499,9 +1546,18 @@ function helpText() {
     "SkillBoard - AI-mediated workflow-scoped skill policy",
     "Version: see skillboard --version",
     "",
+    "After global install:",
+    "  npm install -g agent-skillboard",
+    "  sudo npm install -g agent-skillboard is also supported when system npm requires it.",
+    "  The package postinstall auto-runs agent-layer guidance setup on install and update.",
+    "  Under sudo, setup targets SUDO_USER's agent homes while npm still controls the binary prefix.",
+    "  Run skillboard setup later after adding another supported agent or when install scripts were skipped.",
+    "",
     "AI/automation operations:",
+    "  setup [--yes] [--agent codex[,claude,opencode,hermes]]",
+    "  import-skill --from <agent> --to <agent> --skill <id-or-dir> [--target-skill <id-or-dir>] [--adapted-file <path>] [--dry-run] [--yes] [--replace] [--json]",
     "  init [--dir <path>] [--scan-root <dir>[,<dir>]] [--no-scan-installed]",
-    "  uninstall [--dir <path>] [--dry-run] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs]",
+    "  uninstall [--dir <path>] [--dry-run] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs]",
     "  inventory refresh [--dir <path>] [--config <path>] [--scan-root <dir>[,<dir>]] [--dry-run] [--json]",
     "  inventory detect --unit <id> --config <path> [--install-output <path>] [--config-file a,b] [--source <value>] [--kind <kind>] [--scope <scope>] [--dry-run] [--json]",
     "  sources refresh [--dir <path>] [--config <path>] [--unit <id>[,<id>]] [--cache-dir <dir>] [--dry-run] [--json]",
@@ -1560,6 +1616,15 @@ function commandHelpText(command) {
   if (command === "init") {
     return initHelpText();
   }
+  if (command === "setup") {
+    return setupHelpText();
+  }
+  if (command === "import-skill") {
+    return importSkillHelpText();
+  }
+  if (command === "uninstall") {
+    return uninstallHelpText();
+  }
   if (command === "doctor" || command === "status") {
     return doctorHelpText();
   }
@@ -1601,11 +1666,93 @@ function initHelpText() {
     "What changes:",
     "  Writes skillboard.config.yaml, skills/, .skillboard/, AGENTS.md, and CLAUDE.md as needed.",
     "  Imports trusted user-local skills as on-request skills.",
-    "  Keeps runtime, plugin, system, and external skills quarantined until reviewed.",
+    "  Keeps runtime, plugin, system, and external skills behind source review before manual activation.",
     "",
     "Next:",
     "  Run skillboard doctor --summary.",
     "  Ask your AI: \"What skills can you use in this project?\"",
+    ""
+  ].join("\n");
+}
+
+function setupHelpText() {
+  return [
+    "Usage: skillboard setup [--yes] [--agent codex[,claude,opencode,hermes]]",
+    "",
+    "Installs or refreshes SkillBoard at the agent layer, not into a project.",
+    "A normal global package install already runs this automatically for detected supported agents.",
+    "Use setup later after adding another supported agent, enabling a new agent home, or skipping install scripts.",
+    "Without --yes, setup explains the user agent skill files it will write and asks before installing when run in a TTY.",
+    "In non-interactive automation, rerun with --yes after choosing the target agents.",
+    "",
+    "What changes after confirmation:",
+    "  Writes a SkillBoard guidance skill into detected user agent skill roots.",
+    "  Does not write skillboard.config.yaml, .skillboard/, AGENTS.md, or CLAUDE.md in projects.",
+    "  Teaches agents to use installed skills by default and resolve overlap by workflow priority.",
+    "",
+    "Supported agent homes:",
+    "  codex: CODEX_HOME, AGENTS_HOME, ~/.agents, or ~/.codex",
+    "  claude: CLAUDE_HOME or ~/.claude",
+    "  opencode: OPENCODE_HOME or ~/.config/opencode",
+    "  hermes: HERMES_HOME or ~/.hermes",
+    "",
+    "Examples:",
+    "  skillboard setup",
+    "  skillboard setup --yes",
+    "  skillboard setup --agent codex,claude,opencode,hermes --yes",
+    ""
+  ].join("\n");
+}
+
+function importSkillHelpText() {
+  return [
+    "Usage: skillboard import-skill --from <agent> --to <agent> --skill <id-or-dir> [--target-skill <id-or-dir>] [--adapted-file <path>] [--dry-run] [--yes] [--replace] [--json]",
+    "",
+    "Copies a user skill from one agent skill root into another agent skill root.",
+    "This is an agent-layer operation. It does not initialize, attach, or modify a project.",
+    "",
+    "Supported agents:",
+    "  codex: CODEX_HOME, AGENTS_HOME, ~/.agents, or ~/.codex",
+    "  claude: CLAUDE_HOME or ~/.claude",
+    "  opencode: OPENCODE_HOME or ~/.config/opencode",
+    "  hermes: HERMES_HOME or ~/.hermes",
+    "",
+    "AI use:",
+    "  Run this when a user asks to reuse a skill from another agent.",
+    "  If the source looks compatible, rerun with --yes to install it as-is.",
+    "  If the result status is needs-adaptation, explain the reasons and ask before changing the skill for the target agent.",
+    "  After user approval, write the adapted SKILL.md body yourself and pass it with --adapted-file <path> --yes.",
+    "",
+    "Examples:",
+    "  skillboard import-skill --from codex --to opencode --skill test-first --json",
+    "  skillboard import-skill --from codex --to opencode --skill codex-hook --target-skill opencode-hook --adapted-file /tmp/opencode-hook.SKILL.md --yes --json",
+    ""
+  ].join("\n");
+}
+
+function uninstallHelpText() {
+  return [
+    "Usage: skillboard uninstall [--dir <path>] [--dry-run] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs]",
+    "",
+    "This help is read-only. It does not load config or change project files.",
+    "",
+    "Removes SkillBoard project bridge files and generated lifecycle scaffolding.",
+    "Default cleanup is conservative and preserves policy, reports, hooks, local skills, and user-authored content.",
+    "",
+    "Options:",
+    "  --dir <path>        Project root to clean up; defaults to the current directory.",
+    "  --dry-run           Preview the cleanup without writing changes.",
+    "  --purge             Remove SkillBoard policy influence and generated footprint while preserving local skills.",
+    "  --remove-config     Delete skillboard.config.yaml only if it still matches the generated default.",
+    "  --reset-config      Delete skillboard.config.yaml even when it contains policy choices.",
+    "  --remove-reports    Delete .skillboard/reports/.",
+    "  --remove-hooks      Delete .skillboard/hooks/.",
+    "  --keep-empty-dirs   Preserve empty generated directories.",
+    "",
+    "Purge:",
+    "  Removes SkillBoard config, bridge blocks, and the entire .skillboard/ project state directory.",
+    "  This includes reports, hooks, source caches, rollout logs, variant snapshots, and profiles.",
+    "  It does not delete local skills under skills/.",
     ""
   ].join("\n");
 }

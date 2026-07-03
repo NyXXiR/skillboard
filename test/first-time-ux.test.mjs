@@ -19,9 +19,18 @@ function testAgentEnv(home, overrides = {}) {
     CODEX_HOME: join(home, ".codex"),
     HERMES_HOME: join(home, ".hermes"),
     CLAUDE_HOME: join(home, ".claude"),
+    OPENCODE_HOME: join(home, ".config", "opencode"),
     SKILLBOARD_INIT_SCAN_ROOTS: "",
     ...overrides
   };
+}
+
+function withoutEnvKeys(env, keys) {
+  const copy = { ...env };
+  for (const key of keys) {
+    delete copy[key];
+  }
+  return copy;
 }
 
 function assertInitNextCommand(stdout, command, dir, suffix = "") {
@@ -139,6 +148,120 @@ test("doctor --summary prints compact status", async () => {
   }
 });
 
+test("doctor --summary separates agent setup from project lifecycle for an uninitialized project", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-doctor-attach-"));
+  try {
+    const result = await execFileAsync(process.execPath, [BIN, "doctor", "--summary", "--dir", root]).catch((error) => error);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stdout, /SkillBoard doctor: needs attention/);
+    assert.match(result.stdout, /No local SkillBoard policy file was found in this directory/);
+    assert.match(result.stdout, /project management belongs to the agent\/workspace layer/);
+    assert.match(result.stdout, /run skillboard setup once per user\/agent install/i);
+    assert.doesNotMatch(result.stdout, /skillboard init --dir/);
+    assert.deepEqual(await readFile(join(root, "skillboard.config.yaml"), "utf8").catch(() => null), null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup without confirmation explains the agent-layer boundary without mutating", async () => {
+  const home = await mkdtemp(join(tmpdir(), "skillboard-setup-confirm-"));
+  try {
+    const result = await execFileAsync(process.execPath, [BIN, "setup", "--agent", "codex"], {
+      cwd: home,
+      env: testAgentEnv(home)
+    }).catch((error) => error);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stdout, /SkillBoard setup installs agent-layer integration, not project files/);
+    assert.match(result.stdout, /Run with --yes to install agent-layer integration/);
+    assert.match(result.stdout, /setup --agent codex --yes/);
+    assert.equal(await readFile(join(home, ".codex", "skills", "skillboard", "SKILL.md"), "utf8").catch(() => null), null);
+    assert.equal(await readFile(join(home, "skillboard.config.yaml"), "utf8").catch(() => null), null);
+    assert.equal(await readFile(join(home, "AGENTS.md"), "utf8").catch(() => null), null);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("setup --yes installs agent-layer guidance without project initialization", async () => {
+  const home = await mkdtemp(join(tmpdir(), "skillboard-setup-yes-"));
+  try {
+    const setup = await execFileAsync(process.execPath, [BIN, "setup", "--yes", "--agent", "codex,opencode"], {
+      cwd: home,
+      env: testAgentEnv(home)
+    });
+    const skill = await readFile(join(home, ".codex", "skills", "skillboard", "SKILL.md"), "utf8");
+    const openCodeSkill = await readFile(join(home, ".config", "opencode", "skills", "skillboard", "SKILL.md"), "utf8");
+
+    assert.match(setup.stdout, /SkillBoard agent integration installed/);
+    assert.match(setup.stdout, /opencode:/);
+    assert.doesNotMatch(setup.stdout, /skillboard init --dir/);
+    assert.match(skill, /name: skillboard/);
+    assert.match(skill, /SkillBoard Agent Integration/);
+    assert.match(skill, /Installed user skills are usable by default/);
+    assert.match(skill, /workflow priority/);
+    assert.match(skill, /Do not ask for permission merely because you selected a skill/);
+    assert.match(skill, /skillboard import-skill --from <source-agent> --to <this-agent>/);
+    assert.match(skill, /needs-adaptation/);
+    assert.equal(openCodeSkill, skill);
+    assert.equal(await readFile(join(home, "skillboard.config.yaml"), "utf8").catch(() => null), null);
+    assert.equal(await readFile(join(home, "AGENTS.md"), "utf8").catch(() => null), null);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("setup --yes detects Codex .agents skill roots without CODEX_HOME", async () => {
+  const home = await mkdtemp(join(tmpdir(), "skillboard-setup-agents-root-"));
+  try {
+    const agentsSkills = join(home, ".agents", "skills");
+    await mkdir(agentsSkills, { recursive: true });
+
+    const setup = await execFileAsync(process.execPath, [BIN, "setup", "--yes"], {
+      cwd: home,
+      env: withoutEnvKeys(testAgentEnv(home), ["CODEX_HOME"])
+    });
+    const skill = await readFile(join(agentsSkills, "skillboard", "SKILL.md"), "utf8");
+
+    assert.match(setup.stdout, /SkillBoard agent integration installed/);
+    assert.match(setup.stdout, /\.agents\/skills\/skillboard\/SKILL\.md/);
+    assert.match(skill, /SkillBoard Agent Integration/);
+    assert.equal(await readFile(join(home, ".codex", "skills", "skillboard", "SKILL.md"), "utf8").catch(() => null), null);
+    assert.equal(await readFile(join(home, "skillboard.config.yaml"), "utf8").catch(() => null), null);
+    assert.equal(await readFile(join(home, "AGENTS.md"), "utf8").catch(() => null), null);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("setup --yes creates Codex .agents skills root when .agents home exists", async () => {
+  const home = await mkdtemp(join(tmpdir(), "skillboard-setup-agents-parent-"));
+  try {
+    const agentsHome = join(home, ".agents");
+    const agentsSkill = join(agentsHome, "skills", "skillboard", "SKILL.md");
+    await mkdir(agentsHome, { recursive: true });
+    await mkdir(join(home, ".codex", "skills"), { recursive: true });
+
+    const setup = await execFileAsync(process.execPath, [BIN, "setup", "--yes", "--agent", "codex"], {
+      cwd: home,
+      env: testAgentEnv(home)
+    });
+    const skill = await readFile(agentsSkill, "utf8");
+    const codexSkill = await readFile(join(home, ".codex", "skills", "skillboard", "SKILL.md"), "utf8");
+
+    assert.match(setup.stdout, /SkillBoard agent integration installed/);
+    assert.match(setup.stdout, /\.agents\/skills\/skillboard\/SKILL\.md/);
+    assert.match(skill, /SkillBoard Agent Integration/);
+    assert.equal(codexSkill, skill);
+    assert.equal(await readFile(join(home, "skillboard.config.yaml"), "utf8").catch(() => null), null);
+    assert.equal(await readFile(join(home, "AGENTS.md"), "utf8").catch(() => null), null);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("init next commands keep no-prompt npx spelling", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-init-npx-next-"));
   try {
@@ -190,7 +313,7 @@ test("init summarizes large installed skill scans instead of printing the whole 
     assert.match(init.stdout, /- `skill-05`/);
     assert.match(init.stdout, /- \.\.\. 7 more/);
     assert.doesNotMatch(init.stdout, /skill-12`/);
-    assert.match(init.stdout, /Safety default:/);
+    assert.match(init.stdout, /Skill selection default:/);
     assert.match(init.stdout, /No automatic model invocation was enabled/);
     assert.match(init.stdout, /12 manual-only skills available/);
     assert.match(init.stdout, /Next:/);
@@ -218,7 +341,7 @@ test("init safety summary does not parse local SKILL.md files", async () => {
     const init = await execFileAsync(process.execPath, [BIN, "init", "--dir", root, "--no-scan-installed"]);
 
     assert.match(init.stdout, /Initialized SkillBoard:/);
-    assert.match(init.stdout, /Safety default:/);
+    assert.match(init.stdout, /Skill selection default:/);
     assert.match(init.stdout, /0 automatic skills enabled/);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -251,7 +374,7 @@ install_units: {}
 
     const init = await execFileAsync(process.execPath, [BIN, "init", "--dir", root, "--no-scan-installed"]);
 
-    assert.match(init.stdout, /Safety default:/);
+    assert.match(init.stdout, /Skill selection default:/);
     assert.match(init.stdout, /0 manual-only skills available/);
     assert.match(init.stdout, /1 router-only skills available/);
     assert.match(init.stdout, /0 blocked\/quarantined for safety/);
@@ -312,7 +435,7 @@ install_units: {}
     const init = await execFileAsync(process.execPath, [BIN, "init", "--dir", root, "--no-scan-installed"]);
 
     assert.match(check.stdout, /Policy check passed/);
-    assert.match(init.stdout, /Safety default:/);
+    assert.match(init.stdout, /Skill selection default:/);
     assert.match(init.stdout, /3 automatic skills enabled/);
     assert.match(init.stdout, /2 manual-only skills available/);
     assert.match(init.stdout, /1 router-only skills available/);

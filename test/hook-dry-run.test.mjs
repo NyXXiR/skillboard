@@ -42,6 +42,10 @@ test("hook install dry-run json plans default hook without writing files", async
     assert.equal(payload.planned.would_be_executable, true);
     assert.match(payload.planned.preview.display, /codex-night-workflow/);
     assert.match(payload.planned.preview.shell, /chmod 0755/);
+    assert.doesNotMatch(payload.planned.preview.shell, /SKILLBOARD_BIN=\$\{SKILLBOARD_BIN:-/);
+    assert.doesNotMatch(payload.planned.preview.shell, /SKILLBOARD_CONFIG=\$\{SKILLBOARD_CONFIG:-/);
+    assert.doesNotMatch(payload.planned.preview.shell, /SKILLBOARD_SKILLS=\$\{SKILLBOARD_SKILLS:-/);
+    assert.doesNotMatch(payload.planned.preview.shell, /SKILLBOARD_WORKFLOW=\$\{SKILLBOARD_WORKFLOW:-/);
     await assert.rejects(readdir(join(root, ".skillboard", "hooks")), /ENOENT/);
     await assert.rejects(readFile(plannedPath, "utf8"), /ENOENT/);
   } finally {

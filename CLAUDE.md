@@ -12,7 +12,7 @@ Your responsibility is to answer skill availability questions from SkillBoard, t
 
 ## Availability
 
-- Use SkillBoard as the source of truth; installed `SKILL.md` files are not automatically callable.
+- Use SkillBoard as the source of truth for project-local policy and workflow priority; installed `SKILL.md` files are candidates, not enough to resolve overlap by themselves.
 - Read the current brief before answering: `skillboard brief --json --config skillboard.config.yaml --skills skills`. If the workflow is known, include `--workflow <name>`; add `--include-actions` when the user wants you to mediate a change.
 - When the user asks which skill fits a task, read `skillboard brief --intent <request> --json --config skillboard.config.yaml --skills skills`. Include `--workflow <name>` when known. Read `assistant_guidance.route`; use `recommended_skill`, `fallback_skills`, `route_candidates`, `post_use_policy_suggestion`, and `guard_command` instead of guessing from raw skill text. Inspect `route_candidates` when several skills match so denied candidates and selected fallbacks are clear. If `post_use_policy_suggestion` is present, work first with the allowed routed skill, then ask after completion whether to remember the suggested policy. If no skill matches, ask a clarifying question before choosing a skill.
 - Treat the brief sections headed "What your AI can use now", "Needs your decision", and "Blocked for safety" as the availability summary; do not infer availability from `SKILL.md` bodies.
@@ -28,9 +28,9 @@ Your responsibility is to answer skill availability questions from SkillBoard, t
 
 ## Operations
 
-- Source trust: run `skillboard audit sources --config skillboard.config.yaml --skills skills` before trusting newly imported external skill sources; after review, use `skillboard review install-unit <unit-id> --trust-level reviewed --config skillboard.config.yaml --skills skills`.
+- Source trust: run `skillboard audit sources --config skillboard.config.yaml --skills skills` before trusting newly imported external skill sources; after review, use `skillboard review install-unit <unit-id> --trust-level reviewed --config skillboard.config.yaml --skills skills`. Unreviewed runtime sources are a one-time review decision, not a default block recommendation; after review, activate only the needed quarantined skills as manual-only workflow skills and use ask-after policy suggestions for future preferences.
 - Health: run `skillboard doctor --config skillboard.config.yaml --skills skills` or `skillboard status --config skillboard.config.yaml --skills skills --json`; add `--strict` when review-needed safe mode should fail automation.
-- Hook action cards: prefer `skillboard apply-action <action-id> --yes --json`. The underlying manual preview is `skillboard hook install --workflow <name> --config skillboard.config.yaml --skills skills --out .skillboard/hooks/<name>-guard.sh --dry-run --json`; inspect `planned.preview.shell` before materializing an executable guard hook outside the action-card control loop.
+- Hook action cards: prefer `skillboard apply-action <action-id> --yes --json`. The underlying manual preview is `skillboard hook install --workflow <name> --config skillboard.config.yaml --skills skills --out .skillboard/hooks/<name>-guard.sh --dry-run --json`; inspect `planned.preview.shell` before materializing an executable guard hook outside the action-card control loop. Generated hooks pin the install-time SkillBoard command, config, skills root, and workflow; set those values with hook install options such as `--skillboard-bin`, not runtime environment overrides.
 - Inventory/import growth: run `skillboard inventory refresh --dry-run --config skillboard.config.yaml` after installing local skill packs, plugins, workflow bundles, or harnesses; run `skillboard import --profile <id-or-path> --source-root <repo> --out .skillboard/reports/import-fragment.yaml` after installing a new skill repository, then review the fragment before merging it into `skillboard.config.yaml`.
 - Prefer workflow-scoped skills over global skill invocation. Only `global-meta` skills may be treated as globally available.
 

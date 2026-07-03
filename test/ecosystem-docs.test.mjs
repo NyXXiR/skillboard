@@ -1,3 +1,4 @@
+// allow: SIZE_OK - ecosystem docs contract test split is deferred from the 0.2.7 release gate.
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -134,11 +135,23 @@ test("README and install docs lead with npm quick start after registry publish",
   const reference = await readFile(resolve("docs/reference.md"), "utf8");
 
   assert.match(readme, /## 5-Minute Quick Start/);
+  assert.match(readme, /npm install -g agent-skillboard/);
+  assert.match(readme, /sudo npm install -g\s+agent-skillboard/);
+  assert.match(readme, /SUDO_USER/);
+  assert.match(readme, /restored\s+to the invoking user's ownership/);
+  assert.match(readme, /No separate setup\s+command is required after a normal global install or update/);
+  assert.match(readme, /refresh managed SkillBoard\s+guidance files, and add newly detected supported agent roots/);
+  assert.match(readme, /~\/\.agents\/skills/);
+  assert.match(readme, /If `~\/\.agents` already exists, setup creates `~\/\.agents\/skills`/);
+  assert.match(readme, /skillboard setup --agent codex,claude,opencode,hermes --yes/);
+  assert.match(readme, /skillboard import-skill --from codex --to opencode --skill <skill> --json/);
+  assert.match(readme, /Use the Codex test-first skill in OpenCode too/);
+  assert.match(readme, /does not create `skillboard\.config\.yaml`,\s+`\.skillboard\/`, `AGENTS\.md`, or `CLAUDE\.md` in projects/);
+  assert.match(readme, /Which skill should you use to write tests first/);
   assert.match(readme, /npx --yes --package agent-skillboard skillboard init/);
   assert.match(readme, /npx --yes --package agent-skillboard skillboard doctor --summary/);
   assert.match(readme, /npx --yes --package agent-skillboard skillboard brief --workflow <workflow-from-init>/);
-  assert.match(readme, /copyable workflow-scoped `brief` command/);
-  assert.match(readme, /If `init` does not print a workflow,\s+run the unscoped `brief` command it prints instead/);
+  assert.match(readme, /If you intentionally maintain local workspace policy files/);
   assert.match(readme, /\[docs\/install\.md\]\(docs\/install\.md\)/);
   assert.match(readme, /\[docs\/reference\.md\]\(docs\/reference\.md\)/);
   assert.doesNotMatch(readme, /npx agent-skillboard init/);
@@ -146,13 +159,28 @@ test("README and install docs lead with npm quick start after registry publish",
   assert.doesNotMatch(readme, /git clone https:\/\/github\.com\/NyXXiR\/skillboard\.git/);
 
   assert.match(install, /## Install From npm/);
+  assert.match(install, /npm install -g agent-skillboard/);
+  assert.match(install, /sudo npm install -g agent-skillboard/);
+  assert.match(install, /instead of writing guidance under `\/root`/);
+  assert.match(install, /`SUDO_UID:SUDO_GID` ownership/);
+  assert.match(install, /Global install auto-runs agent integration/);
+  assert.match(install, /No separate setup command is required after a normal global install or update/);
+  assert.match(install, /package updates rerun the agent-home scan/);
+  assert.match(install, /skillboard setup --agent codex,claude,opencode,hermes --yes/);
+  assert.match(install, /OPENCODE_HOME/);
+  assert.match(install, /~\/\.agents\/skills/);
+  assert.match(install, /If `~\/\.agents` exists but `~\/\.agents\/skills` does not, setup creates the\s+`skills` directory/);
+  assert.match(install, /skillboard import-skill --from codex --to opencode --skill <skill>/);
+  assert.match(install, /needs-adaptation/);
   assert.match(install, /npx --yes --package agent-skillboard skillboard init/);
   assert.match(install, /npx --yes --package agent-skillboard skillboard doctor --summary/);
   assert.match(install, /npx --yes --package agent-skillboard skillboard brief --workflow <workflow-from-init>/);
+  assert.match(install, /skipped lifecycle scripts/);
+  assert.match(install, /need to repair the\s+agent-layer guidance install/);
   assert.match(install, /npm exec --yes --package agent-skillboard -- skillboard init/);
   assert.match(install, /npm exec --yes --package agent-skillboard -- skillboard doctor --summary/);
   assert.match(install, /npm exec --yes --package agent-skillboard -- skillboard brief --workflow <workflow-from-init>/);
-  assert.match(install, /If `init` does not print a\s+workflow, run the unscoped `brief` command it prints instead/);
+  assert.match(install, /If `init` does not print a\s+workflow, run the unscoped `brief`\s+command it prints instead/);
   assert.doesNotMatch(install, /npx agent-skillboard init/);
   assert.match(install, /## Run Unreleased Builds From GitHub/);
   assert.match(install, /npx --yes --package github:NyXXiR\/skillboard skillboard init/);
@@ -161,10 +189,31 @@ test("README and install docs lead with npm quick start after registry publish",
   assert.match(install, /npm exec --yes --package github:NyXXiR\/skillboard -- skillboard brief --workflow <workflow-from-init>/);
   assert.match(install, /## Install From A Clone/);
   assert.match(reference, /git clone https:\/\/github\.com\/NyXXiR\/skillboard\.git/);
+  assert.match(reference, /skillboard setup \[--yes\] \[--agent codex\[,claude,opencode,hermes\]\]/);
+  assert.match(reference, /skillboard import-skill --from <agent> --to <agent> --skill <id-or-dir>/);
+  assert.match(reference, /~\/\.agents\/skills/);
+  assert.match(reference, /## Agent Skill Reuse/);
+  assert.match(reference, /This is separate from `variant` commands/);
+  assert.doesNotMatch(reference, /skillboard attach \[--dir <path>\]/);
   assert.match(reference, /node bin\/skillboard\.mjs init --dir \/path\/to\/your\/project/);
   assert.match(reference, /node bin\/skillboard\.mjs brief --dir \/path\/to\/your\/project --workflow <workflow-from-init>/);
   assert.match(reference, /If `init` does not print a workflow, run the unscoped `brief` command it prints\s+instead/);
   assert.doesNotMatch(install, /not published yet/i);
+});
+
+test("public docs surface alpha status and intentional policy-failure fixture", async () => {
+  const readme = await readFile(resolve("README.md"), "utf8");
+  const versioning = await readFile(resolve("docs/versioning.md"), "utf8");
+  const example = await readFile(resolve("examples/skillboard.config.yaml"), "utf8");
+  const valueProof = await readFile(resolve("docs/value-proof.md"), "utf8");
+
+  assert.match(readme, /public alpha/i);
+  assert.match(readme, /config schema v1/i);
+  assert.match(readme, /before `1\.0\.0`/);
+  assert.match(versioning, /The project is a public alpha/);
+  assert.match(example, /Intentional policy-failure fixture/i);
+  assert.match(valueProof, /examples\/skillboard\.config\.yaml/);
+  assert.match(valueProof, /intentional policy-failure fixture/i);
 });
 
 test("user docs frame commands as AI automation details, not a memorized user loop", async () => {

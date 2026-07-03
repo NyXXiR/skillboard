@@ -165,7 +165,8 @@ async function dispatchAction(action, options) {
       dryRun: false,
       resetConfig: true,
       removeReports: true,
-      removeHooks: true
+      removeHooks: true,
+      removeProjectState: true
     });
   }
 

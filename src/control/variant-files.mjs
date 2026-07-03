@@ -35,7 +35,7 @@ export function resolveVariantSnapshotFile({ configPath, snapshotPath }) {
     throw new Error(`snapshot path must stay under ${SNAPSHOT_ROOT}`);
   }
   return {
-    storedPath: relative(configDir, absolutePath).replaceAll("\\", "/"),
+    storedPath: relative(configDir, absolutePath).replace(/\\/g, "/"),
     absolutePath,
     rootPath: root
   };
@@ -213,7 +213,7 @@ function normalizeStoredSnapshotPath(value) {
   if (value.includes("\0")) {
     throw new Error("snapshot path must not contain null bytes");
   }
-  const normalized = value.replaceAll("\\", "/");
+  const normalized = value.replace(/\\/g, "/");
   if (normalized.startsWith("/") || normalized.startsWith("//") || /^[A-Za-z]:\//.test(normalized)) {
     throw new Error("snapshot path must be relative to the config directory");
   }

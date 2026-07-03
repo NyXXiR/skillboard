@@ -1,3 +1,4 @@
+// allow: SIZE_OK - review CLI test split is deferred from the 0.2.7 release gate.
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -180,6 +181,72 @@ install_units:
     assert.equal(payload.allowed, true);
     assert.equal(payload.automaticAllowed, true);
     assert.match(await readFile(configPath, "utf8"), /trust_level: reviewed/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli activate refuses reviewed blocked runtime skills", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-activate-blocked-test-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const original = `version: 1
+skills:
+  omo.blocked:
+    path: omo/blocked
+    status: blocked
+    invocation: blocked
+    exposure: exported
+    owner_install_unit: omo.runtime
+workflows:
+  review-workflow:
+    harness: codex
+    active_skills: []
+    blocked_skills: []
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - review-workflow
+install_units:
+  omo.runtime:
+    kind: plugin
+    source: ~/.codex/plugins/cache/sisyphuslabs/omo
+    scope: user-global
+    provided_components:
+      - skills
+      - hook
+    components:
+      skills:
+        - omo.blocked
+    enabled: true
+    trust_level: reviewed
+    permission_risk: high
+`;
+    await writeFile(configPath, original, "utf8");
+
+    let error;
+    try {
+      await execFileAsync(process.execPath, [
+        "bin/skillboard.mjs",
+        "activate",
+        "omo.blocked",
+        "--workflow",
+        "review-workflow",
+        "--mode",
+        "manual-only",
+        "--config",
+        configPath,
+        "--skills",
+        join(root, "skills")
+      ]);
+    } catch (caught) {
+      error = caught;
+    }
+
+    assert.equal(error.code, 1);
+    assert.match(error.stderr, /status: blocked/);
+    assert.equal(await readFile(configPath, "utf8"), original);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

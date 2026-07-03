@@ -1,6 +1,7 @@
+// allow: SIZE_OK - lifecycle reset CLI test split is deferred from the 0.2.7 release gate.
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -135,6 +136,121 @@ test("cli uninstall reset-config remove-reports cleans SkillBoard scaffolding wh
     assert.match(await readFile(join(root, "skills", "local-helper", "SKILL.md"), "utf8"), /Local clean uninstall fixture/);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli uninstall purge removes SkillBoard policy footprint while preserving local skills", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-purge-uninstall-test-"));
+  try {
+    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", root, "--no-scan-installed"]);
+    await mkdir(join(root, "skills", "local-helper"), { recursive: true });
+    await writeFile(
+      join(root, "skills", "local-helper", "SKILL.md"),
+      "---\nname: local-helper\ndescription: Local purge uninstall fixture.\n---\n# Local helper\n",
+      "utf8"
+    );
+    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "add", "harness", "codex", "--config", join(root, "skillboard.config.yaml"), "--skills", join(root, "skills")]);
+    await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "add",
+      "skill",
+      "user.local-helper",
+      "--path",
+      "local-helper",
+      "--status",
+      "candidate",
+      "--invocation",
+      "manual-only",
+      "--config",
+      join(root, "skillboard.config.yaml"),
+      "--skills",
+      join(root, "skills")
+    ]);
+    await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "add",
+      "workflow",
+      "purge-workflow",
+      "--harness",
+      "codex",
+      "--skill",
+      "user.local-helper",
+      "--config",
+      join(root, "skillboard.config.yaml"),
+      "--skills",
+      join(root, "skills")
+    ]);
+    await writeFile(join(root, "skillboard.config.yaml"), `${await readFile(join(root, "skillboard.config.yaml"), "utf8")}# remembered policy choice\n`, "utf8");
+    await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "hook",
+      "install",
+      "--workflow",
+      "purge-workflow",
+      "--config",
+      join(root, "skillboard.config.yaml"),
+      "--skills",
+      join(root, "skills"),
+      "--out",
+      join(root, ".skillboard", "hooks", "purge-workflow-guard.sh"),
+      "--skillboard-bin",
+      join(process.cwd(), "bin", "skillboard.mjs")
+    ]);
+    await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "dashboard",
+      "--config",
+      join(root, "skillboard.config.yaml"),
+      "--skills",
+      join(root, "skills"),
+      "--out",
+      join(root, ".skillboard", "reports", "skill-map.md")
+    ]);
+    await mkdir(join(root, ".skillboard", "sources", "example-source"), { recursive: true });
+    await writeFile(join(root, ".skillboard", "sources", "example-source", "source-cache.txt"), "source cache\n", "utf8");
+    await mkdir(join(root, ".skillboard", "rollouts", "txn-1"), { recursive: true });
+    await writeFile(join(root, ".skillboard", "rollouts", "txn-1", "plan.json"), "{}\n", "utf8");
+    await mkdir(join(root, ".skillboard", "variant-snapshots"), { recursive: true });
+    await writeFile(join(root, ".skillboard", "variant-snapshots", "snapshot.md"), "snapshot\n", "utf8");
+    await writeFile(join(root, ".skillboard", "profiles", "custom.yaml"), "id: custom\n", "utf8");
+
+    const dryRun = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "uninstall", "--dir", root, "--purge", "--dry-run"]);
+    assert.match(dryRun.stdout, /Removed: .*`skillboard\.config\.yaml`/);
+    assert.equal(dryRun.stdout.includes("`.skillboard`"), true);
+    assert.match(await readFile(join(root, "skillboard.config.yaml"), "utf8"), /remembered policy choice/);
+    assert.match(await readFile(join(root, ".skillboard", "sources", "example-source", "source-cache.txt"), "utf8"), /source cache/);
+    assert.match(await readFile(join(root, ".skillboard", "profiles", "custom.yaml"), "utf8"), /custom/);
+    assert.match(await readFile(join(root, "skills", "local-helper", "SKILL.md"), "utf8"), /Local purge uninstall fixture/);
+
+    const result = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "uninstall", "--dir", root, "--purge"]);
+    assert.match(result.stdout, /Removed: .*`skillboard\.config\.yaml`/);
+    assert.equal(result.stdout.includes("`.skillboard`"), true);
+    await assert.rejects(readFile(join(root, "skillboard.config.yaml"), "utf8"), /ENOENT/);
+    await assert.rejects(readFile(join(root, "AGENTS.md"), "utf8"), /ENOENT/);
+    await assert.rejects(readFile(join(root, "CLAUDE.md"), "utf8"), /ENOENT/);
+    await assert.rejects(readdir(join(root, ".skillboard")), /ENOENT/);
+    assert.match(await readFile(join(root, "skills", "local-helper", "SKILL.md"), "utf8"), /Local purge uninstall fixture/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli uninstall purge removes a .skillboard symlink without deleting its target", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-purge-symlink-test-"));
+  const target = await mkdtemp(join(tmpdir(), "skillboard-purge-symlink-target-"));
+  try {
+    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", root, "--no-scan-installed"]);
+    await rm(join(root, ".skillboard"), { recursive: true, force: true });
+    await writeFile(join(target, "external-state.txt"), "keep target\n", "utf8");
+    await symlink(target, join(root, ".skillboard"));
+
+    const result = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "uninstall", "--dir", root, "--purge"]);
+    assert.equal(result.stdout.includes("`.skillboard`"), true);
+    await assert.rejects(access(join(root, ".skillboard")), /ENOENT/);
+    assert.equal(await readFile(join(target, "external-state.txt"), "utf8"), "keep target\n");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(target, { recursive: true, force: true });
   }
 });
 

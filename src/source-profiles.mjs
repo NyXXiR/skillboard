@@ -14,7 +14,7 @@ export async function importSource(options) {
   const matchedFiles = files
     .map((file) => ({
       file,
-      relativeFile: relative(sourceRoot, file).replaceAll("\\", "/")
+      relativeFile: relative(sourceRoot, file).replace(/\\/g, "/")
     }))
     .filter((entry) => matchesAnyProfilePattern(entry.relativeFile, profile.skillPaths))
     .sort((left, right) => left.relativeFile.localeCompare(right.relativeFile));
@@ -238,9 +238,9 @@ function matchingPathRule(file, profile) {
 function patternToRegExp(pattern) {
   const escaped = pattern
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replaceAll("**", "\0")
-    .replaceAll("*", "[^/]*")
-    .replaceAll("\0", ".*");
+    .split("**").join("\0")
+    .split("*").join("[^/]*")
+    .split("\0").join(".*");
   return new RegExp(`^${escaped}$`);
 }
 

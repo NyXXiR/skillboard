@@ -165,7 +165,7 @@ export async function sourceDigest(path) {
 
 async function addPathDigest(hash, root, path) {
   const stats = await lstat(path);
-  const rel = relative(root, path).replaceAll("\\", "/") || ".";
+  const rel = relative(root, path).replace(/\\/g, "/") || ".";
   if (stats.isSymbolicLink()) {
     hash.update(`symlink\0${rel}\0${await readlink(path)}\n`);
     return;

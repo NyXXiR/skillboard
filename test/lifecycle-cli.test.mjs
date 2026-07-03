@@ -104,6 +104,16 @@ test("cli uninstall rejects mutually exclusive config removal flags", async () =
     assert.equal(error?.code, 1);
     assert.match(error.stderr, /--remove-config and --reset-config are mutually exclusive/);
     assert.match(await readFile(join(root, "skillboard.config.yaml"), "utf8"), /version: 1/);
+
+    let purgeError;
+    try {
+      await execFileAsync(process.execPath, ["bin/skillboard.mjs", "uninstall", "--dir", root, "--purge", "--remove-config"]);
+    } catch (caught) {
+      purgeError = caught;
+    }
+    assert.equal(purgeError?.code, 1);
+    assert.match(purgeError.stderr, /--remove-config cannot be combined with --purge/);
+    assert.match(await readFile(join(root, "skillboard.config.yaml"), "utf8"), /version: 1/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

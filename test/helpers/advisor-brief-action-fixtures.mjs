@@ -1,3 +1,4 @@
+// allow: SIZE_OK - advisor action fixture split is deferred from the 0.2.7 release gate.
 export function actionsConfig() {
   return `${baseConfig()}
 skills:
@@ -166,6 +167,86 @@ workflows:
       - broken.auto
     blocked_skills: []
 install_units: {}
+`;
+}
+
+export function reviewedQuarantinedConfig() {
+  return `${baseConfig()}
+skills:
+  omo:programming:
+    path: omo-programming
+    status: quarantined
+    invocation: blocked
+    exposure: exported
+    category: plugin
+    owner_install_unit: omo.pack
+capabilities: {}
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - agent
+workflows:
+  agent:
+    harness: codex
+    active_skills: []
+    blocked_skills: []
+install_units:
+  omo.pack:
+    kind: plugin
+    source: ~/.codex/plugins/cache/sisyphuslabs/omo
+    scope: user-global
+    enabled: true
+    trust_level: reviewed
+    permission_risk: high
+    provided_components:
+      - skills
+      - hook
+      - mcp-server
+    components:
+      skills:
+        - omo:programming
+      hooks:
+        - user-prompt-submit-loading-project-rules
+      mcp_servers:
+        - context7
+`;
+}
+
+export function reviewedBlockedConfig() {
+  return `${baseConfig()}
+skills:
+  omo:blocked:
+    path: omo-blocked
+    status: blocked
+    invocation: blocked
+    exposure: exported
+    category: plugin
+    owner_install_unit: omo.pack
+capabilities: {}
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - agent
+workflows:
+  agent:
+    harness: codex
+    active_skills: []
+    blocked_skills: []
+install_units:
+  omo.pack:
+    kind: plugin
+    source: ~/.codex/plugins/cache/sisyphuslabs/omo
+    scope: user-global
+    enabled: true
+    trust_level: reviewed
+    permission_risk: high
+    provided_components:
+      - skills
+    components:
+      skills:
+        - omo:blocked
 `;
 }
 
