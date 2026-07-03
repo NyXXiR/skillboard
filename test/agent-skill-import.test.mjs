@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
+import { pathTailRegex } from "./helpers/path-pattern.mjs";
 
 const execFileAsync = promisify(execFile);
 const BIN = join(process.cwd(), "bin", "skillboard.mjs");
@@ -104,7 +105,7 @@ test("import-skill can read Codex skills from .agents skill roots", async () => 
 
     assert.equal(result.code, 0, result.stderr);
     assert.equal(payload.status, "installed");
-    assert.match(payload.source.path, /\.agents\/skills\/shared-test-first\/SKILL\.md/);
+    assert.match(payload.source.path, pathTailRegex(".agents", "skills", "shared-test-first", "SKILL.md"));
     assert.equal(await readFile(targetSkill, "utf8"), content);
   } finally {
     await rm(home, { recursive: true, force: true });

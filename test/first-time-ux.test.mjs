@@ -7,6 +7,7 @@ import { test } from "node:test";
 import { promisify } from "node:util";
 import { loadWorkspace } from "../src/index.mjs";
 import { runInitCommand } from "../src/lifecycle-cli.mjs";
+import { pathTailRegex } from "./helpers/path-pattern.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -226,7 +227,7 @@ test("setup --yes detects Codex .agents skill roots without CODEX_HOME", async (
     const skill = await readFile(join(agentsSkills, "skillboard", "SKILL.md"), "utf8");
 
     assert.match(setup.stdout, /SkillBoard agent integration installed/);
-    assert.match(setup.stdout, /\.agents\/skills\/skillboard\/SKILL\.md/);
+    assert.match(setup.stdout, pathTailRegex(".agents", "skills", "skillboard", "SKILL.md"));
     assert.match(skill, /SkillBoard Agent Integration/);
     assert.equal(await readFile(join(home, ".codex", "skills", "skillboard", "SKILL.md"), "utf8").catch(() => null), null);
     assert.equal(await readFile(join(home, "skillboard.config.yaml"), "utf8").catch(() => null), null);
@@ -252,7 +253,7 @@ test("setup --yes creates Codex .agents skills root when .agents home exists", a
     const codexSkill = await readFile(join(home, ".codex", "skills", "skillboard", "SKILL.md"), "utf8");
 
     assert.match(setup.stdout, /SkillBoard agent integration installed/);
-    assert.match(setup.stdout, /\.agents\/skills\/skillboard\/SKILL\.md/);
+    assert.match(setup.stdout, pathTailRegex(".agents", "skills", "skillboard", "SKILL.md"));
     assert.match(skill, /SkillBoard Agent Integration/);
     assert.equal(codexSkill, skill);
     assert.equal(await readFile(join(home, "skillboard.config.yaml"), "utf8").catch(() => null), null);

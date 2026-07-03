@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import { runSetupCommand } from "../src/lifecycle-cli.mjs";
+import { pathTailPattern } from "./helpers/path-pattern.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -200,8 +201,8 @@ test("postinstall global update refreshes managed guidance and new agent roots",
 
     assert.equal(result.stdout, "");
     assert.match(result.stderr, /Auto-running agent setup/);
-    assert.match(result.stderr, /Updated: .*\.codex\/skills\/skillboard\/SKILL\.md/);
-    assert.match(result.stderr, /Created: .*\.agents\/skills\/skillboard\/SKILL\.md/);
+    assert.match(result.stderr, new RegExp(`Updated: .*${pathTailPattern(".codex", "skills", "skillboard", "SKILL.md")}`));
+    assert.match(result.stderr, new RegExp(`Created: .*${pathTailPattern(".agents", "skills", "skillboard", "SKILL.md")}`));
     assert.match(codexSkill, /SkillBoard Agent Integration/);
     assert.doesNotMatch(codexSkill, /old update guidance/);
     assert.equal(agentsSkill, codexSkill);
@@ -259,6 +260,57 @@ test("postinstall sudo global setup targets the invoking user's agent home", asy
     assert.match(userSkill, /SkillBoard Agent Integration/);
     assert.equal(await readFile(join(rootHome, ".agents", "skills", "skillboard", "SKILL.md"), "utf8").catch(() => null), null);
     assert.equal(await readFile(join(root, "skillboard.config.yaml"), "utf8").catch(() => null), null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("postinstall sudo setup still installs when non-root cannot chown", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), "skillboard-postinstall-sudo-no-chown-"));
+  try {
+    const sudoUser = "skillboardsudo";
+    const rootHome = join(root, "root-home");
+    const userHome = join(root, "user-home");
+    const fakeBin = join(root, "bin");
+    await mkdir(join(userHome, ".agents", "skills"), { recursive: true });
+    await mkdir(rootHome, { recursive: true });
+    await mkdir(fakeBin, { recursive: true });
+    const getent = join(fakeBin, "getent");
+    await writeFile(getent, [
+      "#!/bin/sh",
+      `if [ "$1" = "passwd" ] && [ "$2" = "${sudoUser}" ]; then`,
+      `  printf '%s\\n' '${sudoUser}:x:1234:5678:SkillBoard:${userHome}:/bin/sh'`,
+      "  exit 0",
+      "fi",
+      "exit 2",
+      ""
+    ].join("\n"), "utf8");
+    await chmod(getent, 0o755);
+
+    const result = await execFileAsync(process.execPath, ["bin/postinstall.mjs"], {
+      env: {
+        HOME: rootHome,
+        INIT_CWD: root,
+        LOGNAME: "root",
+        PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+        SUDO_GID: "5678",
+        SUDO_UID: "1234",
+        SUDO_USER: sudoUser,
+        USER: "root",
+        npm_config_global: "true"
+      }
+    });
+    const userSkill = await readFile(join(userHome, ".agents", "skills", "skillboard", "SKILL.md"), "utf8");
+
+    assert.equal(result.stdout, "");
+    assert.match(result.stderr, /SkillBoard agent integration installed/);
+    assert.doesNotMatch(result.stderr, /Agent setup skipped/);
+    assert.match(userSkill, /SkillBoard Agent Integration/);
+    assert.equal(await readFile(join(rootHome, ".agents", "skills", "skillboard", "SKILL.md"), "utf8").catch(() => null), null);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

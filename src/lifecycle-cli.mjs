@@ -263,12 +263,29 @@ function setupOwnership(env, runtime, home) {
   if (uid === null || gid === null) {
     return null;
   }
+  const chownFunction = runtime.chown ?? chown;
+  if (runtime.chown === undefined && !canApplyProcessOwnership(uid, gid)) {
+    return null;
+  }
   return {
     uid,
     gid,
     home: resolve(home),
-    chown: runtime.chown ?? chown
+    chown: chownFunction
   };
+}
+
+function canApplyProcessOwnership(uid, gid) {
+  if (typeof process.getuid !== "function") {
+    return false;
+  }
+  if (process.getuid() === 0) {
+    return true;
+  }
+  if (typeof process.getgid !== "function") {
+    return process.getuid() === uid;
+  }
+  return process.getuid() === uid && process.getgid() === gid;
 }
 
 function parseNonNegativeInteger(value) {
