@@ -30,6 +30,7 @@ export async function setupAgentSkillTargets(agent, home = homedir(), env = proc
   const roots = await detectedAgentSkillRoots(agent, home, env, { includeFallback: options.includeFallback === true });
   return roots.map((root) => ({
     agent,
+    home: resolve(home),
     skillPath: join(root.skillRoot, "skillboard", "SKILL.md"),
     root: root.skillRoot,
     source: root.source

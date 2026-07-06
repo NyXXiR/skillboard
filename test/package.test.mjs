@@ -565,6 +565,46 @@ test("setup preserves a symlinked agent skill root without writing through it", 
   }
 });
 
+test("setup allows a home path below a symlinked temp ancestor", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), "skillboard-setup-home-ancestor-symlink-"));
+  try {
+    const realBase = join(root, "private");
+    const linkedBase = join(root, "var");
+    const userHome = join(linkedBase, "user-home");
+    const codexHome = join(userHome, ".codex");
+    await mkdir(realBase, { recursive: true });
+    await symlink(realBase, linkedBase, "dir");
+    const stdout = [];
+
+    const code = await runSetupCommand(new Map([
+      ["yes", "true"],
+      ["agent", "codex"]
+    ]), {
+      write(chunk) {
+        stdout.push(chunk);
+      }
+    }, {
+      cwd: root,
+      entrypointPath: "skillboard",
+      env: {
+        HOME: userHome,
+        CODEX_HOME: codexHome
+      },
+      packageSpec: "agent-skillboard"
+    });
+
+    assert.equal(code, 0);
+    assert.match(stdout.join(""), /Created: `codex:/);
+    assert.match(await readFile(join(codexHome, "skills", "skillboard", "SKILL.md"), "utf8"), /SkillBoard Agent Integration/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("setup preserves a symlinked agent SKILL.md without writing through it", async () => {
   if (process.platform === "win32") {
     return;

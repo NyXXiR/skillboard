@@ -95,11 +95,20 @@ async function isSafeManagedSkillTarget(target) {
   if (!isInside(skillDir, root) || !isInside(skillPath, root)) {
     return false;
   }
-  if (await hasUnsafeManagedDirectoryComponent(root, skillDir)) {
+  const boundary = managedBoundary(target, root);
+  if (await hasUnsafeManagedDirectoryComponent(boundary, skillDir)) {
     return false;
   }
   const skillStats = await pathStats(skillPath);
   return skillStats === null || !skillStats.isSymbolicLink();
+}
+
+function managedBoundary(target, root) {
+  const home = target.home === undefined ? null : resolve(target.home);
+  if (home === null) {
+    return root;
+  }
+  return isAtOrInside(root, home) ? home : root;
 }
 
 async function hasUnsafeManagedDirectoryComponent(root, skillDir) {
@@ -113,20 +122,9 @@ async function hasUnsafeManagedDirectoryComponent(root, skillDir) {
 }
 
 function managedDirectoryComponents(root, skillDir) {
-  const beforeRoot = [];
-  let current = root;
-  while (true) {
-    const parent = dirname(current);
-    if (parent === current) {
-      break;
-    }
-    beforeRoot.push(parent);
-    current = parent;
-  }
-
   const fromRoot = [];
-  current = skillDir;
-  while (isInside(current, root)) {
+  let current = skillDir;
+  while (isAtOrInside(current, root)) {
     fromRoot.push(current);
     const parent = dirname(current);
     if (parent === current) {
@@ -134,9 +132,12 @@ function managedDirectoryComponents(root, skillDir) {
     }
     current = parent;
   }
-  fromRoot.push(root);
 
-  return uniquePaths([...beforeRoot.reverse(), ...fromRoot.reverse()]);
+  return uniquePaths(fromRoot.reverse());
+}
+
+function isAtOrInside(path, parent) {
+  return path === parent || isInside(path, parent);
 }
 
 function uniquePaths(paths) {
