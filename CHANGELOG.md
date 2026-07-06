@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## 0.2.16 — 2026-07-06
+
+### Changed
+
+- Reframed SkillBoard as a permissive overlap-routing layer so agents continue
+  working with already-allowed skills instead of interrupting users for
+  pre-task settings.
+- Split routing and agent-integration internals into smaller modules while
+  preserving the existing CLI surface.
+- Setup guidance now clarifies that postinstall performs agent-layer setup only;
+  project initialization remains an explicit `skillboard init` step.
+
+### Fixed
+
+- Hardened setup and uninstall lifecycle cleanup around symlinked managed
+  guidance paths and project state directories.
+- Preserved Node.js 14.21 runtime compatibility by avoiding newer
+  `replaceAll`/`.at()` APIs in shipped runtime paths.
+- Avoided macOS false positives when agent homes live below symlinked system
+  ancestors such as `/var`.
+
 ## 0.2.15 — 2026-07-03
 
 ### Fixed
