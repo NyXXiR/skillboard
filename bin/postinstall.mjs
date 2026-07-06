@@ -8,7 +8,8 @@ if (isTruthy(process.env.SKILLBOARD_SKIP_POSTINSTALL)) {
 
 process.stderr.write(`${[
   "SkillBoard installed or updated.",
-  "It does not change agent configs or project files.",
+  "It can refresh user-agent guidance on global installs, but it does not initialize projects.",
+  "Run skillboard init only inside a workspace where you want project-local policy files.",
   ""
 ].join("\n")}\n`);
 
@@ -18,7 +19,8 @@ if (!shouldAutoSetup(process.env)) {
     "Run skillboard setup later after adding another supported agent:",
     "  skillboard setup",
     "",
-    "Setup only writes user agent skill files and does not initialize projects.",
+    "Setup only writes user agent skill files. It does not create skillboard.config.yaml or .skillboard/.",
+    "Run skillboard init later only for a project that needs local SkillBoard policy.",
     ""
   ].join("\n")}`);
   process.exit(0);
@@ -40,7 +42,7 @@ try {
     packageSpec: "agent-skillboard"
   });
   if (exitCode === 0) {
-    process.stderr.write("Agent setup complete. Package updates rerun this setup automatically; run skillboard setup later after adding another supported agent.\n");
+    process.stderr.write("Agent setup complete. Package updates rerun this setup automatically; run skillboard setup later after adding another supported agent. No project init was run.\n");
   } else {
     process.stderr.write("Agent setup did not find supported agent homes. Run skillboard setup after installing or enabling a supported agent.\n");
   }

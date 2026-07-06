@@ -1,19 +1,25 @@
 # First-Time Skill Control Flow
 
-This flow assumes a user installed SkillBoard because they want to ask their AI
-which skills are safe to use and approve changes without learning the control
-plane internals.
+This flow assumes a user installed SkillBoard so their AI can keep installed
+skills broadly available while resolving confusing overlap only when it matters.
 
-When you ask your AI "what skills can you use here?" or "make this reviewed
-skill available for this workflow," the AI should read the current brief, show
-the relevant choice, ask only before applying one current action id when policy
+When you ask your AI normal work requests such as "write tests before
+implementation", "review this plan and point out weak assumptions", or "help me
+refine this UX flow," the AI should work normally. SkillBoard becomes relevant
+when skill choice is ambiguous, several skills overlap, workflow priority
+matters, or you explicitly ask for a SkillBoard or skill decision such as "what
+skills can you use here?" or "make this reviewed skill available for this
+workflow." In those cases, the AI should read the current brief, show the
+relevant choice, ask only before applying one current action id when policy
 would change, and run the final guard automatically before invocation. For an
 already-allowed skill, the AI should state which skill it is about to use and
 which skill it used when reporting the result, not ask for another approval.
-That disclosure is an audit trace, not a permission prompt. You do not need to
-memorize the SkillBoard command loop. The command examples below are
-AI/automation/operator details for the agent, scripts, or people maintaining the
-setup.
+That disclosure is an audit trace, not a permission prompt. If you explicitly
+ask for a specific already-allowed skill, the AI should honor that request after
+guard use instead of rerouting away solely because another skill also matches.
+You do not need to memorize the SkillBoard command loop. The command examples
+below are AI/automation/operator details for the agent, scripts, or people
+maintaining the setup.
 
 If you ask OpenCode to use a skill you previously used in Codex, the target
 agent should call:
@@ -73,8 +79,9 @@ returned post-apply brief before making the next availability claim.
 `apply-action` re-resolves the current brief and refuses stale action ids instead
 of replaying cached action-card shell text.
 
-When the user asks which skill fits a task, the agent can keep the same brief
-flow and include the user request as intent:
+When a normal request leaves skill choice ambiguous, several skills overlap,
+workflow priority matters, or the user asks for a SkillBoard or skill decision,
+the agent can keep the same brief flow and include the user request as intent:
 
 ```bash
 skillboard brief --intent "write tests before implementation" --workflow daily-workflow --config skillboard.config.yaml --skills skills --json
@@ -83,20 +90,29 @@ skillboard brief --intent "write tests before implementation" --workflow daily-w
 The returned `assistant_guidance.route` maps the request to a declared workflow
 capability or a workflow-bound skill metadata match, returns the recommended
 skill and fallbacks, and includes `match_source`, `matched_terms`,
-`recommendation_reason`, `route_candidates`, `post_use_policy_suggestion`, and the
-`skillboard guard use ...` command that still needs to pass immediately before
-invocation. `route_candidates` is the per-skill decision trace: it shows which
-matching skill was selected, which candidates were denied, and the guard reason
-when a preferred skill was skipped for an allowed fallback.
+`recommendation_reason`, `route_candidates`, `overlap_resolution`,
+`policy_memory`,
+`post_use_policy_suggestion`, and the `skillboard guard use ...` command that
+still needs to pass immediately before invocation. `overlap_resolution`
+summarizes permissive routing when several allowed skills match.
+`route_candidates` is the per-skill decision trace: it shows which matching
+skill was selected, which candidates were denied, and the guard reason when a
+preferred skill was skipped for an allowed fallback.
+`policy_memory` appears when remembered or configured workflow policy selected
+the routed skill while other allowed skills were also available; the agent
+should mention that after completion so the user understands the prior choice
+shaped the route.
 `post_use_policy_suggestion` is the ask-after-use hook: if it is present, the
 agent should use the allowed routed skill first, then ask after completion
 whether to remember the suggested preference. Metadata matching can
 use declared skill id, path, category, and `SKILL.md` frontmatter
 name/description; it does not semantically rank raw skill bodies. If a
 recommended skill is already allowed, the agent should disclose it at the start
-and completion rather than ask for another approval. If no capability or
-workflow-bound skill matches, the agent should ask a clarifying question instead
-of guessing from raw `SKILL.md` text. Operators can still call
+and completion rather than ask for another approval. If the user explicitly
+requests a specific already-allowed skill, the agent should honor that request
+after guard use instead of rerouting away solely because another skill also
+matches. If no capability or workflow-bound skill matches, the agent should ask
+a clarifying question instead of guessing from raw `SKILL.md` text. Operators can still call
 `skillboard route ...` directly when they only need the recommendation payload.
 
 Run this again after installing agent packages, plugins, workflow bundles, or
@@ -279,26 +295,39 @@ This removes SkillBoard policy references only and leaves
 
 AI/automation/operator details:
 
+Remove managed user-agent guidance first if global install/setup made agents
+recognize SkillBoard and you want that agent-layer footprint gone:
+
+```bash
+skillboard uninstall --agent-layer --dry-run
+skillboard uninstall --agent-layer
+```
+
+This removes only managed `skillboard/SKILL.md` guidance files containing the
+SkillBoard agent integration marker. It preserves other agent skills and
+user-authored `skillboard` skills.
+
 ```bash
 skillboard uninstall --dry-run
 skillboard uninstall
 ```
 
 Uninstall removes generated bridge blocks and unchanged helper files. It
-preserves `skillboard.config.yaml`, `skills/`, reports, and user-authored
+also removes `skillboard.config.yaml` and the `.skillboard/` project state by
+default while preserving local `skills/` files and user-authored non-SkillBoard
 content in bridge files.
 
-For a fresh policy lifecycle during testing, use:
+If you want to keep project SkillBoard policy and bridge guidance, opt into
+settings preservation explicitly:
 
 ```bash
-skillboard uninstall --purge --dry-run
-skillboard uninstall --purge
-skillboard init
+skillboard uninstall --keep-settings --dry-run
+skillboard uninstall --keep-settings
 ```
 
-Use `--purge` when you want SkillBoard's allow/block/preference influence gone
-from the project while keeping local skill files. It discards the current
-SkillBoard config even if it contains imported skills or workflow edits,
-removes generated dashboard and impact reports, and removes the entire
-`.skillboard/` project state directory, including hooks, source caches, rollout
-logs, variant snapshots, and profiles. Local `skills/` files stay in place.
+`--purge` is still accepted as an explicit spelling for the default clean
+project removal. Default removal and `--purge` both discard the current
+SkillBoard config even if it contains imported skills or workflow edits, remove
+generated dashboard and impact reports, and remove the entire `.skillboard/`
+project state directory, including hooks, source caches, rollout logs, variant
+snapshots, and profiles. Local `skills/` files stay in place.

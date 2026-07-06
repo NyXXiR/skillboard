@@ -14,13 +14,14 @@ test("direct source cli help renders AI-mediated help", async () => {
   const result = await runNode(["src/cli.mjs", "--help"]);
 
   assert.equal(result.code, 0, commandFailure(result));
-  assert.match(result.stdout, /^SkillBoard - AI-mediated workflow-scoped skill policy/m);
+  assert.match(result.stdout, /^SkillBoard - permissive AI skill overlap routing/m);
   assert.match(result.stdout, /After global install:/);
   assert.match(result.stdout, /npm install -g agent-skillboard/);
   assert.match(result.stdout, /sudo npm install -g agent-skillboard is also supported/);
   assert.match(result.stdout, /SUDO_USER's agent homes/);
   assert.match(result.stdout, /postinstall auto-runs agent-layer guidance setup on install and update/);
   assert.match(result.stdout, /Run skillboard setup later after adding another supported agent/);
+  assert.match(result.stdout, /skillboard uninstall --agent-layer before package removal/);
   assert.match(result.stdout, /import-skill --from <agent> --to <agent>/);
   assert.match(result.stdout, /opencode/);
   assert.match(result.stdout, /AI\/automation control loop/);
@@ -74,6 +75,11 @@ test("primary AI-loop commands expose safe command-local help", async () => {
         forbidden: /Usage: skillboard guard use <skill-id> --workflow <name>\n$/
       },
       {
+        args: ["bin/skillboard.mjs", "can-use", "--help"],
+        usage: /^Usage: skillboard can-use <skill-id> --workflow <name>/m,
+        forbidden: /Usage: skillboard can-use <skill-id> --workflow <name>\n$/
+      },
+      {
         args: ["bin/skillboard.mjs", "apply-action", "--help"],
         usage: /^Usage: skillboard apply-action <action-id>/m,
         forbidden: /apply exactly one action at a time\.\n$/
@@ -86,6 +92,19 @@ test("primary AI-loop commands expose safe command-local help", async () => {
       assert.equal(result.code, 0, commandFailure(result));
       assert.equal(result.stderr, "");
       assert.match(result.stdout, entry.usage);
+      if (entry.args[1] === "uninstall") {
+        assert.match(result.stdout, /--agent-layer/);
+        assert.match(result.stdout, /--keep-settings/);
+        assert.match(result.stdout, /Default project cleanup removes SkillBoard settings/i);
+        assert.match(result.stdout, /preserves other agent skills/i);
+      }
+      if (entry.args[1] === "guard") {
+        assert.match(result.stdout, /If allowed, disclose the skill at the start and completion; do not ask for another approval/i);
+      }
+      if (entry.args[1] === "can-use") {
+        assert.match(result.stdout, /If allowed, use the skill after the final guard check/i);
+        assert.match(result.stdout, /disclose the skill at the start and completion; do not ask for another approval/i);
+      }
       assert.doesNotMatch(result.stdout, entry.forbidden);
     }
     await assert.rejects(access(join(root, "skillboard.config.yaml")), /ENOENT/);
@@ -99,8 +118,10 @@ test("topic help exposes the route command without loading project config", asyn
 
   assert.equal(result.code, 0, commandFailure(result));
   assert.match(result.stdout, /^Usage: skillboard route <intent> --workflow <name>/m);
-  assert.match(result.stdout, /Suggests the best currently allowed skill/);
-  assert.doesNotMatch(result.stdout, /^SkillBoard - AI-mediated workflow-scoped skill policy$/m);
+  assert.match(result.stdout, /Suggests the routed skill for a user request when several allowed skills may overlap/);
+  assert.match(result.stdout, /If the guard allows use, disclose the skill at start and completion; do not ask for another approval/i);
+  assert.match(result.stdout, /If policy memory would reduce ambiguity, ask after completion whether to remember the routed skill/i);
+  assert.doesNotMatch(result.stdout, /^SkillBoard - permissive AI skill overlap routing$/m);
 });
 
 test("known secondary command help is non-mutating", async () => {
@@ -158,7 +179,6 @@ test("known secondary commands have read-only generic help", async () => {
     "check",
     "list",
     "explain",
-    "can-use",
     "audit",
     "rollout",
     "hook",

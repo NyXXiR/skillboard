@@ -121,9 +121,18 @@ export const EXPECTED_INITIALIZED_CONTRACT = {
     keys: ["status", "summary", "goal_document", "recommended_next_step", "choices", "guard"],
     status: "ready",
     goal_document: {
-      keys: ["path", "purpose", "when_to_read"],
+      keys: ["path", "purpose", "loop", "simplification_rule", "when_to_read"],
       path: "docs/ai-skill-routing-goal.md",
-      purpose: "Preserve SkillBoard as a non-blocking AI skill routing control plane: route and work first when safe, explain briefly, ask after use when policy learning helps, and remember usage policy without rewriting skill bodies.",
+      purpose: "Preserve SkillBoard as a permissive AI skill routing layer: keep skills broadly available, resolve overlaps deterministically, explain briefly, ask after use when policy learning helps, and remember usage policy without rewriting skill bodies.",
+      loop: [
+        "observe",
+        "route",
+        "work",
+        "explain briefly",
+        "ask after",
+        "remember policy"
+      ],
+      simplification_rule: "Concepts must justify themselves by supporting SkillBoard's routing identity, overlap resolution, policy memory, or non-blocking user flow; remove, merge, or rename only the concepts that fail that test.",
       when_to_read: [
         "before changing routing",
         "before changing brief output",

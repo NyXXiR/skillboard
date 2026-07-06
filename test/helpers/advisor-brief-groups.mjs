@@ -56,7 +56,7 @@ description: Test skill ${skillName(name)}.
 }
 
 function skillName(name) {
-  return name.replaceAll("-", ".");
+  return name.split("-").join(".");
 }
 
 function groupsConfig() {

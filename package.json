@@ -1,12 +1,13 @@
 {
   "name": "agent-skillboard",
   "version": "0.2.15",
-  "description": "Let AI agents pick and use allowed skills in each workflow.",
+  "description": "Keep agent skills broadly available while routing overlaps consistently.",
   "keywords": [
     "ai-agent",
     "agent-skills",
     "skills",
     "skill-routing",
+    "overlap-routing",
     "workflow",
     "codex",
     "claude-code",

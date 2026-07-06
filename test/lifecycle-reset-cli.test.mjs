@@ -123,12 +123,12 @@ test("cli uninstall reset-config remove-reports cleans SkillBoard scaffolding wh
     const dryRun = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "uninstall", "--dir", root, "--reset-config", "--remove-reports", "--dry-run"]);
     assert.equal(JSON.parse(canUse.stdout).allowed, true);
     assert.match(dryRun.stdout, /Removed: .*`skillboard\.config\.yaml`/);
-    assert.equal(dryRun.stdout.includes("`.skillboard/reports`"), true);
+    assert.equal(dryRun.stdout.includes("`.skillboard`"), true);
     assert.match(await readFile(join(root, ".skillboard", "reports", "skill-map.md"), "utf8"), /SkillBoard/);
 
     const result = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "uninstall", "--dir", root, "--reset-config", "--remove-reports"]);
     assert.match(result.stdout, /Removed: .*`skillboard\.config\.yaml`/);
-    assert.equal(result.stdout.includes("`.skillboard/reports`"), true);
+    assert.equal(result.stdout.includes("`.skillboard`"), true);
     await assert.rejects(readFile(join(root, "skillboard.config.yaml"), "utf8"), /ENOENT/);
     await assert.rejects(readFile(join(root, "AGENTS.md"), "utf8"), /ENOENT/);
     await assert.rejects(readFile(join(root, "CLAUDE.md"), "utf8"), /ENOENT/);
@@ -322,7 +322,7 @@ test("cli uninstall remove-hooks can fully reset generated guard hooks without d
     ]);
 
     const result = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "uninstall", "--dir", root, "--reset-config", "--remove-reports", "--remove-hooks"]);
-    assert.match(result.stdout, /Removed: .*`\.skillboard\/hooks`/);
+    assert.match(result.stdout, /Removed: .*`\.skillboard`/);
     await assert.rejects(readdir(join(root, ".skillboard")), /ENOENT/);
     assert.match(await readFile(join(root, "skills", "local-helper", "SKILL.md"), "utf8"), /Local hook cleanup fixture/);
   } finally {

@@ -140,17 +140,21 @@ test("README and install docs lead with npm quick start after registry publish",
   assert.match(readme, /SUDO_USER/);
   assert.match(readme, /restored\s+to the invoking user's ownership/);
   assert.match(readme, /No separate setup\s+command is required after a normal global install or update/);
-  assert.match(readme, /refresh managed SkillBoard\s+guidance files, and add newly detected supported agent roots/);
+  assert.match(readme, /run agent-layer setup automatically/i);
+  assert.match(readme, /does not run `skillboard init`/);
   assert.match(readme, /~\/\.agents\/skills/);
   assert.match(readme, /If `~\/\.agents` already exists, setup creates `~\/\.agents\/skills`/);
   assert.match(readme, /skillboard setup --agent codex,claude,opencode,hermes --yes/);
   assert.match(readme, /skillboard import-skill --from codex --to opencode --skill <skill> --json/);
   assert.match(readme, /Use the Codex test-first skill in OpenCode too/);
   assert.match(readme, /does not create `skillboard\.config\.yaml`,\s+`\.skillboard\/`, `AGENTS\.md`, or `CLAUDE\.md` in projects/);
-  assert.match(readme, /Which skill should you use to write tests first/);
+  assert.match(readme, /Write tests before implementation/);
+  assert.match(readme, /SkillBoard runs behind the scenes only when skill choices\s+overlap/);
   assert.match(readme, /npx --yes --package agent-skillboard skillboard init/);
   assert.match(readme, /npx --yes --package agent-skillboard skillboard doctor --summary/);
   assert.match(readme, /npx --yes --package agent-skillboard skillboard brief --workflow <workflow-from-init>/);
+  assert.match(readme, /skillboard uninstall --agent-layer --dry-run/);
+  assert.match(readme, /preserves other agent skills\s+and user-authored `skillboard` skills/i);
   assert.match(readme, /If you intentionally maintain local workspace policy files/);
   assert.match(readme, /\[docs\/install\.md\]\(docs\/install\.md\)/);
   assert.match(readme, /\[docs\/reference\.md\]\(docs\/reference\.md\)/);
@@ -164,9 +168,13 @@ test("README and install docs lead with npm quick start after registry publish",
   assert.match(install, /instead of writing guidance under `\/root`/);
   assert.match(install, /`SUDO_UID:SUDO_GID` ownership/);
   assert.match(install, /Global install auto-runs agent integration/);
+  assert.match(install, /does not run `skillboard init`/);
   assert.match(install, /No separate setup command is required after a normal global install or update/);
   assert.match(install, /package updates rerun the agent-home scan/);
   assert.match(install, /skillboard setup --agent codex,claude,opencode,hermes --yes/);
+  assert.match(install, /skillboard uninstall --agent-layer --dry-run/);
+  assert.match(install, /npm\s+uninstall should not be relied on to edit agent homes or projects/);
+  assert.match(install, /preserves other agent\s+skills and user-authored `skillboard` skills/i);
   assert.match(install, /OPENCODE_HOME/);
   assert.match(install, /~\/\.agents\/skills/);
   assert.match(install, /If `~\/\.agents` exists but `~\/\.agents\/skills` does not, setup creates the\s+`skills` directory/);
@@ -190,6 +198,7 @@ test("README and install docs lead with npm quick start after registry publish",
   assert.match(install, /## Install From A Clone/);
   assert.match(reference, /git clone https:\/\/github\.com\/NyXXiR\/skillboard\.git/);
   assert.match(reference, /skillboard setup \[--yes\] \[--agent codex\[,claude,opencode,hermes\]\]/);
+  assert.match(reference, /skillboard uninstall \[--dir <path>\].*\[--agent-layer\]/);
   assert.match(reference, /skillboard import-skill --from <agent> --to <agent> --skill <id-or-dir>/);
   assert.match(reference, /~\/\.agents\/skills/);
   assert.match(reference, /## Agent Skill Reuse/);
@@ -242,7 +251,7 @@ test("user docs frame commands as AI automation details, not a memorized user lo
   assert.doesNotMatch(combined, /run these commands every time you need a skill/i);
 });
 
-test("AI development docs preserve the non-blocking goal document", async () => {
+test("AI development docs preserve the permissive routing goal document", async () => {
   const goal = await readFile(resolve("docs/ai-skill-routing-goal.md"), "utf8");
   const readme = await readFile(resolve("README.md"), "utf8");
   const userFlow = await readFile(resolve("docs/user-flow.md"), "utf8");
@@ -252,7 +261,8 @@ test("AI development docs preserve the non-blocking goal document", async () => 
   const claude = await readFile(resolve("CLAUDE.md"), "utf8");
   const combined = `${readme}\n${userFlow}\n${policy}\n${bridge}\n${agents}\n${claude}`;
 
-  assert.match(goal, /non-blocking AI skill routing control plane/i);
+  assert.match(goal, /permissive AI skill routing layer/i);
+  assert.match(goal, /multiple allowed matching skills stay available while the routed skill is deterministic/i);
   assert.match(goal, /observe\s*→\s*route\s*→\s*work\s*→\s*explain briefly\s*→\s*ask after\s*→\s*remember policy/i);
   assert.match(goal, /SkillBoard does not rewrite `SKILL\.md` bodies/i);
   for (const mode of ["always use", "prefer", "reference only", "ask after use", "ask before use", "avoid", "block"]) {
@@ -269,10 +279,13 @@ test("public docs explain read-only routing for choosing a skill", async () => {
   const userFlow = await readFile(resolve("docs/user-flow.md"), "utf8");
   const combined = `${readme}\n${reference}\n${userFlow}`;
 
-  assert.match(readme, /Which skill should you use to write tests first/);
+  assert.match(readme, /Write tests before implementation/);
   assert.match(readme, /`brief`, `route`, `can-use`, and `guard use`/);
   assert.match(reference, /skillboard brief \[--workflow <name>\] \[--intent <request>\]/);
   assert.match(reference, /assistant_guidance/);
+  assert.match(reference, /assistant_guidance\.goal_document/);
+  assert.match(reference, /loop/);
+  assert.match(reference, /simplification_rule/);
   assert.match(reference, /brief --intent/);
   assert.match(reference, /skillboard route <intent> --workflow <name>/);
   assert.match(reference, /## Capability Routing/);
@@ -304,6 +317,8 @@ test("README and install docs include a Hermes system prompt bridge guide", asyn
   assert.match(combined, /fallback_skills/);
   assert.match(combined, /route_candidates/);
   assert.match(combined, /post_use_policy_suggestion/);
+  assert.match(combined, /overlap_resolution/);
+  assert.match(combined, /policy_memory/);
   assert.match(combined, /guard_command/);
   assert.match(combined, /ask after completion whether to\s+remember the suggested\s+policy/i);
   assert.match(combined, /ask a clarifying question before choosing a\s+skill/i);
@@ -326,6 +341,8 @@ test("project dogfoods AGENTS.md and CLAUDE.md bridge files", async () => {
   assert.match(agents, /brief --intent <request>/i);
   assert.match(agents, /assistant_guidance\.route/);
   assert.match(agents, /route_candidates/);
+  assert.match(agents, /overlap_resolution/);
+  assert.match(agents, /policy_memory/);
   assert.match(agents, /post_use_policy_suggestion/);
   assert.match(agents, /ask after completion whether to remember the suggested policy/i);
   assert.match(agents, /I will use <skill-id> for this request\./);
@@ -335,6 +352,8 @@ test("project dogfoods AGENTS.md and CLAUDE.md bridge files", async () => {
   assert.match(claude, /brief --intent <request>/i);
   assert.match(claude, /assistant_guidance\.route/);
   assert.match(claude, /route_candidates/);
+  assert.match(claude, /overlap_resolution/);
+  assert.match(claude, /policy_memory/);
   assert.match(claude, /post_use_policy_suggestion/);
   assert.match(claude, /ask after completion whether to remember the suggested policy/i);
   assert.match(claude, /I will use <skill-id> for this request\./);

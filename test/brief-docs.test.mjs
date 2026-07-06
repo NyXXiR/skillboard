@@ -117,10 +117,10 @@ test("brief docs help teaches the disclosure-first control loop", async () => {
   assert.doesNotMatch(result.stdout, /AI\/automation approval loop:/);
   assert.match(result.stdout, /For an already-allowed skill, disclose the selected skill at start and completion/i);
   assert.match(result.stdout, /do not ask for another approval/i);
-  assert.match(result.stdout, /Translate a user's skill request into the current brief/i);
+  assert.match(result.stdout, /Translate an ambiguous request or explicit skill decision into the current brief/i);
   assert.match(result.stdout, /current action id/i);
   assert.match(result.stdout, /docs\/ai-skill-routing-goal\.md/);
-  assert.match(result.stdout, /non-blocking AI skill routing control plane/i);
+  assert.match(result.stdout, /keep skills broadly available while routing overlaps consistently/i);
   assert.match(result.stdout, /observe → route → work → explain briefly → ask after → remember policy/i);
   assert.match(result.stdout, /one confirmation/i);
   assertApprovalLoop(result.stdout);
@@ -136,6 +136,9 @@ test("generated bridge tells agents to use routed skill first and ask after comp
     const routingDocs = await readFile("docs/routing.md", "utf8");
 
     for (const text of [agents, claude, bridge]) {
+      assert.match(text, /For ordinary user requests, work normally unless skill choice is ambiguous/i);
+      assert.match(text, /explicitly requests a specific already-allowed skill/i);
+      assert.match(text, /honor that request after guard use/i);
       assert.match(text, /work first with the allowed routed skill/i);
       assert.match(text, /ask after completion whether to remember the suggested policy/i);
       assert.match(text, /For an already-allowed skill, do not ask for another approval/i);
@@ -244,7 +247,7 @@ function hookInstallCommands(text) {
 
     let endLine = index;
     const commandLines = [lines[index]];
-    while (commandLines.at(-1).trimEnd().endsWith("\\") && endLine + 1 < lines.length) {
+    while (commandLines[commandLines.length - 1].trimEnd().endsWith("\\") && endLine + 1 < lines.length) {
       endLine += 1;
       commandLines.push(lines[endLine]);
     }
@@ -287,6 +290,8 @@ function assertGeneratedBridgeIntentDriven(text) {
   assert.match(text, /recommended_skill/);
   assert.match(text, /fallback_skills/);
   assert.match(text, /route_candidates/);
+  assert.match(text, /overlap_resolution/);
+  assert.match(text, /policy_memory/);
   assert.match(text, /post_use_policy_suggestion/);
   assert.match(text, /guard_command/);
   assert.match(text, /ask after completion whether to\s+remember the suggested\s+policy/i);

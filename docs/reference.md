@@ -28,7 +28,8 @@ After a global install, postinstall auto-runs agent-layer setup for detected
 supported agent homes. Use `skillboard setup` later when you add another
 supported agent, skipped lifecycle scripts, or need to repair user-level agent
 guidance. This is agent-layer integration; it does not initialize, attach, or
-manage individual projects.
+manage individual projects. To remove only managed agent-layer guidance, run
+`skillboard uninstall --agent-layer` before package removal.
 
 If `init` does not print a workflow, run the unscoped `brief` command it prints
 instead.
@@ -60,7 +61,7 @@ node bin/skillboard.mjs brief --dir /path/to/your/project --workflow <workflow-f
 skillboard setup [--yes] [--agent codex[,claude,opencode,hermes]]
 skillboard import-skill --from <agent> --to <agent> --skill <id-or-dir> [--target-skill <id-or-dir>] [--adapted-file <path>] [--dry-run] [--yes] [--replace] [--json]
 skillboard init [--dir <path>] [--scan-root <dir>[,<dir>]] [--no-scan-installed]
-skillboard uninstall [--dir <path>] [--dry-run] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs]
+skillboard uninstall [--dir <path>] [--dry-run] [--keep-settings] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs] [--agent-layer] [--agent codex[,claude,opencode,hermes]]
 skillboard inventory refresh [--dir <path>] [--config <path>] [--scan-root <dir>[,<dir>]] [--dry-run] [--json]
 skillboard inventory detect --unit <id> --config <path> [--install-output <path>] [--config-file a,b] [--source <value>] [--kind <kind>] [--scope <scope>] [--dry-run] [--json]
 skillboard sources refresh [--dir <path>] [--config <path>] [--unit <id>[,<id>]] [--cache-dir <dir>] [--dry-run] [--json]
@@ -163,13 +164,20 @@ skillboard route "write tests before implementation" \
   --json
 ```
 
-Routing first uses declared capability names and workflow bindings. If a fresh
-project has workflow skills but no capability catalog yet, it can fall back to
-workflow-bound skill id, path, category, `SKILL.md` name, and `SKILL.md`
+Routing first honors an exact request for a specific already-allowed workflow
+skill. Otherwise, it uses declared capability names and workflow bindings. If a
+fresh project has workflow skills but no capability catalog yet, it can fall back
+to workflow-bound skill id, path, category, `SKILL.md` name, and `SKILL.md`
 description metadata. It does not inspect or semantically rank `SKILL.md` bodies,
 and it does not invoke the skill. The JSON payload includes `match_source`,
-`matched_terms`, and `recommendation_reason` so the AI can explain why it chose
-or declined a skill without inventing rationale.
+`matched_terms`, `recommendation_reason`, `route_candidates`, and
+`overlap_resolution` so the AI can explain why it chose or declined a skill
+without inventing rationale. When remembered or configured workflow policy
+selected the routed skill while other allowed skills were also available,
+`policy_memory` tells the AI to disclose that after completion. The same
+`assistant_guidance` object includes
+`assistant_guidance.goal_document`; its `loop` and `simplification_rule` fields
+make the non-blocking routing goal machine-readable for agent integrations.
 Recommended and fallback skills are limited to the selected workflow's active,
 required, or global-auto bindings rather than every global alternative in the
 capability catalog. When nothing matches, the result keeps
@@ -177,9 +185,13 @@ capability catalog. When nothing matches, the result keeps
 workflow skills so the AI can ask a clarifying question. When a guard allows the
 recommended skill, the AI should disclose the skill at start and completion
 instead of asking for another approval. That disclosure is an audit trace, not a
-permission prompt. When an allowed fallback is selected because the preferred
-skill is denied, `post_use_policy_suggestion` tells the AI to ask after the task
-whether to remember that fallback as the preferred workflow policy.
+permission prompt. When several allowed skills match, `overlap_resolution`
+explains that SkillBoard kept them available and routed the workflow to one
+selected skill. When remembered or configured policy determines that route,
+`policy_memory` keeps the final disclosure honest about why that skill was used.
+When an allowed fallback is selected because the preferred skill is denied,
+`post_use_policy_suggestion` tells the AI to ask after the task whether to
+remember that fallback as the preferred workflow policy.
 
 ## Config Shape
 

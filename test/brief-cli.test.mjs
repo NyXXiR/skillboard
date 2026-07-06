@@ -88,7 +88,18 @@ test("brief command intent json includes route-backed skill suggestion", async (
     assert.equal(result.code, 0);
     assert.equal(payload.assistant_guidance.status, "ready");
     assert.equal(payload.assistant_guidance.goal_document.path, "docs/ai-skill-routing-goal.md");
-    assert.match(payload.assistant_guidance.goal_document.purpose, /non-blocking AI skill routing control plane/i);
+    assert.match(payload.assistant_guidance.goal_document.purpose, /permissive AI skill routing layer/i);
+    assert.deepEqual(payload.assistant_guidance.goal_document.loop, [
+      "observe",
+      "route",
+      "work",
+      "explain briefly",
+      "ask after",
+      "remember policy"
+    ]);
+    assert.match(payload.assistant_guidance.goal_document.simplification_rule, /concepts must justify themselves/i);
+    assert.match(payload.assistant_guidance.goal_document.simplification_rule, /routing identity/i);
+    assert.match(payload.assistant_guidance.goal_document.simplification_rule, /non-blocking user flow/i);
     assert.ok(payload.assistant_guidance.goal_document.when_to_read.includes("before changing routing"));
     assert.match(payload.assistant_guidance.recommended_next_step, /matt\.tdd/);
     assert.equal(payload.assistant_guidance.route.intent, "write tests before implementation");
@@ -120,9 +131,17 @@ test("brief command intent json includes route-backed skill suggestion", async (
     assert.match(payload.assistant_guidance.route.recommendation_reason, /Matched capability test-first-implementation/);
     assert.equal(payload.assistant_guidance.route.usage_disclosure.confirmation_required, false);
     assert.match(payload.assistant_guidance.route.usage_disclosure.start, /State at the start that matt\.tdd is being used/);
-    assert.match(payload.assistant_guidance.route.usage_disclosure.finish, /State at completion that matt\.tdd was used/);
+    assert.match(payload.assistant_guidance.route.usage_disclosure.finish, /remembered or configured policy preferred it over other allowed skills/);
     assert.equal(payload.assistant_guidance.route.usage_disclosure.start_message, "I will use matt.tdd for this request.");
-    assert.equal(payload.assistant_guidance.route.usage_disclosure.finish_message, "I used matt.tdd for this request.");
+    assert.equal(payload.assistant_guidance.route.usage_disclosure.finish_message, "I used matt.tdd for this request because SkillBoard has a remembered or configured preference for it; other allowed skills were also available: private.tdd-work-continuity.");
+    assert.deepEqual(payload.assistant_guidance.route.policy_memory, {
+      status: "applied",
+      mode: "remembered-or-configured-preference",
+      selected_skill: "matt.tdd",
+      available_alternatives: ["private.tdd-work-continuity"],
+      summary: "Remembered or configured policy selected matt.tdd for test-first-implementation in daily-workflow; other allowed skills were also available: private.tdd-work-continuity.",
+      finish_disclosure: "I used matt.tdd for this request because SkillBoard has a remembered or configured preference for it; other allowed skills were also available: private.tdd-work-continuity."
+    });
     assert.equal(payload.assistant_guidance.route.guard_allowed, true);
     assert.match(payload.assistant_guidance.route.guard_command, /skillboard guard use matt\.tdd/);
   });
@@ -148,7 +167,7 @@ test("brief command intent json asks after use when an allowed fallback is selec
     assert.equal(payload.assistant_guidance.status, "needs-decision");
     assert.equal(
       payload.assistant_guidance.recommended_next_step,
-      "Use user.tdd for this request after the guard check passes; handle pending review decisions after the task unless a policy-changing action is needed now."
+      "Use user.tdd for this request after the guard check passes; after completion, ask whether to remember the suggested policy and handle pending review decisions unless a policy-changing action is needed now."
     );
     assert.equal(payload.assistant_guidance.route.recommended_skill, "user.tdd");
     assert.equal(payload.assistant_guidance.route.route_candidates[0].guard_allowed, false);
@@ -196,7 +215,7 @@ test("brief command intent json asks after use when allowed ambiguity is selecte
     assert.equal(payload.assistant_guidance.status, "ready");
     assert.equal(
       payload.assistant_guidance.recommended_next_step,
-      "Use user.tdd for this request after the guard check passes."
+      "Use user.tdd for this request after the guard check passes; after completion, ask whether to remember the suggested policy."
     );
     assert.equal(payload.assistant_guidance.route.recommended_skill, "user.tdd");
     assert.equal(payload.assistant_guidance.route.guard_allowed, true);
@@ -273,6 +292,7 @@ test("brief command intent text renders suggested skill without hiding guard bou
     assert.match(result.stdout, /Matched terms: `implementation`, `test`/);
     assert.match(result.stdout, /Recommended skill: `matt\.tdd`/);
     assert.match(result.stdout, /Fallback skills: `private\.tdd-work-continuity`/);
+    assert.match(result.stdout, /Policy preference: Remembered or configured policy selected matt\.tdd for test-first-implementation in daily-workflow; other allowed skills were also available: private\.tdd-work-continuity\./);
     assert.match(result.stdout, /Route candidates:/);
     assert.match(result.stdout, /`matt\.tdd` \(preferred, selected, allowed\)/);
     assert.match(result.stdout, /`private\.tdd-work-continuity` \(fallback, allowed\)/);
@@ -282,7 +302,7 @@ test("brief command intent text renders suggested skill without hiding guard bou
       /Disclosure: run the guard automatically, state at the start that `matt\.tdd` is being used, and state at completion that it was used\. No extra user approval is needed when the guard allows it\./
     );
     assert.match(result.stdout, /Say before use: "I will use matt\.tdd for this request\."/);
-    assert.match(result.stdout, /Say after completion: "I used matt\.tdd for this request\."/);
+    assert.match(result.stdout, /Say after completion: "I used matt\.tdd for this request because SkillBoard has a remembered or configured preference for it; other allowed skills were also available: private\.tdd-work-continuity\."/);
   });
 });
 
@@ -308,6 +328,90 @@ test("brief command intent text renders ask-after preference after allowed ambig
     assert.match(result.stdout, /No extra user approval is needed when the guard allows it\./);
     assert.match(result.stdout, /After completion: ask whether to remember user\.tdd as the preferred skill for similar test-first-implementation requests in daily-workflow\./);
     assert.match(result.stdout, /Policy command after confirmation: `skillboard prefer user\.tdd --workflow daily-workflow --capability test-first-implementation/);
+  });
+});
+
+test("brief command intent text keeps fallback route ahead of pending review decisions", async () => {
+  await withFallbackRouteFixture(async ({ configPath, skillsRoot }) => {
+    const result = await runCli([
+      "brief",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot,
+      "--workflow",
+      "daily-workflow",
+      "--intent",
+      "write tests before implementation"
+    ]);
+
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /Needs your decision: 1/);
+    assert.match(result.stdout, /Recommended skill: `user\.tdd`/);
+    assert.match(result.stdout, /`vendor\.test-first` \(preferred, denied\)/);
+    assert.match(result.stdout, /`user\.tdd` \(fallback, selected, allowed\)/);
+    assert.match(result.stdout, /Next step: Use user\.tdd for this request after the guard check passes; after completion, ask whether to remember the suggested policy and handle pending review decisions unless a policy-changing action is needed now\./);
+    assert.match(result.stdout, /After completion: ask whether to remember user\.tdd as the preferred skill for similar test-first-implementation requests in daily-workflow\./);
+    assert.doesNotMatch(result.stdout, /ask before use/i);
+    const nextAction = sectionBetween(result.stdout, "## Next safe action", "## What your AI can use now");
+    assert.match(nextAction, /A routed skill is already usable for this request; handle this policy action after the task unless a policy-changing action is needed now\./);
+    assert.doesNotMatch(nextAction, /present this as the next confirmable operation/i);
+    const decisionSection = sectionBetween(result.stdout, "## Needs your decision", "## Blocked for safety");
+    assert.match(decisionSection, /A routed skill is already usable for this request; handle these decisions after the task unless a policy-changing action is needed now\./);
+    const suggestedActions = result.stdout.slice(result.stdout.indexOf("## Suggested next actions"));
+    assert.match(suggestedActions, /After the routed task, use current action ids from this brief for policy changes; ask for one user confirmation before applying one action\./);
+    assert.doesNotMatch(suggestedActions, /AI\/automation operations should use current action ids from this brief/i);
+  });
+});
+
+test("brief command intent text foregrounds overlap resolution without turning it into approval", async () => {
+  await withCriticalReviewOverlapBriefFixture(async ({ configPath, skillsRoot }) => {
+    const text = await runCli([
+      "brief",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot,
+      "--workflow",
+      "codex-workflow",
+      "--intent",
+      "grill this design and review weak assumptions"
+    ]);
+    const json = await runCli([
+      "brief",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot,
+      "--workflow",
+      "opencode-workflow",
+      "--intent",
+      "grill this design and review weak assumptions",
+      "--json"
+    ]);
+    const payload = JSON.parse(json.stdout);
+
+    assert.equal(text.code, 0);
+    assert.match(text.stdout, /Recommended skill: `matt\.grill-me`/);
+    assert.match(
+      text.stdout,
+      /Overlap: Multiple allowed skills match critical-review; SkillBoard keeps them available and routes codex-workflow to matt\.grill-me\./
+    );
+    assert.match(text.stdout, /`team\.review-work` \(fallback, allowed\)/);
+    assert.match(text.stdout, /`user\.product-critique` \(fallback, allowed\)/);
+    assert.match(text.stdout, /No extra user approval is needed when the guard allows it\./);
+    assert.doesNotMatch(text.stdout, /ask before use/i);
+
+    assert.equal(json.code, 0);
+    assert.deepEqual(payload.assistant_guidance.route.overlap_resolution, {
+      status: "resolved",
+      mode: "permissive-routing",
+      selected_skill: "matt.grill-me",
+      matched_skills: ["matt.grill-me", "team.review-work", "user.product-critique"],
+      allowed_skills: ["matt.grill-me", "team.review-work", "user.product-critique"],
+      denied_skills: [],
+      summary: "Multiple allowed skills match critical-review; SkillBoard keeps them available and routes opencode-workflow to matt.grill-me."
+    });
   });
 });
 
@@ -919,7 +1023,7 @@ test("brief command help is available through help brief", async () => {
   assert.equal(result.code, 0);
   assert.match(result.stdout, /^Usage: skillboard brief \[--workflow <name>\]/m);
   assert.match(result.stdout, /guard use/);
-  assert.doesNotMatch(result.stdout, /^SkillBoard - AI-mediated workflow-scoped skill policy$/m);
+  assert.doesNotMatch(result.stdout, /^SkillBoard - permissive AI skill overlap routing$/m);
 });
 
 test("command-local help does not hide unknown commands", async () => {
@@ -1101,6 +1205,96 @@ async function withAmbiguousAllowedRouteFixture(run) {
   }
 }
 
+async function withCriticalReviewOverlapBriefFixture(run) {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-brief-critical-overlap-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    await mkdir(join(skillsRoot, "matt-grill-me"), { recursive: true });
+    await mkdir(join(skillsRoot, "team-review-work"), { recursive: true });
+    await mkdir(join(skillsRoot, "product-critique"), { recursive: true });
+    await writeFile(
+      join(skillsRoot, "matt-grill-me", "SKILL.md"),
+      "---\nname: grill-me\ndescription: Grill plans, critique assumptions, and pressure-test weak spots.\n---\n# grill-me\n",
+      "utf8"
+    );
+    await writeFile(
+      join(skillsRoot, "team-review-work", "SKILL.md"),
+      "---\nname: review-work\ndescription: Review implementation work for correctness, QA gaps, and risks.\n---\n# review-work\n",
+      "utf8"
+    );
+    await writeFile(
+      join(skillsRoot, "product-critique", "SKILL.md"),
+      "---\nname: product-critique\ndescription: Critique product ideas and user flows.\n---\n# product-critique\n",
+      "utf8"
+    );
+    await writeFile(configPath, criticalReviewOverlapBriefConfig(), "utf8");
+    return await run({ configPath, root, skillsRoot });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+function criticalReviewOverlapBriefConfig() {
+  return `version: 1
+defaults:
+  invocation_policy: deny-by-default
+  allow_model_invocation: false
+  require_explicit_workflow: true
+skills:
+  matt.grill-me:
+    path: matt-grill-me
+    status: active
+    invocation: manual-only
+    exposure: exported
+    category: critique
+  team.review-work:
+    path: team-review-work
+    status: active
+    invocation: manual-only
+    exposure: exported
+    category: critique
+  user.product-critique:
+    path: product-critique
+    status: active
+    invocation: manual-only
+    exposure: exported
+    category: critique
+capabilities:
+  critical-review:
+    canonical: matt.grill-me
+    alternatives:
+      - team.review-work
+      - user.product-critique
+    default_policy: manual-only
+harnesses:
+  codex:
+    status: primary
+    workflows:
+      - codex-workflow
+  opencode:
+    status: primary
+    workflows:
+      - opencode-workflow
+workflows:
+  codex-workflow:
+    harness: codex
+    active_skills:
+      - matt.grill-me
+      - team.review-work
+      - user.product-critique
+    blocked_skills: []
+  opencode-workflow:
+    harness: opencode
+    active_skills:
+      - matt.grill-me
+      - team.review-work
+      - user.product-critique
+    blocked_skills: []
+install_units: {}
+`;
+}
+
 function ambiguousAllowedRouteConfig() {
   return `version: 1
 defaults:
@@ -1205,10 +1399,23 @@ function assertAssistantGuidance(payload, { status, hasWorkflowGuardHint, choice
   assert.deepEqual(Object.keys(payload.assistant_guidance.goal_document), [
     "path",
     "purpose",
+    "loop",
+    "simplification_rule",
     "when_to_read"
   ]);
   assert.equal(payload.assistant_guidance.goal_document.path, "docs/ai-skill-routing-goal.md");
-  assert.match(payload.assistant_guidance.goal_document.purpose, /non-blocking AI skill routing control plane/i);
+  assert.match(payload.assistant_guidance.goal_document.purpose, /permissive AI skill routing layer/i);
+  assert.deepEqual(payload.assistant_guidance.goal_document.loop, [
+    "observe",
+    "route",
+    "work",
+    "explain briefly",
+    "ask after",
+    "remember policy"
+  ]);
+  assert.match(payload.assistant_guidance.goal_document.simplification_rule, /concepts must justify themselves/i);
+  assert.match(payload.assistant_guidance.goal_document.simplification_rule, /routing identity/i);
+  assert.match(payload.assistant_guidance.goal_document.simplification_rule, /non-blocking user flow/i);
   assert.deepEqual(payload.assistant_guidance.goal_document.when_to_read, [
     "before changing routing",
     "before changing brief output",

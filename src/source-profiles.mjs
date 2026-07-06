@@ -246,7 +246,8 @@ function patternToRegExp(pattern) {
 
 function skillSlug(relativeFile, frontmatter, profile) {
   if (profile.idStrategy === "frontmatter-name" && frontmatter.name.length > 0) {
-    return normalizeSlug(frontmatter.name.split(".").at(-1));
+    const segments = frontmatter.name.split(".");
+    return normalizeSlug(segments[segments.length - 1]);
   }
   return normalizeSlug(basename(dirname(relativeFile)));
 }

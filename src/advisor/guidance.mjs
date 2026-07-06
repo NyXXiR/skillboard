@@ -3,7 +3,16 @@ import { command } from "./action-core.mjs";
 const GUARD_WHEN = "before invoking a skill";
 const GOAL_DOCUMENT = Object.freeze({
   path: "docs/ai-skill-routing-goal.md",
-  purpose: "Preserve SkillBoard as a non-blocking AI skill routing control plane: route and work first when safe, explain briefly, ask after use when policy learning helps, and remember usage policy without rewriting skill bodies.",
+  purpose: "Preserve SkillBoard as a permissive AI skill routing layer: keep skills broadly available, resolve overlaps deterministically, explain briefly, ask after use when policy learning helps, and remember usage policy without rewriting skill bodies.",
+  loop: Object.freeze([
+    "observe",
+    "route",
+    "work",
+    "explain briefly",
+    "ask after",
+    "remember policy"
+  ]),
+  simplification_rule: "Concepts must justify themselves by supporting SkillBoard's routing identity, overlap resolution, policy memory, or non-blocking user flow; remove, merge, or rename only the concepts that fail that test.",
   when_to_read: Object.freeze([
     "before changing routing",
     "before changing brief output",
@@ -47,6 +56,7 @@ export function buildAssistantGuidance(brief, options = {}) {
 function goalDocument() {
   return {
     ...GOAL_DOCUMENT,
+    loop: [...GOAL_DOCUMENT.loop],
     when_to_read: [...GOAL_DOCUMENT.when_to_read]
   };
 }
@@ -125,12 +135,14 @@ function recommendedNextStep(status, brief, choices, route = null) {
       if (route !== null) {
         return route.recommended_skill === null
           ? "Ask a clarifying question; no workflow capability matched this request."
-          : `Use ${route.recommended_skill} for this request after the guard check passes.`;
+          : `Use ${route.recommended_skill} for this request after the guard check passes${postUsePolicyStep(route)}.`;
       }
       return "Run the guard check before invoking any selected skill.";
     case "needs-decision":
       if (route?.recommended_skill !== null && route?.guard_allowed === true) {
-        return `Use ${route.recommended_skill} for this request after the guard check passes; handle pending review decisions after the task unless a policy-changing action is needed now.`;
+        return route.post_use_policy_suggestion === null
+          ? `Use ${route.recommended_skill} for this request after the guard check passes; handle pending review decisions after the task unless a policy-changing action is needed now.`
+          : `Use ${route.recommended_skill} for this request after the guard check passes; after completion, ask whether to remember the suggested policy and handle pending review decisions unless a policy-changing action is needed now.`;
       }
       return firstChoice === undefined
         ? "Ask the user which pending review decision to make."
@@ -159,6 +171,12 @@ function recommendedNextStep(status, brief, choices, route = null) {
   }
 }
 
+function postUsePolicyStep(route) {
+  return route.post_use_policy_suggestion === null
+    ? ""
+    : "; after completion, ask whether to remember the suggested policy";
+}
+
 function routeGuidance(route) {
   return {
     intent: route.intent,
@@ -180,6 +198,8 @@ function routeGuidance(route) {
       guard_roles: candidate.guard_roles,
       capability_roles: candidate.capability_roles
     })),
+    overlap_resolution: route.overlap_resolution ?? null,
+    policy_memory: route.policy_memory ?? null,
     usage_disclosure: route.usage_disclosure ?? null,
     post_use_policy_suggestion: route.post_use_policy_suggestion ?? null,
     guard_command: route.guard_command,

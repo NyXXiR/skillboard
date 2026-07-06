@@ -24,7 +24,8 @@ Your responsibility is to answer skill availability questions from SkillBoard, t
 
 ## Product Goal
 
-- SkillBoard is a non-blocking AI skill routing control plane, not a pre-task settings checklist.
+- SkillBoard is a permissive AI skill routing layer, not a pre-task settings checklist.
+- Keep installed skills broadly available by default; use SkillBoard to resolve overlap when several skills could steer the same task.
 - Read \`docs/ai-skill-routing-goal.md\` before changing routing, brief, bridge, policy, or workflow UX.
 - Preserve the loop: observe → route → work → explain briefly → ask after → remember policy.
 - SkillBoard does not rewrite \`SKILL.md\` bodies to personalize behavior; record usage policy for when to use, prefer, reference, avoid, or block skills.
@@ -33,7 +34,8 @@ Your responsibility is to answer skill availability questions from SkillBoard, t
 
 - Use SkillBoard as the source of truth for project-local policy and workflow priority; installed \`SKILL.md\` files are candidates, not enough to resolve overlap by themselves.
 - Read the current brief before answering: \`skillboard brief --json --config skillboard.config.yaml --skills skills\`. If the workflow is known, include \`--workflow <name>\`; add \`--include-actions\` when the user wants you to mediate a change.
-- When the user asks which skill fits a task, read \`skillboard brief --intent <request> --json --config skillboard.config.yaml --skills skills\`. Include \`--workflow <name>\` when known. Read \`assistant_guidance.route\`; use \`recommended_skill\`, \`fallback_skills\`, \`route_candidates\`, \`post_use_policy_suggestion\`, and \`guard_command\` instead of guessing from raw skill text. Inspect \`route_candidates\` when several skills match so denied candidates and selected fallbacks are clear. If \`post_use_policy_suggestion\` is present, work first with the allowed routed skill, then ask after completion whether to remember the suggested policy. If no skill matches, ask a clarifying question before choosing a skill.
+- For ordinary user requests, work normally unless skill choice is ambiguous, several skills overlap, workflow priority matters, or the user explicitly asks for a SkillBoard or skill decision. In those cases, read \`skillboard brief --intent <request> --json --config skillboard.config.yaml --skills skills\`. Include \`--workflow <name>\` when known. Read \`assistant_guidance.route\`; use \`recommended_skill\`, \`fallback_skills\`, \`route_candidates\`, \`overlap_resolution\`, \`policy_memory\`, \`post_use_policy_suggestion\`, and \`guard_command\` instead of guessing from raw skill text. Inspect \`overlap_resolution\` and \`route_candidates\` when several skills match so allowed overlap, denied candidates, and selected fallbacks are clear. If \`policy_memory\` is present, mention after completion that remembered or configured policy selected this skill even though other allowed skills were available. If \`post_use_policy_suggestion\` is present, work first with the allowed routed skill, then ask after completion whether to remember the suggested policy. If no skill matches, ask a clarifying question before choosing a skill.
+- If the user explicitly requests a specific already-allowed skill, honor that request after guard use instead of rerouting away solely because another skill also matches.
 - Treat the brief sections headed "What your AI can use now", "Needs your decision", and "Blocked for safety" as the availability summary; do not infer availability from \`SKILL.md\` bodies.
 - Treat "Needs your decision" as a one-time decision queue, not a persistent blocked state. "Blocked for safety" means the skill/source/workflow is hard-blocked until policy or provenance changes.
 - Use \`skillboard can-use <skill-id> --workflow <name> --config skillboard.config.yaml --skills skills --json\` for machine-readable agent decisions.

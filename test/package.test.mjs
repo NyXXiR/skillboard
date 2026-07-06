@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, readlink, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
-import { runSetupCommand } from "../src/lifecycle-cli.mjs";
+import { runSetupCommand, runUninstallCommand } from "../src/lifecycle-cli.mjs";
 import { pathTailPattern } from "./helpers/path-pattern.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -20,7 +20,7 @@ test("package manifest is publishable as the SkillBoard CLI", async () => {
   const manifest = JSON.parse(await readFile(resolve("package.json"), "utf8"));
 
   assert.equal(manifest.name, "agent-skillboard");
-  assert.equal(manifest.description, "Let AI agents pick and use allowed skills in each workflow.");
+  assert.equal(manifest.description, "Keep agent skills broadly available while routing overlaps consistently.");
   assert.equal(manifest.private, undefined);
   assert.deepEqual(manifest.bin, {
     skillboard: "bin/skillboard.mjs",
@@ -36,7 +36,7 @@ test("package manifest is publishable as the SkillBoard CLI", async () => {
     url: "https://github.com/NyXXiR/skillboard/issues"
   });
   assert.equal(manifest.homepage, "https://github.com/NyXXiR/skillboard#readme");
-  for (const keyword of ["ai-agent", "agent-skills", "skills", "skill-routing", "workflow", "codex", "claude-code", "policy"]) {
+  for (const keyword of ["ai-agent", "agent-skills", "skills", "skill-routing", "overlap-routing", "workflow", "codex", "claude-code", "policy"]) {
     assert.ok(manifest.keywords.includes(keyword));
   }
 });
@@ -153,8 +153,11 @@ test("postinstall auto-runs agent setup for global installs without project file
 
     assert.equal(result.stdout, "");
     assert.match(result.stderr, /SkillBoard installed/);
+    assert.match(result.stderr, /does not initialize projects/i);
+    assert.match(result.stderr, /Run skillboard init only inside a workspace/i);
     assert.match(result.stderr, /Auto-running agent setup/);
     assert.match(result.stderr, /SkillBoard agent integration installed/);
+    assert.match(result.stderr, /No project init was run/);
     assert.match(result.stderr, /setup later after adding another supported agent/i);
     assert.match(codexSkill, /SkillBoard Agent Integration/);
     assert.equal(openCodeSkill, codexSkill);
@@ -246,6 +249,7 @@ test("postinstall sudo global setup targets the invoking user's agent home", asy
         LOGNAME: "root",
         PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
         SUDO_GID: "1000",
+        SUDO_HOME: userHome,
         SUDO_UID: "1000",
         SUDO_USER: sudoUser,
         USER: "root",
@@ -298,6 +302,7 @@ test("postinstall sudo setup still installs when non-root cannot chown", async (
         LOGNAME: "root",
         PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
         SUDO_GID: "5678",
+        SUDO_HOME: userHome,
         SUDO_UID: "1234",
         SUDO_USER: sudoUser,
         USER: "root",
@@ -445,6 +450,347 @@ test("setup under sudo chowns unchanged managed guidance to the invoking user", 
   }
 });
 
+test("setup preserves a symlinked managed agent skill directory without writing through it", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), "skillboard-setup-symlink-dir-"));
+  try {
+    const rootHome = join(root, "root-home");
+    const userHome = join(root, "user-home");
+    const codexHome = join(userHome, ".codex");
+    const skillRoot = join(codexHome, "skills");
+    const outside = join(root, "outside-skillboard");
+    const outsideSkill = join(outside, "SKILL.md");
+    const oldManaged = oldAgentIntegrationSkill("# Old outside guidance\n");
+    await mkdir(rootHome, { recursive: true });
+    await mkdir(skillRoot, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await writeFile(outsideSkill, oldManaged, "utf8");
+    await symlink(outside, join(skillRoot, "skillboard"), "dir");
+    const chowns = [];
+    const stdout = [];
+
+    const code = await runSetupCommand(new Map([
+      ["yes", "true"],
+      ["agent", "codex"]
+    ]), {
+      write(chunk) {
+        stdout.push(chunk);
+      }
+    }, {
+      cwd: root,
+      entrypointPath: "skillboard",
+      env: {
+        HOME: rootHome,
+        CODEX_HOME: codexHome,
+        LOGNAME: "root",
+        SUDO_GID: "5678",
+        SUDO_HOME: userHome,
+        SUDO_UID: "1234",
+        SUDO_USER: "skillboardsudo",
+        USER: "root"
+      },
+      packageSpec: "agent-skillboard",
+      chown(path, uid, gid) {
+        chowns.push({ path, uid, gid });
+        return Promise.resolve();
+      }
+    });
+
+    assert.equal(code, 0);
+    assert.match(stdout.join(""), /Preserved: `codex:/);
+    assert.equal(await readFile(outsideSkill, "utf8"), oldManaged);
+    assert.equal((await lstat(join(skillRoot, "skillboard"))).isSymbolicLink(), true);
+    assert.deepEqual(chowns, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup preserves a symlinked agent skill root without writing through it", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), "skillboard-setup-symlink-root-"));
+  try {
+    const rootHome = join(root, "root-home");
+    const userHome = join(root, "user-home");
+    const codexHome = join(userHome, ".codex");
+    const skillRoot = join(codexHome, "skills");
+    const outside = join(root, "outside-skills-root");
+    await mkdir(rootHome, { recursive: true });
+    await mkdir(codexHome, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await symlink(outside, skillRoot, "dir");
+    const chowns = [];
+    const stdout = [];
+
+    const code = await runSetupCommand(new Map([
+      ["yes", "true"],
+      ["agent", "codex"]
+    ]), {
+      write(chunk) {
+        stdout.push(chunk);
+      }
+    }, {
+      cwd: root,
+      entrypointPath: "skillboard",
+      env: {
+        HOME: rootHome,
+        CODEX_HOME: codexHome,
+        LOGNAME: "root",
+        SUDO_GID: "5678",
+        SUDO_HOME: userHome,
+        SUDO_UID: "1234",
+        SUDO_USER: "skillboardsudo",
+        USER: "root"
+      },
+      packageSpec: "agent-skillboard",
+      chown(path, uid, gid) {
+        chowns.push({ path, uid, gid });
+        return Promise.resolve();
+      }
+    });
+
+    assert.equal(code, 0);
+    assert.match(stdout.join(""), /Preserved: `codex:/);
+    assert.equal(await readFile(join(outside, "skillboard", "SKILL.md"), "utf8").catch(() => null), null);
+    assert.equal(await readlink(skillRoot), outside);
+    assert.deepEqual(chowns, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup preserves a symlinked agent SKILL.md without writing through it", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), "skillboard-setup-symlink-file-"));
+  try {
+    const userHome = join(root, "user-home");
+    const codexHome = join(userHome, ".codex");
+    const skillDir = join(codexHome, "skills", "skillboard");
+    const outsideSkill = join(root, "outside-SKILL.md");
+    const oldManaged = oldAgentIntegrationSkill("# Old outside guidance\n");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(outsideSkill, oldManaged, "utf8");
+    await symlink(outsideSkill, join(skillDir, "SKILL.md"));
+    const stdout = [];
+
+    const code = await runSetupCommand(new Map([
+      ["yes", "true"],
+      ["agent", "codex"]
+    ]), {
+      write(chunk) {
+        stdout.push(chunk);
+      }
+    }, {
+      cwd: root,
+      entrypointPath: "skillboard",
+      env: {
+        HOME: userHome,
+        CODEX_HOME: codexHome
+      },
+      packageSpec: "agent-skillboard"
+    });
+
+    assert.equal(code, 0);
+    assert.match(stdout.join(""), /Preserved: `codex:/);
+    assert.equal(await readFile(outsideSkill, "utf8"), oldManaged);
+    assert.equal(await readlink(join(skillDir, "SKILL.md")), outsideSkill);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("agent-layer uninstall preserves a symlinked managed skill directory without removing through it", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), "skillboard-uninstall-symlink-dir-"));
+  try {
+    const userHome = join(root, "user-home");
+    const codexHome = join(userHome, ".codex");
+    const skillRoot = join(codexHome, "skills");
+    const outside = join(root, "outside-skillboard");
+    const outsideSkill = join(outside, "SKILL.md");
+    const oldManaged = oldAgentIntegrationSkill("");
+    await mkdir(skillRoot, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await writeFile(outsideSkill, oldManaged, "utf8");
+    await symlink(outside, join(skillRoot, "skillboard"), "dir");
+    const stdout = [];
+
+    const code = await runUninstallCommand(new Map([
+      ["agent-layer", "true"],
+      ["agent", "codex"]
+    ]), {
+      write(chunk) {
+        stdout.push(chunk);
+      }
+    }, {
+      cwd: root,
+      entrypointPath: "skillboard",
+      env: {
+        HOME: userHome,
+        CODEX_HOME: codexHome
+      },
+      packageSpec: "agent-skillboard"
+    });
+
+    assert.equal(code, 0);
+    assert.match(stdout.join(""), /Preserved: `codex:/);
+    assert.equal(await readFile(outsideSkill, "utf8"), oldManaged);
+    assert.equal((await lstat(join(skillRoot, "skillboard"))).isSymbolicLink(), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("agent-layer uninstall preserves a symlinked agent skill root without removing through it", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), "skillboard-uninstall-symlink-root-"));
+  try {
+    const userHome = join(root, "user-home");
+    const codexHome = join(userHome, ".codex");
+    const skillRoot = join(codexHome, "skills");
+    const outside = join(root, "outside-skills-root");
+    const outsideSkill = join(outside, "skillboard", "SKILL.md");
+    const oldManaged = oldAgentIntegrationSkill("");
+    await mkdir(codexHome, { recursive: true });
+    await mkdir(join(outside, "skillboard"), { recursive: true });
+    await writeFile(outsideSkill, oldManaged, "utf8");
+    await symlink(outside, skillRoot, "dir");
+    const stdout = [];
+
+    const code = await runUninstallCommand(new Map([
+      ["agent-layer", "true"],
+      ["agent", "codex"]
+    ]), {
+      write(chunk) {
+        stdout.push(chunk);
+      }
+    }, {
+      cwd: root,
+      entrypointPath: "skillboard",
+      env: {
+        HOME: userHome,
+        CODEX_HOME: codexHome
+      },
+      packageSpec: "agent-skillboard"
+    });
+
+    assert.equal(code, 0);
+    assert.match(stdout.join(""), /Preserved: `codex:/);
+    assert.equal(await readFile(outsideSkill, "utf8"), oldManaged);
+    assert.equal(await readlink(skillRoot), outside);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("agent-layer uninstall preserves a symlinked agent SKILL.md without removing through it", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), "skillboard-uninstall-symlink-file-"));
+  try {
+    const userHome = join(root, "user-home");
+    const codexHome = join(userHome, ".codex");
+    const skillDir = join(codexHome, "skills", "skillboard");
+    const outsideSkill = join(root, "outside-SKILL.md");
+    const oldManaged = oldAgentIntegrationSkill("");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(outsideSkill, oldManaged, "utf8");
+    await symlink(outsideSkill, join(skillDir, "SKILL.md"));
+    const stdout = [];
+
+    const code = await runUninstallCommand(new Map([
+      ["agent-layer", "true"],
+      ["agent", "codex"]
+    ]), {
+      write(chunk) {
+        stdout.push(chunk);
+      }
+    }, {
+      cwd: root,
+      entrypointPath: "skillboard",
+      env: {
+        HOME: userHome,
+        CODEX_HOME: codexHome
+      },
+      packageSpec: "agent-skillboard"
+    });
+
+    assert.equal(code, 0);
+    assert.match(stdout.join(""), /Preserved: `codex:/);
+    assert.equal(await readFile(outsideSkill, "utf8"), oldManaged);
+    assert.equal(await readlink(join(skillDir, "SKILL.md")), outsideSkill);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup under sudo skips chown at and below a symlinked ownership component", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), "skillboard-sudo-chown-symlink-component-"));
+  try {
+    const rootHome = join(root, "root-home");
+    const userHome = join(root, "user-home");
+    const realCodexHome = join(root, "real-codex-home");
+    const linkedCodexHome = join(userHome, ".codex");
+    await mkdir(rootHome, { recursive: true });
+    await mkdir(userHome, { recursive: true });
+    await mkdir(join(realCodexHome, "skills"), { recursive: true });
+    await symlink(realCodexHome, linkedCodexHome, "dir");
+    const chowns = [];
+
+    const code = await runSetupCommand(new Map([
+      ["yes", "true"],
+      ["agent", "codex"]
+    ]), {
+      write() {}
+    }, {
+      cwd: root,
+      entrypointPath: "skillboard",
+      env: {
+        HOME: rootHome,
+        CODEX_HOME: linkedCodexHome,
+        LOGNAME: "root",
+        SUDO_GID: "5678",
+        SUDO_HOME: userHome,
+        SUDO_UID: "1234",
+        SUDO_USER: "skillboardsudo",
+        USER: "root"
+      },
+      packageSpec: "agent-skillboard",
+      chown(path, uid, gid) {
+        chowns.push({ path, uid, gid });
+        return Promise.resolve();
+      }
+    });
+
+    assert.equal(code, 0);
+    assert.equal(await readFile(join(realCodexHome, "skills", "skillboard", "SKILL.md"), "utf8").catch(() => null), null);
+    assert.deepEqual(chowns, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("setup under sudo does not chown agent guidance outside the invoking user's home", async () => {
   if (process.platform === "win32") {
     return;
@@ -524,7 +870,7 @@ test("release notes include the current package version", async () => {
   const manifest = JSON.parse(await readFile(resolve("package.json"), "utf8"));
   const changelog = await readFile(resolve("CHANGELOG.md"), "utf8");
 
-  assert.match(changelog, new RegExp(`## ${manifest.version.replaceAll(".", "\\.")}\\b`));
+  assert.match(changelog, new RegExp(`## ${manifest.version.split(".").join("\\.")}\\b`));
 });
 
 test("packed package runs through npm exec one-command bootstrap surface", async () => {
@@ -536,9 +882,9 @@ test("packed package runs through npm exec one-command bootstrap surface", async
     const help = await execNpm(["exec", "--yes", "--package", tarballPath, "--", "skillboard", "help"], { cwd: temp });
     const npxAlias = await execNpm(["exec", "--yes", "--package", tarballPath, "--", "agent-skillboard", "help"], { cwd: temp });
 
-    assert.match(help.stdout, /^SkillBoard - AI-mediated workflow-scoped skill policy$/m);
+    assert.match(help.stdout, /^SkillBoard - permissive AI skill overlap routing$/m);
     assert.match(help.stdout, /init \[--dir <path>\]/);
-    assert.match(npxAlias.stdout, /^SkillBoard - AI-mediated workflow-scoped skill policy$/m);
+    assert.match(npxAlias.stdout, /^SkillBoard - permissive AI skill overlap routing$/m);
   } finally {
     await rm(temp, { recursive: true, force: true });
   }
@@ -583,6 +929,8 @@ test("packed package drives fresh project through intent brief and guard", async
     assert.match(agentsBridge, /brief --intent <request>/i);
     assert.match(agentsBridge, /assistant_guidance\.route/);
     assert.match(agentsBridge, /route_candidates/);
+    assert.match(agentsBridge, /overlap_resolution/);
+    assert.match(agentsBridge, /policy_memory/);
     assert.match(agentsBridge, /post_use_policy_suggestion/);
     assert.match(agentsBridge, /ask after completion whether to remember the suggested policy/i);
     assert.match(agentsBridge, /I will use <skill-id> for this request\./);
@@ -601,6 +949,7 @@ test("packed package drives fresh project through intent brief and guard", async
     assert.match(payload.assistant_guidance.route.usage_disclosure.finish, /State at completion that user\.test-first was used/);
     assert.equal(payload.assistant_guidance.route.usage_disclosure.start_message, "I will use user.test-first for this request.");
     assert.equal(payload.assistant_guidance.route.usage_disclosure.finish_message, "I used user.test-first for this request.");
+    assert.equal(payload.assistant_guidance.route.policy_memory, null);
     assert.equal(payload.assistant_guidance.route.guard_allowed, true);
     assert.match(payload.assistant_guidance.route.guard_command, /skillboard guard use user\.test-first/);
     assert.equal(JSON.parse(guard.stdout).allowed, true);
@@ -617,4 +966,17 @@ function execNpm(args, options = {}) {
     });
   }
   return execFileAsync(process.execPath, [process.env.npm_execpath, ...args], options);
+}
+
+function oldAgentIntegrationSkill(body) {
+  return [
+    "---",
+    "name: skillboard",
+    "description: old managed guidance",
+    "---",
+    "<!-- BEGIN SKILLBOARD AGENT INTEGRATION -->",
+    body,
+    "<!-- END SKILLBOARD AGENT INTEGRATION -->",
+    ""
+  ].join("\n");
 }

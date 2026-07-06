@@ -3,5 +3,5 @@ export function displayCommand(argv) {
 }
 
 function shellQuote(value) {
-  return /^[A-Za-z0-9_./:=@-]+$/.test(value) ? value : `'${value.replaceAll("'", "'\\''")}'`;
+  return /^[A-Za-z0-9_./:=@-]+$/.test(value) ? value : `'${value.split("'").join("'\\''")}'`;
 }

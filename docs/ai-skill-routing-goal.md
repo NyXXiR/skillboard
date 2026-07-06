@@ -1,12 +1,13 @@
 # AI Skill Routing Goal
 
-SkillBoard's product goal is to be a **non-blocking AI skill routing control plane**. It should help an AI decide which skills and workflow policies apply to the current task without turning normal work into a settings session.
+SkillBoard's product goal is to be a **permissive AI skill routing layer**. It keeps installed skills broadly available by default, then gives the AI a deterministic route when multiple skills could steer the same task. It should help an AI decide which skills and workflow policies apply to the current task without turning normal work into a settings session.
 
 This document is the goal reference for product work, routing changes, AI-facing brief changes, bridge updates, policy UX, and workflow UX.
 
 ## Core principle
 
-SkillBoard should keep the user's work moving by default.
+SkillBoard should keep the user's work moving by default. Broadly available
+skills are normal; deterministic overlap resolution is the value.
 
 The preferred loop is:
 
@@ -17,7 +18,7 @@ observe → route → work → explain briefly → ask after → remember policy
 That means:
 
 1. **Observe** the user's request and current workflow context.
-2. **Route** to the most appropriate allowed skill or workflow policy without asking first when the risk is low.
+2. **Route** to the most appropriate allowed skill or workflow policy without asking first when the risk is low, especially when several similar skills match.
 3. **Work** normally so SkillBoard does not become a pre-task settings checklist.
 4. **Explain briefly** which skill was used or skipped, only at the level needed for trust.
 5. **Ask after** the task when the routing choice was ambiguous, recurring, or likely to become a useful preference.
@@ -33,8 +34,17 @@ SkillBoard should not:
 - require users to memorize the SkillBoard command loop;
 - infer permission from raw installed `SKILL.md` files;
 - silently let overlapping skills contaminate an answer;
+- make the default model feel deny-first when the user's skill set is already allowed;
 - mutate skill body content when a usage policy would solve the problem;
 - turn every allowed skill invocation into a permission prompt.
+
+## Simplification rule
+
+Do not simplify by deleting concepts blindly. Keep a concept only when it
+justifies itself against SkillBoard's routing identity: routing, overlap
+resolution, policy memory, or a less interruptive user flow. Concepts that do
+not pass that test should be removed, merged, or renamed into the smaller
+surface that does.
 
 ## What SkillBoard controls
 
@@ -47,6 +57,7 @@ The control object is a usage policy, not the skill body itself:
 - user, project, or team scope;
 - preferred and fallback skills;
 - exclusion rules;
+- overlap resolution summaries;
 - confidence or ambiguity thresholds;
 - disclosure and guard behavior;
 - pending policy suggestions to review later.
@@ -105,6 +116,7 @@ A change moves SkillBoard toward this goal when:
 
 - ordinary allowed-skill work proceeds without a pre-task skill-selection prompt;
 - ambiguous but low-risk choices can be handled with ask-after-use policy suggestions;
+- multiple allowed matching skills stay available while the routed skill is deterministic;
 - risky or policy-changing actions still require explicit confirmation before apply;
 - `brief --json` gives AI integrations a stable way to discover the goal document and routing guidance;
 - text output stays compact by default and reserves verbose detail for explicit requests;

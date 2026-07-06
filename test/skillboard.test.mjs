@@ -288,7 +288,7 @@ test("reconcile disables newly detected harnesses until a workflow opts in", asy
     const workspace = await loadWorkspace({ configPath, skillsRoot });
     const plan = reconcileWorkspace(workspace, { actualHarnesses: ["codex", "lazycodex", "opencode"] });
 
-    assert.deepEqual(plan.autoActions.at(-1), {
+    assert.deepEqual(plan.autoActions[plan.autoActions.length - 1], {
       action: "disable-harness",
       harness: "opencode",
       recommendedStatus: "disabled"

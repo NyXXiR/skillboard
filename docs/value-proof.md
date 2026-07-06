@@ -17,9 +17,9 @@ surfaces a user or agent would use.
 The raw list answers inventory questions: which skill declarations are connected
 to this workflow?
 
-SkillBoard answers operational safety questions: which skills can actually run
-now, why are others blocked, which skill fits the user's current request, and
-what approved action changes the next state?
+SkillBoard answers routing questions: which skills can actually run now, why
+are others blocked, which skill should steer the user's current request when
+several skills overlap, and what approved action changes the next state?
 
 In the tested fixture, the raw list can make the workflow look ready because it
 shows `matt.tdd active workflow-auto`. SkillBoard refuses that unsafe claim and
@@ -171,6 +171,9 @@ Observed route result:
 - Confidence: `high`.
 - Recommended skill: `matt.tdd`.
 - Fallback skill: `private.tdd-work-continuity`.
+- Overlap resolution is exposed in route payloads when several allowed skills
+  match, so agents can explain the deterministic route without hiding the other
+  available skills.
 - Guard command: `skillboard guard use matt.tdd ...`.
 - Guard result for `matt.tdd`: allowed.
 - Start disclosure: `I will use matt.tdd for this request.`

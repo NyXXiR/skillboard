@@ -3,6 +3,12 @@
 Capability routing helps an AI choose a skill for the user's current request
 without making the user learn SkillBoard commands.
 
+SkillBoard is intentionally permissive at this layer: workflow-bound skills can
+remain broadly available, and routing only chooses the skill that should steer
+this request. When several allowed skills match, the response includes
+`overlap_resolution` so the AI can explain that the other skills stayed
+available while the workflow routed to one selected skill.
+
 For the normal AI-mediated flow, prefer `brief --intent`. It returns the
 availability brief and the routing result together:
 
@@ -25,6 +31,8 @@ Read `assistant_guidance.route` from the JSON output. It includes:
 - `recommended_skill`
 - `fallback_skills`
 - `route_candidates`
+- `overlap_resolution`
+- `policy_memory`
 - `post_use_policy_suggestion`
 - `guard_command`
 - `usage_disclosure`
@@ -42,6 +50,13 @@ When several skills match, inspect `route_candidates` before acting. Each entry
 shows the candidate skill, whether it was selected, whether the guard currently
 allows it, and the guard reason when it is denied. This is the field that tells
 an AI why a preferred skill was skipped and an allowed fallback was selected.
+Inspect `overlap_resolution` first when it is present: `status: resolved` with
+`mode: permissive-routing` means multiple allowed skills matched, SkillBoard
+kept them available, and the current workflow still has one deterministic route.
+When `policy_memory` is present, remembered or configured workflow policy
+selected the routed skill while other allowed skills were also available. The AI
+should mention that after completion so the user knows a stored policy
+preference shaped the route.
 
 When routing is safe but policy learning would reduce future ambiguity,
 SkillBoard may return `post_use_policy_suggestion`. This includes cases where a

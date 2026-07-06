@@ -280,6 +280,8 @@ test("cli init bootstraps config and agent bridge files", async () => {
     assert.match(agents, /recommended_skill/);
     assert.match(agents, /fallback_skills/);
     assert.match(agents, /route_candidates/);
+    assert.match(agents, /overlap_resolution/);
+    assert.match(agents, /policy_memory/);
     assert.match(agents, /post_use_policy_suggestion/);
     assert.match(agents, /ask after completion whether to remember the suggested policy/i);
     assert.match(agents, /guard_command/);
@@ -305,6 +307,8 @@ test("cli init bootstraps config and agent bridge files", async () => {
     assert.match(claude, /brief --intent <request>/i);
     assert.match(claude, /assistant_guidance\.route/);
     assert.match(claude, /route_candidates/);
+    assert.match(claude, /overlap_resolution/);
+    assert.match(claude, /policy_memory/);
     assert.match(claude, /post_use_policy_suggestion/);
     assert.match(profilesReadme, /source profiles/);
     assert.match(hooksReadme, /skillboard hook install/);
@@ -1017,7 +1021,8 @@ test("cli doctor and status summarize initialized lifecycle health", async () =>
     assert.equal(payload.sources.ok, true);
     assert.equal(payload.bridges.every((bridge) => bridge.status === "installed"), true);
     assert.ok(payload.uninstall.removed.includes("AGENTS.md"));
-    assert.ok(payload.uninstall.preserved.includes("skillboard.config.yaml"));
+    assert.ok(payload.uninstall.removed.includes("skillboard.config.yaml"));
+    assert.ok(payload.uninstall.removed.includes(".skillboard"));
     assert.equal(statusPayload.ok, true);
     assert.equal(statusPayload.config.version, 1);
     assert.match(status.stdout, /SkillBoard doctor: passed/);
@@ -1829,6 +1834,14 @@ test("cli list, explain, and can-use expose source-aware control state", async (
     "codex-night-workflow",
     "--json"
   ]);
+  const allowedText = await execFileAsync(process.execPath, [
+    "bin/skillboard.mjs",
+    "can-use",
+    "private.tdd-work-continuity",
+    ...baseArgs,
+    "--workflow",
+    "codex-night-workflow"
+  ]);
   let deniedError;
   try {
     await execFileAsync(process.execPath, [
@@ -1847,8 +1860,14 @@ test("cli list, explain, and can-use expose source-aware control state", async (
   assert.match(list.stdout, /private\.tdd-work-continuity\tactive\trouter-only\tuser/);
   assert.match(list.stdout, /matt\.tdd\tactive\tworkflow-auto\texternal-package/);
   assert.match(explain.stdout, /Source: user/);
-  assert.equal(JSON.parse(allowed.stdout).allowed, true);
-  assert.equal(JSON.parse(allowed.stdout).automaticAllowed, false);
+  const allowedPayload = JSON.parse(allowed.stdout);
+  assert.equal(allowedPayload.allowed, true);
+  assert.equal(allowedPayload.automaticAllowed, false);
+  assert.equal(allowedPayload.allowedUse.confirmationRequired, false);
+  assert.equal(allowedPayload.allowedUse.startMessage, "I will use private.tdd-work-continuity for this request.");
+  assert.equal(allowedPayload.allowedUse.finishMessage, "I used private.tdd-work-continuity for this request.");
+  assert.match(allowedPayload.allowedUse.askUserWhen, /guard denies use or a policy-changing action is needed/);
+  assert.match(allowedText.stdout, /Allowed use: disclose the skill at the start and completion; do not ask for another approval\./);
   assert.equal(deniedError.code, 2);
   assert.equal(JSON.parse(deniedError.stdout).allowed, false);
 });
@@ -1882,9 +1901,10 @@ test("cli route recommends a workflow skill from user intent", async () => {
   assert.ok(!payload.fallback_skills.includes("wshobson.python-testing"));
   assert.equal(payload.usage_disclosure.confirmation_required, false);
   assert.match(payload.usage_disclosure.start, /State at the start that matt\.tdd is being used/);
-  assert.match(payload.usage_disclosure.finish, /State at completion that matt\.tdd was used/);
+  assert.match(payload.usage_disclosure.finish, /remembered or configured policy preferred it over other allowed skills/);
   assert.equal(payload.usage_disclosure.start_message, "I will use matt.tdd for this request.");
-  assert.equal(payload.usage_disclosure.finish_message, "I used matt.tdd for this request.");
+  assert.equal(payload.usage_disclosure.finish_message, "I used matt.tdd for this request because SkillBoard has a remembered or configured preference for it; other allowed skills were also available: private.tdd-work-continuity.");
+  assert.equal(payload.policy_memory.selected_skill, "matt.tdd");
   assert.match(payload.guard_command, /skillboard guard use matt\.tdd/);
   assert.match(payload.guard_command, /--workflow codex-night-workflow/);
   assert.equal(payload.guard.allowed, true);
@@ -1904,8 +1924,9 @@ test("cli route recommends a workflow skill from user intent", async () => {
   assert.match(text.stdout, /Why: Matched capability test-first-implementation/);
   assert.match(text.stdout, /Matched terms: `implementation`, `test`/);
   assert.match(text.stdout, /Disclosure: run the guard automatically, state at the start that matt\.tdd is being used/);
+  assert.match(text.stdout, /Policy preference: Remembered or configured policy selected matt\.tdd/);
   assert.match(text.stdout, /Say before use: "I will use matt\.tdd for this request\."/);
-  assert.match(text.stdout, /Say after completion: "I used matt\.tdd for this request\."/);
+  assert.match(text.stdout, /Say after completion: "I used matt\.tdd for this request because SkillBoard has a remembered or configured preference for it; other allowed skills were also available: private\.tdd-work-continuity\."/);
 });
 
 test("cli route accepts unquoted multi-word intent", async () => {
@@ -1986,7 +2007,20 @@ install_units: {}
       "daily-workflow",
       "--json"
     ]);
+    const explicitSkillResult = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "route",
+      "use user.release-helper for this request",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot,
+      "--workflow",
+      "daily-workflow",
+      "--json"
+    ]);
     const payload = JSON.parse(result.stdout);
+    const explicitSkillPayload = JSON.parse(explicitSkillResult.stdout);
 
     assert.equal(payload.matched_capability, null);
     assert.equal(payload.matched_skill, "user.release-helper");
@@ -1996,6 +2030,12 @@ install_units: {}
     assert.match(payload.recommendation_reason, /Matched workflow skill metadata/);
     assert.match(payload.recommendation_reason, /SKILL\.md description/);
     assert.equal(payload.guard.allowed, true);
+    assert.equal(explicitSkillPayload.matched_capability, null);
+    assert.equal(explicitSkillPayload.matched_skill, "user.release-helper");
+    assert.equal(explicitSkillPayload.match_source, "skill-metadata");
+    assert.equal(explicitSkillPayload.recommended_skill, "user.release-helper");
+    assert.ok(explicitSkillPayload.matched_terms.includes("release"));
+    assert.equal(explicitSkillPayload.guard.allowed, true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -2197,6 +2237,15 @@ test("CLI route renders ask-after preference after allowed ambiguity", async () 
     assert.equal(payload.post_use_policy_suggestion.mode, "ask_after_use");
     assert.equal(payload.post_use_policy_suggestion.requires_confirmation, true);
     assert.match(payload.post_use_policy_suggestion.reason, /multiple allowed skills/);
+    assert.deepEqual(payload.overlap_resolution, {
+      status: "resolved",
+      mode: "permissive-routing",
+      selected_skill: "user.tdd",
+      matched_skills: ["user.tdd", "private.tdd-work-continuity"],
+      allowed_skills: ["user.tdd", "private.tdd-work-continuity"],
+      denied_skills: [],
+      summary: "Multiple allowed skills match test-first-implementation; SkillBoard keeps them available and routes daily-workflow to user.tdd."
+    });
     assert.equal(
       payload.post_use_policy_suggestion.suggested_policy.command_hint,
       displayCommand([
@@ -2221,6 +2270,7 @@ test("CLI route renders ask-after preference after allowed ambiguity", async () 
     ]);
     assert.match(text.stdout, /user\.tdd .*preferred, selected, allowed/);
     assert.match(text.stdout, /private\.tdd-work-continuity .*fallback, allowed/);
+    assert.match(text.stdout, /Overlap: Multiple allowed skills match test-first-implementation; SkillBoard keeps them available and routes daily-workflow to user\.tdd\./);
     assert.match(text.stdout, /Disclosure: run the guard automatically/);
     assert.match(text.stdout, /Say before use: "I will use user\.tdd for this request\."/);
     assert.match(text.stdout, /After completion: ask whether to remember user\.tdd as the preferred skill for similar test-first-implementation requests in daily-workflow\./);
@@ -2345,6 +2395,7 @@ test("CLI route keeps no-match as clarification without post-use policy suggesti
   assert.equal(payload.guard_command, null);
   assert.equal(payload.usage_disclosure, null);
   assert.equal(payload.post_use_policy_suggestion, null);
+  assert.equal(payload.overlap_resolution, null);
   assert.match(payload.recommendation_reason, /Ask a clarifying question/);
 });
 
@@ -2404,6 +2455,9 @@ test("brief intent learns ask-after preference through explicit prefer command a
     ]);
     const guardPayload = JSON.parse(guard.stdout);
     assert.equal(guardPayload.allowed, true);
+    assert.equal(guardPayload.allowedUse.confirmationRequired, false);
+    assert.equal(guardPayload.allowedUse.startMessage, "I will use user.tdd for this request.");
+    assert.equal(guardPayload.allowedUse.finishMessage, "I used user.tdd for this request.");
 
     const preference = await execFileAsync(process.execPath, [
       "bin/skillboard.mjs",
@@ -2429,6 +2483,18 @@ test("brief intent learns ask-after preference through explicit prefer command a
     const secondPayload = JSON.parse(secondBrief.stdout);
     assert.equal(secondPayload.assistant_guidance.route.recommended_skill, "user.tdd");
     assert.equal(secondPayload.assistant_guidance.route.post_use_policy_suggestion, null);
+    assert.deepEqual(secondPayload.assistant_guidance.route.policy_memory, {
+      status: "applied",
+      mode: "remembered-or-configured-preference",
+      selected_skill: "user.tdd",
+      available_alternatives: ["private.tdd-work-continuity"],
+      summary: "Remembered or configured policy selected user.tdd for test-first-implementation in daily-workflow; other allowed skills were also available: private.tdd-work-continuity.",
+      finish_disclosure: "I used user.tdd for this request because SkillBoard has a remembered or configured preference for it; other allowed skills were also available: private.tdd-work-continuity."
+    });
+    assert.equal(
+      secondPayload.assistant_guidance.route.usage_disclosure.finish_message,
+      "I used user.tdd for this request because SkillBoard has a remembered or configured preference for it; other allowed skills were also available: private.tdd-work-continuity."
+    );
 
     const reroute = await execFileAsync(process.execPath, [
       "bin/skillboard.mjs",
@@ -2440,6 +2506,7 @@ test("brief intent learns ask-after preference through explicit prefer command a
     const reroutePayload = JSON.parse(reroute.stdout);
     assert.equal(reroutePayload.recommended_skill, "user.tdd");
     assert.equal(reroutePayload.post_use_policy_suggestion, null);
+    assert.equal(reroutePayload.policy_memory.selected_skill, "user.tdd");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -2531,6 +2598,7 @@ test("cli guard, brief, and impact surface active workflow conflicts", async () 
     assert.equal(guardError.code, 2);
     const guardPayload = JSON.parse(guardError.stdout);
     assert.equal(guardPayload.allowed, false);
+    assert.equal(guardPayload.allowedUse, null);
     assert.match(guardPayload.reasons.join("\n"), /Skill skill\.alpha conflicts with active skill skill\.beta in workflow daily-workflow/);
 
     let briefError;

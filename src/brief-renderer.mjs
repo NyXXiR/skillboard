@@ -1,4 +1,6 @@
 // SIZE_OK: src/brief-renderer.mjs is pre-existing renderer debt; this change only adds narrow AI/automation copy until a broader renderer split.
+import { renderRouteSectionLines } from "./route-renderer.mjs";
+
 const SKILL_SECTIONS = [
   ["Needs your decision", "needs_review"],
   ["Blocked for safety", "blocked"]
@@ -82,61 +84,11 @@ function emitIntentRoute(lines, brief) {
     return;
   }
   lines.push("## Suggested skill for this request", "");
-  lines.push(`- Intent: ${safeText(route.intent)}`);
-  lines.push(`- Match source: ${route.match_source}`);
-  lines.push(`- Matched capability: ${route.matched_capability ?? "none"}`);
-  lines.push(`- Matched skill: ${route.matched_skill === null ? "none" : code(route.matched_skill)}`);
-  lines.push(`- Confidence: ${route.confidence}`);
-  lines.push(`- Why: ${safeText(route.recommendation_reason, 320)}`);
-  lines.push(`- Matched terms: ${formatCodeList(route.matched_terms)}`);
-  if (route.recommended_skill === null) {
-    lines.push("- Recommended skill: none");
-    lines.push("- Next step: ask a clarifying question before choosing a skill.");
-  } else {
-    lines.push(`- Recommended skill: ${code(route.recommended_skill)}`);
-    lines.push(`- Fallback skills: ${formatCodeList(route.fallback_skills)}`);
-    if ((route.route_candidates ?? []).length > 0) {
-      lines.push("- Route candidates:");
-      for (const candidate of route.route_candidates) {
-        lines.push(`  - ${code(candidate.skill)} (${routeCandidateStatus(candidate)})`);
-        if (!candidate.guard_allowed && candidate.guard_reasons.length > 0) {
-          lines.push(`    - ${safeText(candidate.guard_reasons[0])}`);
-        }
-      }
-    }
-    lines.push(`- Guard: ${code(route.guard_command, Number.POSITIVE_INFINITY)}`);
-    if (route.usage_disclosure !== null && route.usage_disclosure !== undefined) {
-      lines.push(`- Disclosure: ${routeDisclosureText(code(route.recommended_skill))}`);
-      lines.push(`- Say before use: "${safeText(route.usage_disclosure.start_message)}"`);
-      lines.push(`- Say after completion: "${safeText(route.usage_disclosure.finish_message)}"`);
-    }
-    emitPostUsePolicySuggestion(lines, route.post_use_policy_suggestion);
-  }
+  lines.push(...renderRouteSectionLines(route, {
+    format: "brief",
+    nextStep: brief.assistant_guidance?.recommended_next_step
+  }));
   lines.push("");
-}
-
-function routeCandidateStatus(candidate) {
-  return [
-    candidate.role,
-    candidate.selected ? "selected" : null,
-    candidate.guard_allowed ? "allowed" : "denied"
-  ].filter((value) => value !== null).join(", ");
-}
-
-function routeDisclosureText(skillLabel) {
-  return `run the guard automatically, state at the start that ${skillLabel} is being used, and state at completion that it was used. No extra user approval is needed when the guard allows it.`;
-}
-
-function emitPostUsePolicySuggestion(lines, suggestion) {
-  if (suggestion === null || suggestion === undefined) {
-    return;
-  }
-  lines.push(`- After completion: ${safeText(afterUsePromptText(suggestion.question))}`);
-  lines.push(`- Policy command after confirmation: ${code(suggestion.suggested_policy.command_hint, Number.POSITIVE_INFINITY)}`);
-}
-
-function afterUsePromptText(question) {
-  return question.replace(/^Should I /u, "ask whether to ").replace(/\?$/u, ".");
 }
 
 function emitPolicyHealth(lines, brief) {
@@ -271,6 +223,7 @@ function emitDecisionSection(lines, brief, options) {
     lines.push("- none", "");
     return;
   }
+  emitDeferredDecisionLead(lines, brief);
   if (skillEntries.length > 0) {
     emitSkillEntries(lines, skillEntries, {
       ...options,
@@ -285,6 +238,13 @@ function emitDecisionSection(lines, brief, options) {
     });
   }
   lines.push("");
+}
+
+function emitDeferredDecisionLead(lines, brief) {
+  if (!hasUsableRoutedSkill(brief)) {
+    return;
+  }
+  lines.push("A routed skill is already usable for this request; handle these decisions after the task unless a policy-changing action is needed now.", "");
 }
 
 function reviewEntriesForDecisionSection(brief, skillEntries) {
@@ -384,7 +344,7 @@ function workflowOption(brief) {
 function emitActions(lines, brief, options) {
   const actions = actionsForTextBrief(brief);
   lines.push("## Suggested next actions", "");
-  lines.push("AI/automation operations should use current action ids from this brief, then ask for user confirmation before applying one action.", "");
+  lines.push(suggestedActionsLead(brief), "");
   if (actions.length === 0) {
     lines.push("- none", "");
     return;
@@ -401,7 +361,7 @@ function emitActions(lines, brief, options) {
   if (!options.verbose) {
     const hiddenSecondary = other.length + cleanup.length;
     if (hiddenSecondary > 0) {
-      if (lines.at(-1) === "") {
+      if (lines[lines.length - 1] === "") {
         lines.pop();
       }
       lines.push(`- ${hiddenSecondary} safety and cleanup actions hidden. Run ${code(`skillboard brief --verbose${workflowOption(brief)}`)}.`);
@@ -419,9 +379,15 @@ function emitActions(lines, brief, options) {
   }
 }
 
+function suggestedActionsLead(brief) {
+  return hasUsableRoutedSkill(brief)
+    ? "After the routed task, use current action ids from this brief for policy changes; ask for one user confirmation before applying one action."
+    : "AI/automation operations should use current action ids from this brief, then ask for user confirmation before applying one action.";
+}
+
 function emitNextAction(lines, brief, options) {
   lines.push("## Next safe action", "");
-  lines.push("AI/automation should present this as the next confirmable operation, not as an automatic mutation.", "");
+  lines.push(nextActionLead(brief), "");
   const action = nextSafeAction(brief);
   if (action === null) {
     lines.push("- none", "");
@@ -429,6 +395,19 @@ function emitNextAction(lines, brief, options) {
   }
   emitAction(lines, action, { ...options, brief, listOnly: false });
   lines.push("");
+}
+
+function nextActionLead(brief) {
+  return hasUsableRoutedSkill(brief)
+    ? "A routed skill is already usable for this request; handle this policy action after the task unless a policy-changing action is needed now."
+    : "AI/automation should present this as the next confirmable operation, not as an automatic mutation.";
+}
+
+function hasUsableRoutedSkill(brief) {
+  const route = brief.assistant_guidance?.route;
+  return route?.recommended_skill !== null
+    && route?.recommended_skill !== undefined
+    && route.guard_allowed === true;
 }
 
 function nextSafeAction(brief) {

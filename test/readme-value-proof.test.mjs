@@ -242,7 +242,8 @@ test("README proof fixture shows route picks the right allowed skill", async () 
   assert.match(routePayload.guard_command, /skillboard guard use matt\.tdd/);
   assert.equal(routePayload.usage_disclosure.confirmation_required, false);
   assert.equal(routePayload.usage_disclosure.start_message, "I will use matt.tdd for this request.");
-  assert.equal(routePayload.usage_disclosure.finish_message, "I used matt.tdd for this request.");
+  assert.equal(routePayload.usage_disclosure.finish_message, "I used matt.tdd for this request because SkillBoard has a remembered or configured preference for it; other allowed skills were also available: private.tdd-work-continuity.");
+  assert.equal(routePayload.policy_memory.selected_skill, "matt.tdd");
   assert.deepEqual(routePayload.possible_skills.map((skill) => skill.id), [
     "matt.tdd",
     "private.tdd-work-continuity"
@@ -281,7 +282,7 @@ test("README links to the reproducible value proof report", async () => {
   assert.match(readme, /\[full reproducible proof\]\(docs\/value-proof\.md\)/);
   assert.match(readme, /## Why Not Just List `\/skills`\?/);
   assert.match(readme, /A raw skill list answers what is declared/);
-  assert.match(readme, /SkillBoard answers what can safely\s+run now/);
+  assert.match(readme, /SkillBoard answers what can run now\s+and how overlapping matches should route/);
   assert.match(readme, /Same fixture, different answer/);
   assert.match(readme, /A raw list says `matt\.tdd` is active/);
   assert.match(readme, /SkillBoard says the same workflow has 0\s+usable skills/);
@@ -292,13 +293,15 @@ test("README links to the reproducible value proof report", async () => {
   assert.match(readme, /0 usable skills/);
   assert.match(readme, /8 blocked skills/);
   assert.match(readme, /Policy errors: 2/);
+  assert.match(readme, /Overlap: Multiple allowed skills match/);
+  assert.match(readme, /`grill-me`-style review overlap across Codex and OpenCode/i);
   assert.match(readme, /\[Capability routing\]\(docs\/routing\.md\)/);
   assert.match(readme, /\[Command and config reference\]\(docs\/reference\.md\)/);
 
   assert.match(proof, /node --test test\/readme-value-proof\.test\.mjs/);
   assert.match(proof, /GitHub-reader takeaway/);
   assert.match(proof, /The raw list answers inventory questions/);
-  assert.match(proof, /SkillBoard answers operational safety questions/);
+  assert.match(proof, /SkillBoard answers routing questions/);
   assert.match(proof, /Raw skill list/);
   assert.match(proof, /4 workflow-linked rows/);
   assert.match(proof, /matt\.tdd active workflow-auto/);
@@ -318,6 +321,7 @@ test("README links to the reproducible value proof report", async () => {
   assert.match(proof, /route "write tests before implementation"/);
   assert.match(proof, /Recommended skill: `matt\.tdd`/);
   assert.match(proof, /Fallback skill: `private\.tdd-work-continuity`/);
+  assert.match(proof, /Overlap resolution is exposed in route payloads/);
   assert.match(proof, /I will use matt\.tdd for this request\./);
   assert.match(proof, /Ask a clarifying question before choosing a skill/);
 
@@ -336,22 +340,29 @@ test("README leads with ask-your-AI workflow before command details", async () =
     readme.indexOf("## What SkillBoard Gives You")
   );
 
-  assert.match(firstScreen, /Use the right AI-agent skills without managing another checklist/i);
-  assert.match(firstScreen, /ask your AI normal questions/i);
+  assert.match(firstScreen, /Keep AI-agent skills broadly available,\s+then route overlaps consistently/i);
+  assert.match(firstScreen, /ask your AI normal work requests/i);
   assert.match(firstScreen, /No global install is required/i);
   assert.match(firstScreen, /Most use is read-only/i);
   assert.match(firstScreen, /Nothing changes until you approve a policy action/i);
-  assert.match(firstScreen, /cleanup is conservative and previewable/i);
+  assert.match(firstScreen, /Project cleanup is previewable/i);
+  assert.match(firstScreen, /default\s+uninstall removes SkillBoard settings/i);
   assert.match(firstScreen, /uninstall --dry-run/i);
-  assert.match(firstScreen, /workflow-scoped skill priority and routing for AI\s+agents/i);
+  assert.match(firstScreen, /workflow-scoped skill priority and overlap routing\s+for AI agents/i);
   assert.match(firstScreen, /Installed user skills are usable by default/i);
-  assert.match(firstScreen, /resolve overlap,\s+policy,\s+and workflow priority/i);
+  assert.match(firstScreen, /resolve overlapping skills and workflow priority/i);
+  assert.match(firstScreen, /SkillBoard runs behind the scenes only when skill choices\s+overlap/i);
   assert.match(firstScreen, /What skills can you use in this project\?/);
+  assert.match(firstScreen, /Write tests before implementation\./);
+  assert.match(firstScreen, /Review this plan and point out weak assumptions\./);
+  assert.match(firstScreen, /Help me refine this UX flow\./);
+  assert.match(firstScreen, /Use the Codex test-first skill in OpenCode too\./);
   assert.match(firstScreen, /Can you make `anthropic\.docx` available for this workflow\?/);
   assert.match(firstScreen, /behind the scenes/i);
   assert.match(firstScreen, /audit trace,\s+not a permission prompt/i);
   assert.match(firstScreen, /I will use matt\.tdd for this request\./);
   assert.match(firstScreen, /I used matt\.tdd for this request\./);
+  assert.match(firstScreen, /You: "Write tests before implementation\."/);
   assert.match(firstScreen, /policy-changing action/i);
   assert.match(firstScreen, /You\s+do\s+not need to\s+memorize/i);
 
@@ -363,9 +374,14 @@ test("README leads with ask-your-AI workflow before command details", async () =
   assert.match(quickStart, /skillboard setup --agent codex,claude,opencode,hermes --yes/);
   assert.match(quickStart, /does not create `skillboard\.config\.yaml`,\s+`\.skillboard\/`, `AGENTS\.md`, or `CLAUDE\.md` in projects/i);
   assert.match(quickStart, /ask normal questions/i);
-  assert.match(quickStart, /Remove the project bridge when you are done/i);
+  assert.match(quickStart, /Write tests before implementation\./);
+  assert.match(quickStart, /Review this plan and point out weak assumptions\./);
+  assert.match(quickStart, /Remove SkillBoard from a project when you are done/i);
   assert.match(quickStart, /skillboard uninstall --dir \/path\/to\/your\/project --dry-run/);
-  assert.match(quickStart, /preserves local skills and policy files by default/i);
+  assert.match(quickStart, /skillboard uninstall --agent-layer --dry-run/);
+  assert.match(quickStart, /preserves other agent skills\s+and user-authored `skillboard` skills/i);
+  assert.match(quickStart, /Default project uninstall removes SkillBoard config/i);
+  assert.match(quickStart, /--keep-settings/i);
   assert.match(quickStart, /AI\/automation\/operator details/i);
   assert.match(quickStart, /npx --yes --package agent-skillboard skillboard init/);
   assert.match(quickStart, /npx --yes --package agent-skillboard skillboard doctor --summary/);

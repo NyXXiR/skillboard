@@ -83,6 +83,7 @@ export function canUseResult(allowed, skillId, workflowName, skill, workflow, re
   return {
     allowed,
     automaticAllowed,
+    allowedUse: allowed ? allowedUse(skillId) : null,
     skill: skillId,
     workflow: workflowName,
     invocation: skill?.invocation ?? null,
@@ -92,5 +93,16 @@ export function canUseResult(allowed, skillId, workflowName, skill, workflow, re
     roles: role.roles,
     capabilityRoles: role.capabilityRoles,
     reasons
+  };
+}
+
+function allowedUse(skillId) {
+  return {
+    confirmationRequired: false,
+    start: `State at the start that ${skillId} is being used for this request.`,
+    finish: `State at completion that ${skillId} was used.`,
+    startMessage: `I will use ${skillId} for this request.`,
+    finishMessage: `I used ${skillId} for this request.`,
+    askUserWhen: "Ask the user only if the guard denies use or a policy-changing action is needed."
   };
 }

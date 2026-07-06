@@ -124,7 +124,7 @@ async function writeFixtureSkills(skillsRoot, names) {
     await writeFile(
       join(skillsRoot, name, "SKILL.md"),
       `---
-name: ${name.replaceAll("-", ".")}
+name: ${name.split("-").join(".")}
 description: Test skill ${name}.
 ---
 

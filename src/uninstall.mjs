@@ -1,11 +1,12 @@
 // allow: SIZE_OK - uninstall lifecycle split is deferred from the 0.2.7 release gate.
 import { access, lstat, readFile, readdir, rm, rmdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { BRIDGE_END, BRIDGE_START, defaultConfig, hookReadme, profileReadme } from "./lifecycle-content.mjs";
 
 export async function uninstallProject(options) {
   const root = options.root;
   const dryRun = options.dryRun === true;
+  const keepBridge = options.keepBridge === true;
   const removed = [];
   const updated = [];
   const preserved = [];
@@ -13,7 +14,7 @@ export async function uninstallProject(options) {
 
   for (const filename of ["AGENTS.md", "CLAUDE.md"]) {
     const path = join(root, filename);
-    const result = await removeBridge(path, dryRun);
+    const result = keepBridge ? await preserveExisting(path) : await removeBridge(path, dryRun);
     if (result === "removed") {
       plannedRemovedPaths.add(path);
     }
@@ -47,7 +48,7 @@ export async function uninstallProject(options) {
     recordFileResult(".skillboard", result, { removed, updated, preserved });
   } else {
     for (const entry of generatedFiles(root)) {
-      const result = await removeGeneratedFile(entry.path, entry.expected, dryRun);
+      const result = await removeGeneratedFile(entry.path, entry.expected, dryRun, root);
       if (result === "removed") {
         plannedRemovedPaths.add(entry.path);
       }
@@ -57,7 +58,7 @@ export async function uninstallProject(options) {
 
   if (options.removeReports === true && options.removeProjectState !== true) {
     const path = join(root, ".skillboard", "reports");
-    const result = await removeGeneratedDir(path, dryRun);
+    const result = await removeGeneratedDir(path, dryRun, root);
     if (result === "removed") {
       plannedRemovedPaths.add(path);
     }
@@ -66,7 +67,7 @@ export async function uninstallProject(options) {
 
   if (options.removeHooks === true && options.removeProjectState !== true) {
     const path = join(root, ".skillboard", "hooks");
-    const result = await removeGeneratedDir(path, dryRun);
+    const result = await removeGeneratedDir(path, dryRun, root);
     if (result === "removed") {
       plannedRemovedPaths.add(path);
     }
@@ -79,7 +80,7 @@ export async function uninstallProject(options) {
       skipHooks: options.removeHooks === true,
       skipSkillboard: options.removeProjectState === true
     })) {
-      const result = await removeEmptyDir(dir.path, dryRun, plannedRemovedPaths);
+      const result = await removeEmptyDir(dir.path, dryRun, plannedRemovedPaths, root);
       if (result === "removed") {
         plannedRemovedPaths.add(dir.path);
       }
@@ -178,7 +179,10 @@ function withoutBridgeBlock(text) {
   return `${before}${after}`;
 }
 
-async function removeGeneratedFile(path, expected, dryRun) {
+async function removeGeneratedFile(path, expected, dryRun, root = null) {
+  if (root !== null && await hasUnsafeAncestor(path, root)) {
+    return "preserved";
+  }
   const stats = await pathStats(path);
   if (stats === null) {
     return "absent";
@@ -210,7 +214,10 @@ async function removeConfigFile(path, dryRun) {
   return "removed";
 }
 
-async function removeGeneratedDir(path, dryRun) {
+async function removeGeneratedDir(path, dryRun, root = null) {
+  if (root !== null && await hasUnsafeAncestor(path, root)) {
+    return "preserved";
+  }
   const stats = await pathStats(path);
   if (stats === null) {
     return "absent";
@@ -244,7 +251,10 @@ async function removeProjectStateDir(path, dryRun) {
   return "removed";
 }
 
-async function removeEmptyDir(path, dryRun, plannedRemovedPaths) {
+async function removeEmptyDir(path, dryRun, plannedRemovedPaths, root = null) {
+  if (root !== null && await hasUnsafeAncestor(path, root)) {
+    return "preserved";
+  }
   const stats = await pathStats(path);
   if (stats === null) {
     return "absent";
@@ -278,6 +288,43 @@ function lineEnding(text) {
 
 async function exists(path) {
   return access(path).then(() => true, () => false);
+}
+
+async function preserveExisting(path) {
+  return await exists(path) ? "preserved" : "absent";
+}
+
+async function hasUnsafeAncestor(path, root) {
+  const resolvedRoot = resolve(root);
+  const resolvedPath = resolve(path);
+  if (resolvedPath !== resolvedRoot && !isInside(resolvedPath, resolvedRoot)) {
+    return true;
+  }
+  const ancestors = [];
+  let current = dirname(resolvedPath);
+  while (current !== resolvedRoot) {
+    ancestors.push(current);
+    const parent = dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+  for (const ancestor of ancestors.reverse()) {
+    const stats = await pathStats(ancestor);
+    if (stats === null) {
+      return false;
+    }
+    if (stats.isSymbolicLink() || !stats.isDirectory()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isInside(path, parent) {
+  const relativePath = relative(parent, path);
+  return relativePath !== "" && !relativePath.startsWith("..") && !isAbsolute(relativePath);
 }
 
 async function pathStats(path) {

@@ -2,7 +2,8 @@
 
 ## Problem
 
-AI agent skills are easy to install but hard to govern.
+AI agent skills are easy to install but hard to route consistently once several
+similar skills are broadly available.
 
 Users lose confidence when they cannot tell:
 
@@ -17,10 +18,11 @@ Users lose confidence when they cannot tell:
 
 ## Product Definition
 
-SkillBoard is a workflow-scoped skill control board with a reconciler.
+SkillBoard is a workflow-scoped skill routing board with a reconciler.
 
-It is not primarily a skill catalog. It is an operations layer that turns a
-skill repository into a visible, policy-checked system. Users define intent and
+It is not primarily a skill catalog or a deny-first permission wall. It is an
+operations layer that keeps skills broadly usable, turns overlap into a visible
+route, and still checks policy before invocation. Users define intent and
 policy; SkillBoard interprets drift between desired state and actual state.
 
 ## Adjacent Tools
@@ -90,5 +92,5 @@ obvious safe defaults and only ask for important decisions:
 - removed skills: show affected workflows and fallback capabilities;
 - changed harnesses: show missing commands and migration hints;
 - new harnesses: disable by default until explicitly assigned;
-- duplicate skills: group by capability and recommend a canonical
-  implementation.
+- duplicate or overlapping skills: group by capability, keep allowed skills
+  available, and recommend a canonical route for the current workflow.

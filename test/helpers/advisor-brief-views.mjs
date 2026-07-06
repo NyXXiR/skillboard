@@ -101,6 +101,8 @@ function guidanceView(guidance) {
       keys: Object.keys(guidance.goal_document),
       path: guidance.goal_document.path,
       purpose: guidance.goal_document.purpose,
+      loop: guidance.goal_document.loop,
+      simplification_rule: guidance.goal_document.simplification_rule,
       when_to_read: guidance.goal_document.when_to_read
     },
     choices: guidance.choices,

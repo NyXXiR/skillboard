@@ -176,6 +176,8 @@ test("setup without confirmation explains the agent-layer boundary without mutat
 
     assert.equal(result.code, 1);
     assert.match(result.stdout, /SkillBoard setup installs agent-layer integration, not project files/);
+    assert.match(result.stdout, /does not create skillboard\.config\.yaml or \.skillboard\//);
+    assert.match(result.stdout, /run skillboard init later only for a project that needs local policy/i);
     assert.match(result.stdout, /Run with --yes to install agent-layer integration/);
     assert.match(result.stdout, /setup --agent codex --yes/);
     assert.equal(await readFile(join(home, ".codex", "skills", "skillboard", "SKILL.md"), "utf8").catch(() => null), null);
@@ -197,16 +199,77 @@ test("setup --yes installs agent-layer guidance without project initialization",
     const openCodeSkill = await readFile(join(home, ".config", "opencode", "skills", "skillboard", "SKILL.md"), "utf8");
 
     assert.match(setup.stdout, /SkillBoard agent integration installed/);
+    assert.match(setup.stdout, /No project was initialized/);
+    assert.match(setup.stdout, /run skillboard init only inside a workspace that needs local SkillBoard policy/i);
     assert.match(setup.stdout, /opencode:/);
     assert.doesNotMatch(setup.stdout, /skillboard init --dir/);
     assert.match(skill, /name: skillboard/);
     assert.match(skill, /SkillBoard Agent Integration/);
     assert.match(skill, /Installed user skills are usable by default/);
+    assert.match(skill, /For ordinary user requests, work normally/);
+    assert.match(skill, /If the user explicitly asks for a specific installed skill/);
     assert.match(skill, /workflow priority/);
     assert.match(skill, /Do not ask for permission merely because you selected a skill/);
     assert.match(skill, /skillboard import-skill --from <source-agent> --to <this-agent>/);
     assert.match(skill, /needs-adaptation/);
     assert.equal(openCodeSkill, skill);
+    assert.equal(await readFile(join(home, "skillboard.config.yaml"), "utf8").catch(() => null), null);
+    assert.equal(await readFile(join(home, "AGENTS.md"), "utf8").catch(() => null), null);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("uninstall --agent-layer removes only managed SkillBoard guidance", async () => {
+  const home = await mkdtemp(join(tmpdir(), "skillboard-agent-uninstall-"));
+  try {
+    const env = testAgentEnv(home);
+    await mkdir(join(home, ".claude", "skills", "skillboard"), { recursive: true });
+    await mkdir(join(home, ".codex", "skills", "local-helper"), { recursive: true });
+    await writeFile(
+      join(home, ".claude", "skills", "skillboard", "SKILL.md"),
+      "---\nname: skillboard\ndescription: User-authored skillboard helper.\n---\n# Keep me\n",
+      "utf8"
+    );
+    await writeFile(
+      join(home, ".codex", "skills", "local-helper", "SKILL.md"),
+      "---\nname: local-helper\ndescription: User local helper.\n---\n# Keep local helper\n",
+      "utf8"
+    );
+    await execFileAsync(process.execPath, [BIN, "setup", "--yes", "--agent", "codex,opencode"], {
+      cwd: home,
+      env
+    });
+
+    const codexSkillPath = join(home, ".codex", "skills", "skillboard", "SKILL.md");
+    const openCodeSkillPath = join(home, ".config", "opencode", "skills", "skillboard", "SKILL.md");
+    const claudeSkillPath = join(home, ".claude", "skills", "skillboard", "SKILL.md");
+    const helperSkillPath = join(home, ".codex", "skills", "local-helper", "SKILL.md");
+    const dryRun = await execFileAsync(process.execPath, [BIN, "uninstall", "--agent-layer", "--agent", "codex,claude,opencode", "--dry-run"], {
+      cwd: home,
+      env
+    });
+
+    assert.match(dryRun.stdout, /Dry run: Uninstalled SkillBoard agent integration/);
+    assert.match(dryRun.stdout, /Removed: .*codex:/);
+    assert.match(dryRun.stdout, /Removed: .*opencode:/);
+    assert.match(dryRun.stdout, /Preserved: .*claude:/);
+    assert.match(await readFile(codexSkillPath, "utf8"), /SkillBoard Agent Integration/);
+    assert.match(await readFile(openCodeSkillPath, "utf8"), /SkillBoard Agent Integration/);
+
+    const result = await execFileAsync(process.execPath, [BIN, "uninstall", "--agent-layer", "--agent", "codex,claude,opencode"], {
+      cwd: home,
+      env
+    });
+
+    assert.match(result.stdout, /Uninstalled SkillBoard agent integration/);
+    assert.match(result.stdout, /Removed: .*codex:/);
+    assert.match(result.stdout, /Removed: .*opencode:/);
+    assert.match(result.stdout, /Preserved: .*claude:/);
+    await assert.rejects(readFile(codexSkillPath, "utf8"), /ENOENT/);
+    await assert.rejects(readFile(openCodeSkillPath, "utf8"), /ENOENT/);
+    assert.match(await readFile(claudeSkillPath, "utf8"), /User-authored skillboard helper/);
+    assert.match(await readFile(helperSkillPath, "utf8"), /Keep local helper/);
     assert.equal(await readFile(join(home, "skillboard.config.yaml"), "utf8").catch(() => null), null);
     assert.equal(await readFile(join(home, "AGENTS.md"), "utf8").catch(() => null), null);
   } finally {

@@ -16,7 +16,10 @@ export async function doctorProject(options = {}) {
   const uninstall = await uninstallProject({
     root,
     dryRun: true,
-    removeConfig: false,
+    resetConfig: true,
+    removeReports: true,
+    removeHooks: true,
+    removeProjectState: true,
     removeEmptyDirs: true
   });
   const configExists = await exists(configPath);

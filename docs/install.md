@@ -3,13 +3,15 @@
 SkillBoard sits one layer above skill installers, plugin marketplaces, harness
 bundles, and local skill repositories.
 
-After install, ask your AI questions like "what skills can you use here?" or
-"which skill should you use for this task?" The AI runs SkillBoard behind the
-scenes when skill choices overlap or workflow priority matters. Installed user
-skills are usable by default unless runtime, user, or local instructions disable
-them; SkillBoard should not turn every skill choice into a permission prompt.
-When it selects a skill, the AI should briefly say which skill it will use and
-which skill it used. You do not need to memorize the SkillBoard command loop.
+After install, ask your AI normal work requests such as "write tests before
+implementation", "review this plan and point out weak assumptions", or "help me
+refine this UX flow." The AI runs SkillBoard behind the scenes only when skill
+choices overlap, workflow priority matters, or you explicitly ask for a
+SkillBoard or skill decision. Installed user skills are usable by default unless
+runtime, user, or local instructions disable them; SkillBoard should not turn
+every skill choice into a permission prompt. When it selects a skill, the AI
+should briefly say which skill it will use and which skill it used. You do not
+need to memorize the SkillBoard command loop.
 
 ## Install From npm
 
@@ -17,7 +19,9 @@ Global install auto-runs agent integration. Installing the package makes the
 CLI available and the postinstall step runs agent-layer setup for detected
 Codex, Claude, OpenCode, and Hermes user skill roots. The setup is best-effort:
 it never fails the package install, does not edit agent config files, and does
-not create project policy files.
+not create project policy files. It does not run `skillboard init`; run `init`
+only inside a workspace where you want local SkillBoard policy, bridge guidance,
+and reports.
 
 The published CLI supports Node.js 14.21 or newer. Node 12 and older are not
 supported without a transpiled bundle because the source uses modern ESM and
@@ -219,16 +223,24 @@ passing guard is not a user prompt; the agent should disclose the selected skill
 at the start and completion, and ask only if the guard denies use or a
 policy-changing action is needed.
 
-When the user asks which skill fits a task, the bridge tells agents to use
-`skillboard brief --intent <request> --json`, read `assistant_guidance.route`,
-and use `recommended_skill`, `fallback_skills`, `route_candidates`,
+When a normal request leaves skill choice ambiguous, several skills overlap,
+workflow priority matters, or the user asks for a SkillBoard or skill decision,
+the bridge tells agents to use `skillboard brief --intent <request> --json`,
+read `assistant_guidance.route`, and use `recommended_skill`, `fallback_skills`,
+`route_candidates`, `overlap_resolution`, `policy_memory`,
 `post_use_policy_suggestion`, and `guard_command` instead of guessing from raw
 skill text. Inspect
-`route_candidates` when several skills match so denied candidates and selected
-fallbacks are clear. If `post_use_policy_suggestion` is present, the agent
-should use the allowed routed skill first, then ask after completion whether to
-remember the suggested policy. If no skill matches, the agent should ask a
-clarifying question before choosing a skill.
+`overlap_resolution` and `route_candidates` when several skills match so
+allowed overlap, denied candidates, and selected fallbacks are clear. If
+`policy_memory` is present, the agent should mention after completion that
+remembered or configured policy selected this skill even though other allowed
+skills were available. If
+`post_use_policy_suggestion` is present, the agent should use the allowed
+routed skill first, then ask after completion whether to remember the suggested
+policy. If no skill matches, the agent should ask a clarifying question before
+choosing a skill. If the user explicitly requests a specific already-allowed
+skill, the agent should honor that request after guard use instead of rerouting
+away solely because another skill also matches.
 
 Action cards are change suggestions. Before an agent applies one that changes
 policy, trust, hooks, reset state, or skill references, it should request user
@@ -260,14 +272,24 @@ workflow you explicitly created for that Hermes profile.
 Before answering what skills can be used in that workflow, run:
 skillboard brief --workflow <workflow-name> --json --include-actions --dir /path/to/your/project
 
-When the user asks which skill fits a task, run:
+When a normal request leaves skill choice ambiguous, several skills overlap,
+workflow priority matters, or the user asks for a SkillBoard or skill decision,
+run:
 skillboard brief --workflow <workflow-name> --intent <request> --json --dir /path/to/your/project
 Read assistant_guidance.route. Use recommended_skill, fallback_skills,
-route_candidates, post_use_policy_suggestion, and guard_command. Inspect
-route_candidates when several skills match so denied candidates and selected
-fallbacks are clear. If post_use_policy_suggestion is present, use the allowed
-routed skill first, then ask after completion whether to remember the suggested
-policy. If no skill matches, ask a clarifying question before choosing a skill.
+route_candidates, overlap_resolution, policy_memory,
+post_use_policy_suggestion, and guard_command. Inspect overlap_resolution and
+route_candidates when several skills match so allowed overlap, denied
+candidates, and selected fallbacks are clear. If policy_memory is present,
+mention after completion that remembered or configured policy selected this
+skill even though other allowed skills were available. If
+post_use_policy_suggestion is present, use the allowed routed skill first, then
+ask after completion whether to remember the suggested policy. If no skill
+matches, ask a clarifying question before choosing a skill.
+
+If the user explicitly requests a specific already-allowed skill, honor that
+request after guard use instead of rerouting away solely because another skill
+also matches.
 
 Do not infer availability from installed SKILL.md files. Immediately before
 invoking a skill, run:
@@ -345,66 +367,74 @@ GitHub `org/repo` shorthands, and `file://` Git remotes. It writes the refreshed
 checkout under `.skillboard/sources/<install-unit-id>`, updates `cache_path`,
 `source_digest`, and `verified_at`, and leaves the config untouched on dry-run.
 
-## Uninstall From A Project
+## Uninstall Agent Guidance Or Project State
 
-Package removal and project cleanup are intentionally separate. `npm uninstall
--g agent-skillboard` removes the CLI package, but it does not edit a project.
-Use the project cleanup command when you want to remove the bridge files created
-by init:
+Package removal, agent guidance cleanup, and project cleanup are intentionally
+separate. `npm uninstall -g agent-skillboard` removes the CLI package, but npm
+uninstall should not be relied on to edit agent homes or projects. If you want
+the postinstall-created user-agent guidance removed, run the agent-layer cleanup
+while the `skillboard` binary is still available:
+
+```bash
+skillboard uninstall --agent-layer --dry-run
+skillboard uninstall --agent-layer
+npm uninstall -g agent-skillboard
+```
+
+Agent-layer uninstall removes only managed `skillboard/SKILL.md` guidance files
+that contain SkillBoard's agent integration marker. It preserves other agent
+skills and user-authored `skillboard` skills that do not contain that marker.
+Use `--agent codex,claude,opencode,hermes` to target specific supported agents.
+
+Use the project cleanup command when you want to remove SkillBoard from a
+project:
 
 ```bash
 skillboard uninstall --dir /path/to/your/project --dry-run
 skillboard uninstall --dir /path/to/your/project
 ```
 
-Default uninstall behavior is conservative:
+Default project uninstall is a clean removal:
 
-- removes only the `BEGIN SKILLBOARD` / `END SKILLBOARD` bridge block from
-  `AGENTS.md` and `CLAUDE.md`;
+- removes SkillBoard config, bridge blocks, and the entire `.skillboard/`
+  project state directory;
 - deletes a bridge file only when it has no user content left;
-- deletes `.skillboard/profiles/README.md` and `.skillboard/hooks/README.md`
-  only when they still exactly match the generated text;
-- removes empty generated directories;
-- preserves `skillboard.config.yaml`, local skill files, reports, generated guard
-  hooks, and modified files by default. Empty generated directories can be
-  removed.
+- preserves user-authored non-SkillBoard content in `AGENTS.md` and
+  `CLAUDE.md`;
+- preserves local `skills/*/SKILL.md` files because skill creation and deletion
+  are outside the uninstall scope.
 
-Use `--purge` when you want SkillBoard's influence removed from the project
-instead of merely disconnecting the bridge:
+Use `--keep-settings` only when you want to keep project SkillBoard policy and
+bridge guidance in place:
 
 ```bash
-skillboard uninstall --dir /path/to/your/project --purge --dry-run
-skillboard uninstall --dir /path/to/your/project --purge
+skillboard uninstall --dir /path/to/your/project --keep-settings --dry-run
+skillboard uninstall --dir /path/to/your/project --keep-settings
 ```
 
-`--purge` removes SkillBoard config, bridge blocks, and the entire
-`.skillboard/` project state directory, including reports, hooks, source caches,
-rollout logs, variant snapshots, and profiles. It preserves local `skills/`
-files because skills that were created or deleted are outside the uninstall
-scope.
+`--keep-settings` preserves `skillboard.config.yaml`, project bridge guidance,
+reports, generated guard hooks, and modified project state. It is the explicit
+opt-in when project policy and guidance should survive package cleanup.
 
-Use `--remove-config` to delete `skillboard.config.yaml` only when it still
-matches the untouched default config. If the config contains scanned skills or
-user edits, uninstall preserves it and reports it under `Preserved`.
+`--purge` is still accepted as an explicit spelling for the default clean
+project removal. Default removal and `--purge` both remove `.skillboard/`,
+including reports, hooks, source caches, rollout logs, variant snapshots, and
+profiles.
 
-Use `--reset-config` only when you intentionally want to discard the current
-SkillBoard policy state and run `skillboard init` again from a fresh lifecycle.
-This removes `skillboard.config.yaml` even when it contains imported skills or
-workflow edits, but it still preserves local `skills/` files, reports, and
-user-authored bridge content.
+The older granular flags are still supported for scripts that assembled cleanup
+piecemeal. Passing `--remove-config`, `--reset-config`, `--remove-reports`, or
+`--remove-hooks` without `--purge` runs a partial cleanup instead of the default
+clean project removal:
 
-Add `--remove-reports` when a test reset should also delete generated
-`.skillboard/reports/` output. This flag is explicit because reports may contain
-review notes or other user-authored context. Local `skills/` files are still
-preserved.
+- `--remove-config` deletes `skillboard.config.yaml` only when it still matches
+  the generated default;
+- `--reset-config` deletes `skillboard.config.yaml` even when it contains policy
+  choices;
+- `--remove-reports` deletes `.skillboard/reports/`;
+- `--remove-hooks` deletes `.skillboard/hooks/`.
 
-Add `--remove-hooks` only when a reset should also delete the entire
-`.skillboard/hooks/` directory contents. This is explicit because hook scripts
-may be wired into local agent/runtime configuration. Combine `--reset-config`,
-`--remove-reports`, and `--remove-hooks` for a clean test reset that removes
-the most common SkillBoard-owned lifecycle scaffolding while preserving local
-`skills/`. Use `--purge` instead when no `.skillboard/` project state should
-remain at all.
+For ordinary users, the default project uninstall is already the clean reset that
+removes SkillBoard-owned lifecycle scaffolding while preserving local `skills/`.
 
 ## Upper-Layer Control
 

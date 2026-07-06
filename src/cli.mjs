@@ -58,6 +58,7 @@ import { renderSkillBrief } from "./brief-renderer.mjs";
 import { planGuardHookInstall } from "./control.mjs";
 import { writeCheckedConfig } from "./control/config-write.mjs";
 import { runInitCommand, runSetupCommand, runUninstallCommand } from "./lifecycle-cli.mjs";
+import { renderRouteSectionLines } from "./route-renderer.mjs";
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
@@ -65,7 +66,7 @@ const APPLY_ACTION_VALUE_OPTIONS = new Set(["workflow", "dir", "config", "skills
 const COMMAND_USAGE = new Map([
   ["setup", ["setup [--yes] [--agent codex[,claude,opencode,hermes]]"]],
   ["import-skill", ["import-skill --from <agent> --to <agent> --skill <id-or-dir> [--target-skill <id-or-dir>] [--adapted-file <path>] [--dry-run] [--yes] [--replace] [--json]"]],
-  ["uninstall", ["uninstall [--dir <path>] [--dry-run] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs]"]],
+  ["uninstall", ["uninstall [--dir <path>] [--dry-run] [--keep-settings] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs] [--agent-layer] [--agent codex[,claude,opencode,hermes]]"]],
   [
     "inventory",
     [
@@ -1353,6 +1354,9 @@ function renderCanUse(result) {
     `Trust: ${result.trust === null ? "unknown" : result.trust.level}`,
     `Roles: ${result.roles.length === 0 ? "none" : result.roles.join(", ")}`
   ];
+  if (result.allowed) {
+    lines.push("Allowed use: disclose the skill at the start and completion; do not ask for another approval.");
+  }
   if (result.reasons.length > 0) {
     lines.push("Reasons:");
     for (const reason of result.reasons) {
@@ -1364,40 +1368,7 @@ function renderCanUse(result) {
 }
 
 function renderRoute(result) {
-  const lines = [
-    `Intent: ${result.intent}`,
-    `Workflow: ${result.workflow}`,
-    `Match source: ${result.match_source}`,
-    `Matched capability: ${result.matched_capability ?? "none"}`,
-    `Matched skill: ${result.matched_skill ?? "none"}`,
-    `Confidence: ${result.confidence}`,
-    `Why: ${result.recommendation_reason}`,
-    `Matched terms: ${formatList(result.matched_terms)}`,
-    `Recommended skill: ${result.recommended_skill ?? "none"}`,
-    `Fallback skills: ${formatList(result.fallback_skills)}`
-  ];
-  if ((result.route_candidates ?? []).length > 0) {
-    lines.push("Route candidates:");
-    for (const candidate of result.route_candidates) {
-      lines.push(`- ${candidate.skill} (${routeCandidateStatus(candidate)})`);
-      if (!candidate.guard_allowed && candidate.guard_reasons.length > 0) {
-        lines.push(`  - ${candidate.guard_reasons[0]}`);
-      }
-    }
-  }
-  if (result.guard_command !== null) {
-    lines.push(`Guard: ${result.guard_command}`);
-  }
-  if (result.usage_disclosure !== null && result.usage_disclosure !== undefined) {
-    lines.push(`Disclosure: run the guard automatically, state at the start that ${result.recommended_skill} is being used, and state at completion that it was used. No extra user approval is needed when the guard allows it.`);
-    lines.push(`Say before use: "${result.usage_disclosure.start_message}"`);
-    lines.push(`Say after completion: "${result.usage_disclosure.finish_message}"`);
-  }
-  if (result.post_use_policy_suggestion !== null && result.post_use_policy_suggestion !== undefined) {
-    const suggestion = result.post_use_policy_suggestion;
-    lines.push(`After completion: ${routeAfterUsePromptText(suggestion.question)}`);
-    lines.push(`Policy command after confirmation: ${suggestion.suggested_policy.command_hint}`);
-  }
+  const lines = renderRouteSectionLines(result, { format: "cli", includeWorkflow: true });
   if (result.matched_capability === null) {
     lines.push("Possible skills:");
     for (const skill of result.possible_skills.slice(0, 5)) {
@@ -1406,18 +1377,6 @@ function renderRoute(result) {
   }
   lines.push("");
   return lines.join("\n");
-}
-
-function routeCandidateStatus(candidate) {
-  return [
-    candidate.role,
-    candidate.selected ? "selected" : null,
-    candidate.guard_allowed ? "allowed" : "denied"
-  ].filter((value) => value !== null).join(", ");
-}
-
-function routeAfterUsePromptText(question) {
-  return question.replace(/^Should I /u, "ask whether to ").replace(/\?$/u, ".");
 }
 
 function renderSourceAudit(result) {
@@ -1543,7 +1502,7 @@ function renderCounts(counts) {
 
 function helpText() {
   return [
-    "SkillBoard - AI-mediated workflow-scoped skill policy",
+    "SkillBoard - permissive AI skill overlap routing",
     "Version: see skillboard --version",
     "",
     "After global install:",
@@ -1552,12 +1511,13 @@ function helpText() {
     "  The package postinstall auto-runs agent-layer guidance setup on install and update.",
     "  Under sudo, setup targets SUDO_USER's agent homes while npm still controls the binary prefix.",
     "  Run skillboard setup later after adding another supported agent or when install scripts were skipped.",
+    "  Run skillboard uninstall --agent-layer before package removal when managed agent guidance should disappear.",
     "",
     "AI/automation operations:",
     "  setup [--yes] [--agent codex[,claude,opencode,hermes]]",
     "  import-skill --from <agent> --to <agent> --skill <id-or-dir> [--target-skill <id-or-dir>] [--adapted-file <path>] [--dry-run] [--yes] [--replace] [--json]",
     "  init [--dir <path>] [--scan-root <dir>[,<dir>]] [--no-scan-installed]",
-    "  uninstall [--dir <path>] [--dry-run] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs]",
+    "  uninstall [--dir <path>] [--dry-run] [--keep-settings] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs] [--agent-layer] [--agent codex[,claude,opencode,hermes]]",
     "  inventory refresh [--dir <path>] [--config <path>] [--scan-root <dir>[,<dir>]] [--dry-run] [--json]",
     "  inventory detect --unit <id> --config <path> [--install-output <path>] [--config-file a,b] [--source <value>] [--kind <kind>] [--scope <scope>] [--dry-run] [--json]",
     "  sources refresh [--dir <path>] [--config <path>] [--unit <id>[,<id>]] [--cache-dir <dir>] [--dry-run] [--json]",
@@ -1597,10 +1557,10 @@ function helpText() {
     "  impact disable <skill-id> --config <path> --skills <dir> [--out <path>] [--json]",
     "",
     "AI/automation control loop:",
-    "  Goal: preserve SkillBoard as a non-blocking AI skill routing control plane; see docs/ai-skill-routing-goal.md.",
+    "  Goal: keep skills broadly available while routing overlaps consistently; see docs/ai-skill-routing-goal.md.",
     "  Development loop: observe → route → work → explain briefly → ask after → remember policy.",
     "  For an already-allowed skill, disclose the selected skill at start and completion; do not ask for another approval.",
-    "  Translate a user's skill request into the current brief: skillboard brief --json --config <path> --skills <dir> [--workflow <name>] [--intent <request>] [--include-actions].",
+    "  Translate an ambiguous request or explicit skill decision into the current brief: skillboard brief --json --config <path> --skills <dir> [--workflow <name>] [--intent <request>] [--include-actions].",
     "  If a policy-changing action is needed, pick one current action id from that brief and ask the user for one confirmation.",
     "  Apply one current action with skillboard apply-action <action-id> --config <path> --skills <dir> [--workflow <name>] --yes --json.",
     "  Read the returned post-apply brief, then run skillboard guard use automatically before invocation.",
@@ -1630,6 +1590,9 @@ function commandHelpText(command) {
   }
   if (command === "route") {
     return routeHelpText();
+  }
+  if (command === "can-use") {
+    return canUseHelpText();
   }
   if (command === "guard") {
     return guardHelpText();
@@ -1682,6 +1645,7 @@ function setupHelpText() {
     "Installs or refreshes SkillBoard at the agent layer, not into a project.",
     "A normal global package install already runs this automatically for detected supported agents.",
     "Use setup later after adding another supported agent, enabling a new agent home, or skipping install scripts.",
+    "You do not need skillboard init for this install-time setup; init is only for a workspace where you want project-local policy files.",
     "Without --yes, setup explains the user agent skill files it will write and asks before installing when run in a TTY.",
     "In non-interactive automation, rerun with --yes after choosing the target agents.",
     "",
@@ -1689,6 +1653,7 @@ function setupHelpText() {
     "  Writes a SkillBoard guidance skill into detected user agent skill roots.",
     "  Does not write skillboard.config.yaml, .skillboard/, AGENTS.md, or CLAUDE.md in projects.",
     "  Teaches agents to use installed skills by default and resolve overlap by workflow priority.",
+    "  Remove this managed guidance later with skillboard uninstall --agent-layer.",
     "",
     "Supported agent homes:",
     "  codex: CODEX_HOME, AGENTS_HOME, ~/.agents, or ~/.codex",
@@ -1732,27 +1697,37 @@ function importSkillHelpText() {
 
 function uninstallHelpText() {
   return [
-    "Usage: skillboard uninstall [--dir <path>] [--dry-run] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs]",
+    "Usage: skillboard uninstall [--dir <path>] [--dry-run] [--keep-settings] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs] [--agent-layer] [--agent codex[,claude,opencode,hermes]]",
     "",
     "This help is read-only. It does not load config or change project files.",
     "",
-    "Removes SkillBoard project bridge files and generated lifecycle scaffolding.",
-    "Default cleanup is conservative and preserves policy, reports, hooks, local skills, and user-authored content.",
+    "Removes SkillBoard project bridge files, generated lifecycle scaffolding, or managed agent-layer guidance.",
+    "Default project cleanup removes SkillBoard settings and generated project state while preserving local skills and user-authored non-SkillBoard content.",
     "",
     "Options:",
     "  --dir <path>        Project root to clean up; defaults to the current directory.",
     "  --dry-run           Preview the cleanup without writing changes.",
-    "  --purge             Remove SkillBoard policy influence and generated footprint while preserving local skills.",
-    "  --remove-config     Delete skillboard.config.yaml only if it still matches the generated default.",
-    "  --reset-config      Delete skillboard.config.yaml even when it contains policy choices.",
-    "  --remove-reports    Delete .skillboard/reports/.",
-    "  --remove-hooks      Delete .skillboard/hooks/.",
+    "  --keep-settings     Preserve project SkillBoard settings and bridge guidance during default cleanup.",
+    "  --purge             Explicit alias for the default clean project removal; kept for existing scripts.",
+    "  --remove-config     Legacy partial cleanup: delete skillboard.config.yaml only if generated default.",
+    "  --reset-config      Legacy partial cleanup: delete skillboard.config.yaml even with policy choices.",
+    "  --remove-reports    Legacy partial cleanup: delete .skillboard/reports/.",
+    "  --remove-hooks      Legacy partial cleanup: delete .skillboard/hooks/.",
     "  --keep-empty-dirs   Preserve empty generated directories.",
+    "  --agent-layer       Remove managed user-agent skillboard guidance instead of project files.",
+    "  --agent <list>      Target supported agents for --agent-layer cleanup.",
     "",
-    "Purge:",
+    "Default project cleanup:",
     "  Removes SkillBoard config, bridge blocks, and the entire .skillboard/ project state directory.",
     "  This includes reports, hooks, source caches, rollout logs, variant snapshots, and profiles.",
     "  It does not delete local skills under skills/.",
+    "  Add --keep-settings when you want to leave project SkillBoard policy and bridge guidance in place.",
+    "  Passing a legacy partial cleanup flag without --purge cleans only that requested area instead.",
+    "",
+    "Agent layer:",
+    "  Removes only managed skillboard/SKILL.md guidance files containing the SkillBoard agent integration marker.",
+    "  It preserves other agent skills and user-authored skillboard skills without that marker.",
+    "  Run this before npm uninstall -g agent-skillboard when agent guidance should be removed.",
     ""
   ].join("\n");
 }
@@ -1783,7 +1758,7 @@ function briefHelpText() {
     "Usage: skillboard brief [--workflow <name>] [--intent <request>] [--dir <path>] [--config <path>] [--skills <dir>] [--include-actions] [--verbose] [--json]",
     "",
     "Reads the current SkillBoard brief without changing project files.",
-    "Use it when a user asks what skills the AI can use, which skill fits a request, or what needs approval.",
+    "Use it when a user asks what skills the AI can use, a request has ambiguous skill overlap, or a policy change needs approval.",
     "",
     "Options:",
     "  --workflow <name>     Evaluate one workflow.",
@@ -1808,7 +1783,7 @@ function routeHelpText() {
   return [
     "Usage: skillboard route <intent> --workflow <name> [--config <path>] [--skills <dir>] [--json]",
     "",
-    "Suggests the best currently allowed skill for a user request.",
+    "Suggests the routed skill for a user request when several allowed skills may overlap.",
     "Use it when the AI needs a skill recommendation without changing policy.",
     "",
     "Options:",
@@ -1819,8 +1794,32 @@ function routeHelpText() {
     "  --json             Print an agent-readable payload.",
     "",
     "AI use:",
-    "  If a skill is recommended, run the guard before invoking it.",
+    "  If a skill is recommended, run the guard automatically before invoking it.",
+    "  If the guard allows use, disclose the skill at start and completion; do not ask for another approval.",
+    "  If policy memory would reduce ambiguity, ask after completion whether to remember the routed skill.",
     "  If no skill matches, ask a clarifying question instead of guessing.",
+    ""
+  ].join("\n");
+}
+
+function canUseHelpText() {
+  return [
+    "Usage: skillboard can-use <skill-id> --workflow <name> [--config <path>] [--skills <dir>] [--json]",
+    "",
+    "Checks whether one skill is currently usable in a workflow without changing policy.",
+    "Use it when the AI needs an availability answer for a named skill.",
+    "",
+    "Options:",
+    "  <skill-id>         Skill id to check.",
+    "  --workflow <name>  Workflow that would use the skill.",
+    "  --config <path>    Use a specific skillboard.config.yaml.",
+    "  --skills <dir>     Use a specific skills directory.",
+    "  --json             Print an agent-readable payload.",
+    "",
+    "AI use:",
+    "  If allowed, use the skill after the final guard check.",
+    "  If allowed, disclose the skill at the start and completion; do not ask for another approval.",
+    "  If denied, explain the reason or ask for the needed policy change before using it.",
     ""
   ].join("\n");
 }
@@ -1841,7 +1840,7 @@ function guardHelpText() {
     "  --json             Print an agent-readable payload.",
     "",
     "AI use:",
-    "  If allowed, disclose the skill at the start and completion.",
+    "  If allowed, disclose the skill at the start and completion; do not ask for another approval.",
     "  If denied, do not invoke the skill. Explain the reason or ask for the needed policy change.",
     ""
   ].join("\n");
