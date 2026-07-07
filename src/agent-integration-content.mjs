@@ -16,7 +16,7 @@ Use this skill to let SkillBoard guide skill selection above individual projects
 - SkillBoard is the user-level control plane for skill priority, overlap resolution, and workflow-aware routing.
 - Project management belongs to the agent or workspace layer. Do not initialize, attach, rewrite, or manage a project just because SkillBoard is installed.
 - Package install and \`skillboard setup\` install user-agent guidance only.
-- \`skillboard init\` is a separate project command. Use it only when the user wants project-local policy files such as \`skillboard.config.yaml\`, \`.skillboard/\`, \`AGENTS.md\`, or \`CLAUDE.md\`.
+- \`skillboard init\` is deprecated project-local policy bootstrap. It is not needed for normal use; use it only when maintaining an existing workspace that intentionally keeps local policy files such as \`skillboard.config.yaml\`, \`.skillboard/\`, \`AGENTS.md\`, or \`CLAUDE.md\`.
 
 ## Default Behavior
 

@@ -177,7 +177,8 @@ test("setup without confirmation explains the agent-layer boundary without mutat
     assert.equal(result.code, 1);
     assert.match(result.stdout, /SkillBoard setup installs agent-layer integration, not project files/);
     assert.match(result.stdout, /does not create skillboard\.config\.yaml or \.skillboard\//);
-    assert.match(result.stdout, /run skillboard init later only for a project that needs local policy/i);
+    assert.match(result.stdout, /skillboard init is deprecated project-local policy bootstrap/i);
+    assert.match(result.stdout, /not needed for normal use/i);
     assert.match(result.stdout, /Run with --yes to install agent-layer integration/);
     assert.match(result.stdout, /setup --agent codex --yes/);
     assert.equal(await readFile(join(home, ".codex", "skills", "skillboard", "SKILL.md"), "utf8").catch(() => null), null);
@@ -200,7 +201,8 @@ test("setup --yes installs agent-layer guidance without project initialization",
 
     assert.match(setup.stdout, /SkillBoard agent integration installed/);
     assert.match(setup.stdout, /No project was initialized/);
-    assert.match(setup.stdout, /run skillboard init only inside a workspace that needs local SkillBoard policy/i);
+    assert.match(setup.stdout, /skillboard init is deprecated project-local policy bootstrap/i);
+    assert.match(setup.stdout, /not needed for normal use/i);
     assert.match(setup.stdout, /opencode:/);
     assert.doesNotMatch(setup.stdout, /skillboard init --dir/);
     assert.match(skill, /name: skillboard/);

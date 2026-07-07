@@ -23,6 +23,14 @@ test("direct source cli help renders AI-mediated help", async () => {
   assert.match(result.stdout, /Run skillboard setup later after adding another supported agent/);
   assert.match(result.stdout, /skillboard uninstall --agent-layer before package removal/);
   assert.match(result.stdout, /import-skill --from <agent> --to <agent>/);
+  const automationSection = result.stdout.slice(
+    result.stdout.indexOf("AI/automation operations:"),
+    result.stdout.indexOf("Legacy project policy mode:")
+  );
+  assert.doesNotMatch(automationSection, /^\s+init /m);
+  assert.match(result.stdout, /Legacy project policy mode:/);
+  assert.match(result.stdout, /init \[--dir <path>\]/);
+  assert.match(result.stdout, /deprecated project-local policy bootstrap/i);
   assert.match(result.stdout, /opencode/);
   assert.match(result.stdout, /AI\/automation control loop/);
   assert.doesNotMatch(result.stdout, /AI\/automation approval loop/);
@@ -100,6 +108,17 @@ test("primary AI-loop commands expose safe command-local help", async () => {
       }
       if (entry.args[1] === "guard") {
         assert.match(result.stdout, /If allowed, disclose the skill at the start and completion; do not ask for another approval/i);
+      }
+      if (entry.args[1] === "init") {
+        assert.match(result.stdout, /Deprecated project-local policy bootstrap/i);
+        assert.match(result.stdout, /not needed for normal use/i);
+        assert.match(result.stdout, /Normal flow/i);
+        assert.doesNotMatch(result.stdout, /Use it once per project before asking the AI/i);
+      }
+      if (entry.args[1] === "doctor") {
+        assert.match(result.stdout, /Checks legacy local policy workspace health/i);
+        assert.doesNotMatch(result.stdout, /after init/i);
+        assert.doesNotMatch(result.stdout, /SkillBoard project is ready/i);
       }
       if (entry.args[1] === "can-use") {
         assert.match(result.stdout, /If allowed, use the skill after the final guard check/i);

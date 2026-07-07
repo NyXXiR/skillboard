@@ -38,29 +38,21 @@ SkillBoard non-blocking: observe the request, route to the current best skill,
 work normally, explain briefly, ask after use only when a policy preference would
 help, and remember that usage policy without rewriting skill bodies.
 
-## 1. Bootstrap The Control Plane
+## 1. Start From Agent-Layer Setup
 
 AI/automation/operator details:
 
 ```bash
-skillboard init
-skillboard doctor
+skillboard setup --agent codex,claude,opencode,hermes --yes
 ```
 
-`init` creates the config, local `skills/` directory, report directories, and
-agent bridge blocks. It also scans known local agent skill locations and records
-discovered skills as managed entries. Trusted user-local skills, including
-Hermes profile skills under `.hermes/profiles/*/skills`, are immediately
-attached to a generated manual workflow as `status: active` with
-`invocation: manual-only` when the project has no workflows yet, so existing
-manual skills keep working through `can-use` and guard checks without creating
-legacy-state warning noise. Runtime-supplied or external skills are quarantined
-until an explicit source and workflow decision exists. Reviewable items should
-appear as "Needs your decision"; only provenance failures, explicit user blocks,
-disabled sources, or other hard policy failures should remain "Blocked for
-safety". Use
-`skillboard doctor --strict` when review-needed safe-mode warnings should fail
-automation.
+Package install and `skillboard setup` write user-agent guidance only. They do
+not create `skillboard.config.yaml`, `.skillboard/`, `AGENTS.md`, or
+`CLAUDE.md` in projects. `skillboard init` is deprecated project-local policy
+bootstrap and is not needed for normal use; use it only when maintaining an
+existing workspace that intentionally keeps local SkillBoard policy files. Use
+`skillboard doctor --strict` only for an existing policy workspace when
+review-needed safe-mode warnings should fail automation.
 
 When the user asks the agent what it can use, the agent should read the current
 brief with `skillboard brief --json` first and answer from the brief rather than

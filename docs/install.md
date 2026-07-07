@@ -1,4 +1,4 @@
-# Install And Bootstrap
+# Install And Agent-Layer Setup
 
 SkillBoard sits one layer above skill installers, plugin marketplaces, harness
 bundles, and local skill repositories.
@@ -20,8 +20,8 @@ CLI available and the postinstall step runs agent-layer setup for detected
 Codex, Claude, OpenCode, and Hermes user skill roots. The setup is best-effort:
 it never fails the package install, does not edit agent config files, and does
 not create project policy files. It does not run `skillboard init`; run `init`
-only inside a workspace where you want local SkillBoard policy, bridge guidance,
-and reports.
+only when maintaining an existing workspace that intentionally keeps local
+SkillBoard policy, bridge guidance, and reports.
 
 The published CLI supports Node.js 14.21 or newer. Node 12 and older are not
 supported without a transpiled bundle because the source uses modern ESM and
@@ -78,34 +78,16 @@ SkillBoard reports `needs-adaptation`, the agent explains why, asks before
 changing the skill body for the target runtime, then installs the approved
 adapted file with `--adapted-file <path> --yes`.
 
-Use no-prompt npx package execution only when you intentionally want to create
-or inspect local workspace policy files without keeping a global SkillBoard
-binary installed:
+Use no-prompt package execution when you want read-only help without keeping a
+global SkillBoard binary installed:
 
 ```bash
-npx --yes --package agent-skillboard skillboard init
-npx --yes --package agent-skillboard skillboard doctor --summary
-npx --yes --package agent-skillboard skillboard brief --workflow <workflow-from-init>
+npm exec --yes --package agent-skillboard -- skillboard --version
+npm exec --yes --package agent-skillboard -- skillboard help brief
 ```
 
-Local workspace policy files can be stricter than the first agent-layer setup.
-When you intentionally run `init`, it imports trusted local skills as
-manual-only and keeps runtime/plugin skills quarantined until their source is
-reviewed. The brief presents unreviewed runtime sources as one-time review
-decisions rather than default block recommendations; after review, individual
-quarantined skills can be activated as manual-only workflow skills. When `init`
-creates or discovers workflows, use one of the workflow names it prints for the
-first brief. If `init` does not print a workflow, run the unscoped `brief`
-command it prints instead. The explicit package/binary spelling avoids an extra
-npx install prompt and keeps the executable name clear.
-
-The equivalent `npm exec` spelling is also no-prompt and works well in scripts:
-
-```bash
-npm exec --yes --package agent-skillboard -- skillboard init
-npm exec --yes --package agent-skillboard -- skillboard doctor --summary
-npm exec --yes --package agent-skillboard -- skillboard brief --workflow <workflow-from-init>
-```
+The explicit package/binary spelling avoids an extra install prompt and keeps
+the executable name clear.
 
 For repeated local use, install the CLI globally:
 
@@ -119,6 +101,21 @@ skillboard setup --agent codex,claude,opencode,hermes --yes
 The executable remains `skillboard` even though the npm package name is
 `agent-skillboard`.
 
+## Deprecated Project Policy Mode
+
+`skillboard init` is deprecated project-local policy bootstrap and is not
+needed for normal use. Package install, postinstall, and `skillboard setup`
+connect SkillBoard at the agent layer without creating project files.
+
+The command remains available for existing workspaces that intentionally keep
+local `skillboard.config.yaml`, `.skillboard/`, `AGENTS.md`, or `CLAUDE.md`
+policy files. If you maintain one of those workspaces, inspect `skillboard help
+init`, then run `skillboard init` from that workspace or pass `--dir`.
+
+```bash
+npm exec --yes --package agent-skillboard -- skillboard help init
+```
+
 ## Run Unreleased Builds From GitHub
 
 Use GitHub npx only when you intentionally want the current repository state
@@ -127,17 +124,15 @@ before the next npm release:
 AI/automation/operator details:
 
 ```bash
-npx --yes --package github:NyXXiR/skillboard skillboard init
-npx --yes --package github:NyXXiR/skillboard skillboard doctor --summary
-npx --yes --package github:NyXXiR/skillboard skillboard brief --workflow <workflow-from-init>
+npx --yes --package github:NyXXiR/skillboard skillboard --version
+npx --yes --package github:NyXXiR/skillboard skillboard help
 ```
 
 The equivalent `npm exec` spelling is explicit about the package and binary:
 
 ```bash
-npm exec --yes --package github:NyXXiR/skillboard -- skillboard init
-npm exec --yes --package github:NyXXiR/skillboard -- skillboard doctor --summary
-npm exec --yes --package github:NyXXiR/skillboard -- skillboard brief --workflow <workflow-from-init>
+npm exec --yes --package github:NyXXiR/skillboard -- skillboard --version
+npm exec --yes --package github:NyXXiR/skillboard -- skillboard help
 ```
 
 ## Install From A Clone
@@ -150,16 +145,16 @@ AI/automation/operator details:
 git clone https://github.com/NyXXiR/skillboard.git
 cd skillboard
 npm install
-node bin/skillboard.mjs init --dir /path/to/your/project
-node bin/skillboard.mjs doctor --dir /path/to/your/project --summary
-node bin/skillboard.mjs brief --dir /path/to/your/project --workflow <workflow-from-init>
+node bin/skillboard.mjs --version
+node bin/skillboard.mjs help
 ```
 
-## What init Does
+## What Deprecated init Does
 
-`skillboard init` is the optional local policy-file generation step. npm
-installation and `skillboard setup` do not modify a project, but init creates
-local files for teams that intentionally keep workflow policy in a workspace.
+`skillboard init` is the legacy local policy-file generation step. npm
+installation and `skillboard setup` do not modify a project, but init still
+creates local files for teams that intentionally keep workflow policy in an
+existing workspace.
 
 Created project files:
 
@@ -190,8 +185,8 @@ extensions without flattening them into loose skills. After the owning source is
 reviewed, action cards can activate a quarantined runtime skill into a workflow
 as `manual-only`; automatic preference should still be remembered later through
 the normal ask-after-use policy loop. Use `--no-scan-installed` for a
-scaffold-only bootstrap, or `--scan-root <dir>[,<dir>]` to add server-specific
-skill roots during bootstrap.
+scaffold-only initialization, or `--scan-root <dir>[,<dir>]` to add
+server-specific skill roots during initialization.
 
 After init, run:
 

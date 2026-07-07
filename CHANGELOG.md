@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+## 0.2.18 — 2026-07-07
+
+### Changed
+
+- Deprecated `skillboard init` from the normal first-use path across README,
+  install docs, reference docs, CLI help, postinstall/setup guidance, and
+  generated agent guidance.
+- Reframed normal onboarding around global install/postinstall and agent-layer
+  `skillboard setup`, with `init` reserved for legacy project-local policy
+  workspaces.
+- Updated `doctor` help and recommendations so it no longer reads as an
+  `init` prerequisite for new users.
+
+### Fixed
+
+- Added regression coverage that prevents primary README/install/reference/help
+  surfaces from reintroducing `init` or bare project-bootstrap wording as the
+  normal setup flow.
+
 ## 0.2.17 — 2026-07-07
 
 ### Changed

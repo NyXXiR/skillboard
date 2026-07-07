@@ -154,7 +154,8 @@ test("postinstall auto-runs agent setup for global installs without project file
     assert.equal(result.stdout, "");
     assert.match(result.stderr, /SkillBoard installed/);
     assert.match(result.stderr, /does not initialize projects/i);
-    assert.match(result.stderr, /Run skillboard init only inside a workspace/i);
+    assert.match(result.stderr, /skillboard init is deprecated project-local policy bootstrap/i);
+    assert.match(result.stderr, /not needed for normal use/i);
     assert.match(result.stderr, /Auto-running agent setup/);
     assert.match(result.stderr, /SkillBoard agent integration installed/);
     assert.match(result.stderr, /No project init was run/);
@@ -913,7 +914,7 @@ test("release notes include the current package version", async () => {
   assert.match(changelog, new RegExp(`## ${manifest.version.split(".").join("\\.")}\\b`));
 });
 
-test("packed package runs through npm exec one-command bootstrap surface", async () => {
+test("packed package runs through npm exec agent-layer setup surface", async () => {
   const temp = await mkdtemp(join(tmpdir(), "skillboard-npm-exec-test-"));
   try {
     const packResult = await execNpm(["pack", "--json", "--pack-destination", temp]);
@@ -923,7 +924,9 @@ test("packed package runs through npm exec one-command bootstrap surface", async
     const npxAlias = await execNpm(["exec", "--yes", "--package", tarballPath, "--", "agent-skillboard", "help"], { cwd: temp });
 
     assert.match(help.stdout, /^SkillBoard - permissive AI skill overlap routing$/m);
+    assert.match(help.stdout, /Legacy project policy mode:/);
     assert.match(help.stdout, /init \[--dir <path>\]/);
+    assert.match(help.stdout, /deprecated project-local policy bootstrap/i);
     assert.match(npxAlias.stdout, /^SkillBoard - permissive AI skill overlap routing$/m);
   } finally {
     await rm(temp, { recursive: true, force: true });

@@ -8,7 +8,7 @@ source profiles, and the generated lockfile.
 
 ## Status
 
-Current package version: `0.2.7`
+Current package version: `0.2.18`
 
 Current config schema version:
 

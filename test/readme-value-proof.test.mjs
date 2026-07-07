@@ -356,10 +356,13 @@ test("README leads with ask-your-AI workflow before command details", async () =
   assert.match(firstScreen, /ask your AI normal work requests/i);
   assert.match(firstScreen, /No global install is required/i);
   assert.match(firstScreen, /Most use is read-only/i);
+  assert.match(firstScreen, /`doctor` checks local policy and source\s+health without writing changes/i);
   assert.match(firstScreen, /Nothing changes until you approve a policy action/i);
-  assert.match(firstScreen, /Project cleanup is previewable/i);
-  assert.match(firstScreen, /default\s+uninstall removes SkillBoard settings/i);
-  assert.match(firstScreen, /uninstall --dry-run/i);
+  assert.match(firstScreen, /Agent-layer cleanup is previewable/i);
+  assert.match(firstScreen, /uninstall --agent-layer --dry-run/i);
+  assert.match(firstScreen, /removes only managed\s+SkillBoard guidance/i);
+  assert.doesNotMatch(firstScreen, /Project cleanup is previewable/i);
+  assert.doesNotMatch(firstScreen, /project policy and bridge guidance/i);
   assert.match(firstScreen, /workflow-scoped skill priority and overlap routing\s+for AI agents/i);
   assert.match(firstScreen, /Installed user skills are usable by default/i);
   assert.match(firstScreen, /resolve overlapping skills and workflow priority/i);
@@ -392,18 +395,20 @@ test("README leads with ask-your-AI workflow before command details", async () =
   assert.match(quickStart, /ask normal questions/i);
   assert.match(quickStart, /Write tests before implementation\./);
   assert.match(quickStart, /Review this plan and point out weak assumptions\./);
-  assert.match(quickStart, /Remove SkillBoard from a project when you are done/i);
-  assert.match(quickStart, /skillboard uninstall --dir \/path\/to\/your\/project --dry-run/);
   assert.match(quickStart, /skillboard uninstall --agent-layer --dry-run/);
   assert.match(quickStart, /preserves other agent skills\s+and user-authored `skillboard` skills/i);
-  assert.match(quickStart, /Default project uninstall removes SkillBoard config/i);
-  assert.match(quickStart, /--keep-settings/i);
   assert.match(quickStart, /AI\/automation\/operator details/i);
-  assert.match(quickStart, /npx --yes --package agent-skillboard skillboard init/);
-  assert.match(quickStart, /npx --yes --package agent-skillboard skillboard doctor --summary/);
-  assert.match(quickStart, /npx --yes --package agent-skillboard skillboard brief --workflow <workflow-from-init>/);
+  assert.doesNotMatch(quickStart, /npx --yes --package agent-skillboard skillboard init/);
+  assert.doesNotMatch(quickStart, /skillboard init/);
+  assert.doesNotMatch(quickStart, /\bbootstrap\b/i);
   assert.doesNotMatch(quickStart, /npx agent-skillboard init/);
   assert.doesNotMatch(quickStart, /run these commands every time you need a skill/i);
+
+  assert.match(readme, /## Legacy Project Policy Mode/);
+  assert.match(readme, /`skillboard init` is deprecated project-local policy bootstrap/i);
+  assert.match(readme, /not\s+needed for normal use/i);
+  assert.match(readme, /skillboard uninstall --dir \/path\/to\/your\/project --dry-run/);
+  assert.match(readme, /Default legacy project uninstall removes SkillBoard config/i);
 });
 
 async function runSkillboard(args) {

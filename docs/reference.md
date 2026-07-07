@@ -3,7 +3,7 @@
 This is the operator reference for users who already understand the basic
 SkillBoard flow and need exact command, config, and lifecycle details.
 
-For installation and bootstrap commands, start with [install.md](install.md).
+For installation and agent-layer setup commands, start with [install.md](install.md).
 For a guided first workflow, use [user-flow.md](user-flow.md).
 
 ## Command Forms
@@ -16,12 +16,8 @@ The npm package is `agent-skillboard`; the executable remains `skillboard`.
 For CI or scripts, the explicit package form avoids binary-name ambiguity:
 
 ```bash
-npx --yes --package agent-skillboard skillboard init
-npx --yes --package agent-skillboard skillboard doctor --summary
-npx --yes --package agent-skillboard skillboard brief --workflow <workflow-from-init>
-npm exec --yes --package agent-skillboard -- skillboard init
-npm exec --yes --package agent-skillboard -- skillboard doctor --summary
-npm exec --yes --package agent-skillboard -- skillboard brief --workflow <workflow-from-init>
+npm exec --yes --package agent-skillboard -- skillboard --version
+npm exec --yes --package agent-skillboard -- skillboard help brief
 ```
 
 After a global install, postinstall auto-runs agent-layer setup for detected
@@ -31,16 +27,12 @@ guidance. This is agent-layer integration; it does not initialize, attach, or
 manage individual projects. To remove only managed agent-layer guidance, run
 `skillboard uninstall --agent-layer` before package removal.
 
-If `init` does not print a workflow, run the unscoped `brief` command it prints
-instead.
-
 Unreleased GitHub builds are available when intentionally testing repository
 state before the next npm release:
 
 ```bash
-npx --yes --package github:NyXXiR/skillboard skillboard init
-npx --yes --package github:NyXXiR/skillboard skillboard doctor --summary
-npx --yes --package github:NyXXiR/skillboard skillboard brief --workflow <workflow-from-init>
+npx --yes --package github:NyXXiR/skillboard skillboard --version
+npx --yes --package github:NyXXiR/skillboard skillboard help
 ```
 
 From a source clone:
@@ -50,9 +42,8 @@ git clone https://github.com/NyXXiR/skillboard.git
 cd skillboard
 npm install
 npm test
-node bin/skillboard.mjs init --dir /path/to/your/project
-node bin/skillboard.mjs doctor --dir /path/to/your/project --summary
-node bin/skillboard.mjs brief --dir /path/to/your/project --workflow <workflow-from-init>
+node bin/skillboard.mjs --version
+node bin/skillboard.mjs help
 ```
 
 ## Commands
@@ -60,7 +51,6 @@ node bin/skillboard.mjs brief --dir /path/to/your/project --workflow <workflow-f
 ```bash
 skillboard setup [--yes] [--agent codex[,claude,opencode,hermes]]
 skillboard import-skill --from <agent> --to <agent> --skill <id-or-dir> [--target-skill <id-or-dir>] [--adapted-file <path>] [--dry-run] [--yes] [--replace] [--json]
-skillboard init [--dir <path>] [--scan-root <dir>[,<dir>]] [--no-scan-installed]
 skillboard uninstall [--dir <path>] [--dry-run] [--keep-settings] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs] [--agent-layer] [--agent codex[,claude,opencode,hermes]]
 skillboard inventory refresh [--dir <path>] [--config <path>] [--scan-root <dir>[,<dir>]] [--dry-run] [--json]
 skillboard inventory detect --unit <id> --config <path> [--install-output <path>] [--config-file a,b] [--source <value>] [--kind <kind>] [--scope <scope>] [--dry-run] [--json]
@@ -135,6 +125,24 @@ skillboard import-skill \
 This is separate from `variant` commands. `import-skill` installs a target-agent
 user skill file; `variant` records project-local policy relationships,
 snapshots, and workflow preferences.
+
+## Deprecated Project Policy Mode
+
+`skillboard init` is deprecated project-local policy bootstrap and is not
+needed for normal use. Package install, postinstall, and `skillboard setup`
+connect SkillBoard at the agent layer without initializing, attaching, or
+managing individual projects.
+
+```bash
+skillboard init [--dir <path>] [--scan-root <dir>[,<dir>]] [--no-scan-installed]
+skillboard help init
+```
+
+The command remains available for existing workspaces that intentionally keep
+local `skillboard.config.yaml`, `.skillboard/`, `AGENTS.md`, or `CLAUDE.md`
+policy files. If `init` creates or discovers workflows, use one of the workflow
+names it prints for the first `brief`. If it does not print a workflow, run the
+unscoped `brief` command it prints instead.
 
 ## Capability Routing
 
@@ -396,7 +404,8 @@ for the full lifecycle guide.
 
 ## Related Runbooks
 
-- [install.md](install.md): install, init, doctor, bridge, refresh, and uninstall.
+- [install.md](install.md): install, agent-layer setup, legacy policy mode,
+  doctor, refresh, and uninstall.
 - [user-flow.md](user-flow.md): first-time skill governance workflow.
 - [policy-model.md](policy-model.md): policy states, invocation modes, and install units.
 - [capabilities.md](capabilities.md): capability catalog and workflow resolution.

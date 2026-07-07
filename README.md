@@ -20,13 +20,13 @@ The burden stays low:
 
 - No global install is required for a trial; use
   `npm exec --yes --package agent-skillboard@latest -- skillboard`.
-- Most use is read-only: `brief`, `route`, `doctor`, and `guard use` answer
-  what can run now and which route fits the request.
+- Most use is read-only: `brief`, `route`, and `guard use` answer what can run
+  now and which route fits the request; `doctor` checks local policy and source
+  health without writing changes.
 - Nothing changes until you approve a policy action.
-- Project cleanup is previewable with `skillboard uninstall --dry-run`; default
-  uninstall removes SkillBoard settings and generated project state while
-  preserving local skills. Add `--keep-settings` only when you want to keep
-  project policy and bridge guidance.
+- Agent-layer cleanup is previewable with
+  `skillboard uninstall --agent-layer --dry-run`; it removes only managed
+  SkillBoard guidance while preserving other agent skills.
 
 Status: public alpha. The current config schema is config schema v1; breaking
 changes may still happen before `1.0.0` and are documented in release notes.
@@ -150,8 +150,7 @@ It does not create `skillboard.config.yaml`,
 No separate setup command is required after a normal global install or update:
 npm lifecycle scripts run agent-layer setup automatically, rerun the agent-home
 scan, refresh managed SkillBoard guidance files, and add newly detected
-supported agent roots. This setup does not run `skillboard init`; use `init`
-only inside a workspace where you want project-local policy files.
+supported agent roots. This setup is agent-layer only.
 
 Run `skillboard setup --agent codex,claude,opencode,hermes --yes` later only
 after adding another supported agent, enabling a new agent home, or installing
@@ -170,37 +169,6 @@ behind the scenes. Compatible skills are copied into the target agent's user
 skill root. If the source contains agent-specific instructions, the agent asks
 before creating an adapted target-agent `SKILL.md` and installs that file with
 provenance.
-
-If you intentionally maintain local workspace policy files, use the explicit
-operator commands for that layer. `skillboard init` is needed only for a
-workspace where you want project-local policy, bridge guidance, and reports:
-
-```bash
-npx --yes --package agent-skillboard skillboard init
-npx --yes --package agent-skillboard skillboard doctor --summary
-npx --yes --package agent-skillboard skillboard brief --workflow <workflow-from-init>
-```
-
-Remove SkillBoard from a project when you are done:
-
-```bash
-npx --yes --package agent-skillboard skillboard uninstall --dir /path/to/your/project --dry-run
-npx --yes --package agent-skillboard skillboard uninstall --dir /path/to/your/project
-```
-
-Default project uninstall removes SkillBoard config, bridge guidance, and
-`.skillboard/` project state while preserving local `skills/*/SKILL.md` files.
-It reports what it removed or preserved.
-
-```bash
-npx --yes --package agent-skillboard skillboard uninstall --dir /path/to/your/project --keep-settings --dry-run
-npx --yes --package agent-skillboard skillboard uninstall --dir /path/to/your/project --keep-settings
-```
-
-Use `--keep-settings` only when you want to keep project SkillBoard policy and
-bridge guidance in place, for example while cleaning generated helper files.
-`--purge` remains accepted as an explicit spelling for the default clean
-project removal.
 
 Remove SkillBoard's managed agent-layer guidance before package removal when
 you want agent homes back to their pre-SkillBoard guidance state:
@@ -240,6 +208,35 @@ decisions when a team needs that control.
 For action cards, use `skillboard apply-action <action-id> --yes --json`; raw
 `skillboard hook install ... --dry-run --json` previews are underlying manual
 operator detail, not the primary action-card flow.
+
+## Legacy Project Policy Mode
+
+Legacy project policy mode is for existing workspaces that still carry local
+SkillBoard policy files.
+
+`skillboard init` is deprecated project-local policy bootstrap and is not
+needed for normal use. Global install/postinstall and `skillboard setup`
+connect SkillBoard at the agent layer without creating `skillboard.config.yaml`,
+`.skillboard/`, `AGENTS.md`, or `CLAUDE.md` in projects. Agent-layer setup does
+not run `skillboard init`.
+
+The command remains for existing workspaces that intentionally maintain local
+policy files, bridge guidance, and reports. Use `skillboard help init` before
+using it in an existing workspace.
+
+Default legacy project uninstall removes SkillBoard config, bridge guidance,
+and `.skillboard/` project state while preserving local `skills/*/SKILL.md`
+files:
+
+```bash
+skillboard uninstall --dir /path/to/your/project --dry-run
+skillboard uninstall --dir /path/to/your/project
+```
+
+Use `--keep-settings` only when you want to keep legacy project policy and
+bridge guidance in place, for example while cleaning generated helper files.
+`--purge` remains accepted as an explicit spelling for the default clean
+project removal.
 
 ## What Works Today
 
@@ -287,7 +284,7 @@ fixtures, and assertions.
 ## Where To Go Next
 
 - [AI skill routing goal](docs/ai-skill-routing-goal.md)
-- [Install and bootstrap](docs/install.md)
+- [Install and agent-layer setup](docs/install.md)
 - [First-time control flow](docs/user-flow.md)
 - [Capability routing](docs/routing.md)
 - [Command and config reference](docs/reference.md)

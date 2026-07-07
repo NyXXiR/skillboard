@@ -250,7 +250,7 @@ test("cli multi-source example is runnable from the project root without local p
   }
 });
 
-test("cli init bootstraps config and agent bridge files", async () => {
+test("cli init initializes legacy config and agent bridge files", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-init-test-"));
   try {
     const first = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", root, "--no-scan-installed"]);
@@ -1049,7 +1049,7 @@ test("cli doctor gives actionable guidance for unmanaged bridge files", async ()
     assert.equal(error.code, 1);
     assert.equal(payload.ok, false);
     assert.equal(payload.bridges.find((bridge) => bridge.file === "AGENTS.md").status, "unmanaged");
-    assert.ok(payload.recommendations.includes("run skillboard init to add SkillBoard bridge blocks to unmanaged agent files"));
+    assert.ok(payload.recommendations.includes("legacy project bridge is unmanaged; run skillboard init only if maintaining deprecated project-local policy"));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -9,7 +9,7 @@ if (isTruthy(process.env.SKILLBOARD_SKIP_POSTINSTALL)) {
 process.stderr.write(`${[
   "SkillBoard installed or updated.",
   "It can refresh user-agent guidance on global installs, but it does not initialize projects.",
-  "Run skillboard init only inside a workspace where you want project-local policy files.",
+  "skillboard init is deprecated project-local policy bootstrap and is not needed for normal use.",
   ""
 ].join("\n")}\n`);
 
@@ -20,7 +20,7 @@ if (!shouldAutoSetup(process.env)) {
     "  skillboard setup",
     "",
     "Setup only writes user agent skill files. It does not create skillboard.config.yaml or .skillboard/.",
-    "Run skillboard init later only for a project that needs local SkillBoard policy.",
+    "skillboard init is deprecated project-local policy bootstrap and is not needed for normal use.",
     ""
   ].join("\n")}`);
   process.exit(0);

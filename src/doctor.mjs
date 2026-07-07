@@ -121,10 +121,10 @@ function finalizeDoctor(result, recommendations) {
 function doctorRecommendations(result) {
   const recommendations = [];
   if (!result.bridges.some((bridge) => bridge.status === "installed")) {
-    recommendations.push("run skillboard init to install agent bridge blocks");
+    recommendations.push("legacy project bridge blocks are absent; run skillboard init only if maintaining deprecated project-local policy");
   }
   if (result.bridges.some((bridge) => bridge.status === "unmanaged")) {
-    recommendations.push("run skillboard init to add SkillBoard bridge blocks to unmanaged agent files");
+    recommendations.push("legacy project bridge is unmanaged; run skillboard init only if maintaining deprecated project-local policy");
   }
   if (result.bridges.some((bridge) => bridge.status === "broken")) {
     recommendations.push("repair AGENTS.md or CLAUDE.md SkillBoard bridge markers");

@@ -35,7 +35,7 @@ export async function runSetupCommand(options, stdout, runtime = defaultRuntime(
   writeList(stdout, "Preserved", result.preserved);
   stdout.write("Next:\n");
   stdout.write("- Restart or refresh agents that cache user skills.\n");
-  stdout.write("- No project was initialized; run skillboard init only inside a workspace that needs local SkillBoard policy.\n");
+  stdout.write("- No project was initialized; skillboard init is deprecated project-local policy bootstrap and is not needed for normal use.\n");
   stdout.write('- Ask the agent in a workspace: "Review this plan and point out weak assumptions."\n');
   stdout.write("- SkillBoard will step in when skills overlap, routing is ambiguous, or you ask for a skill decision.\n");
   return 0;
@@ -76,7 +76,7 @@ function writeList(stdout, label, values) {
 function writeSetupConfirmation(stdout, targets, command) {
   stdout.write("SkillBoard setup installs agent-layer integration, not project files.\n");
   stdout.write("It writes a SkillBoard guidance skill into detected user agent skill roots so agents can resolve skill priority when choices overlap.\n");
-  stdout.write("It does not create skillboard.config.yaml or .skillboard/; run skillboard init later only for a project that needs local policy.\n");
+  stdout.write("It does not create skillboard.config.yaml or .skillboard/; skillboard init is deprecated project-local policy bootstrap and is not needed for normal use.\n");
   stdout.write("Targets:\n");
   for (const target of targets) {
     stdout.write(`- ${target.agent}: ${target.skillPath}\n`);
