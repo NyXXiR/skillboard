@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.2.17 — 2026-07-07
+
+### Changed
+
+- Reworked the README opening and quick start so developers using multiple
+  agents, skill packs, plugins, MCP tools, or marketplaces can understand
+  SkillBoard's purpose and try the CLI with read-only `npm exec` commands before
+  installing it globally.
+
+### Fixed
+
+- Kept packaged npm smoke tests compatible with Node 20 release checks that run
+  inside an outer `npx -p node@20 -c ...` invocation.
+
 ## 0.2.16 — 2026-07-06
 
 ### Changed

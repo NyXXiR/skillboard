@@ -209,10 +209,16 @@ function mergedOptions(options) {
   return {
     cwd: process.cwd(),
     ...options,
-    env: {
+    env: withoutNestedNpmExecConfig({
       ...process.env,
       ...(options.env ?? {})
-    },
+    }),
     maxBuffer: outputLimit
   };
+}
+
+function withoutNestedNpmExecConfig(env) {
+  const sanitized = { ...env };
+  delete sanitized.npm_config_call;
+  return sanitized;
 }

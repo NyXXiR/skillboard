@@ -999,13 +999,25 @@ test("packed package drives fresh project through intent brief and guard", async
 });
 
 function execNpm(args, options = {}) {
+  const env = withoutNestedNpmExecConfig(options.env ?? process.env);
+  const mergedOptions = {
+    ...options,
+    env
+  };
+
   if (process.env.npm_execpath === undefined) {
     return execFileAsync(process.platform === "win32" ? "npm.cmd" : "npm", args, {
       shell: process.platform === "win32",
-      ...options
+      ...mergedOptions
     });
   }
-  return execFileAsync(process.execPath, [process.env.npm_execpath, ...args], options);
+  return execFileAsync(process.execPath, [process.env.npm_execpath, ...args], mergedOptions);
+}
+
+function withoutNestedNpmExecConfig(env) {
+  const sanitized = { ...env };
+  delete sanitized.npm_config_call;
+  return sanitized;
 }
 
 function oldAgentIntegrationSkill(body) {

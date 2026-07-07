@@ -2,6 +2,12 @@
 
 Keep AI-agent skills broadly available, then route overlaps consistently.
 
+If you use more than one coding agent, skill pack, plugin, MCP tool, or
+marketplace, SkillBoard answers the practical questions before you install
+anything or change workflow policy: which skills are usable now, which one
+should win when skills overlap, which external skills need review, and how
+Codex, Claude, OpenCode, and Hermes can follow the same policy.
+
 Ask your AI normal work requests: "write tests before implementation",
 "review this plan and point out weak assumptions", "help me refine this UX
 flow", or explicit control requests like "use the Codex test-first skill in
@@ -12,7 +18,8 @@ when similar skills overlap, and a short disclosure of what was used.
 
 The burden stays low:
 
-- No global install is required; use `npx --yes --package agent-skillboard`.
+- No global install is required for a trial; use
+  `npm exec --yes --package agent-skillboard@latest -- skillboard`.
 - Most use is read-only: `brief`, `route`, `doctor`, and `guard use` answer
   what can run now and which route fits the request.
 - Nothing changes until you approve a policy action.
@@ -59,12 +66,25 @@ Names you may see in setup and logs:
 - `agent-skillboard`: the npm package.
 - `skillboard`: the CLI binary.
 
-Use SkillBoard when your agent setup has grown beyond one trusted skill folder
-and you want workflow-scoped control without turning skill governance into a
-manual checklist. If you are changing routing, brief, bridge, policy, or
-workflow UX, read [AI Skill Routing Goal](docs/ai-skill-routing-goal.md) first;
-it defines the non-blocking `observe → route → work → explain briefly → ask
-after → remember policy` loop that development should preserve.
+## Who This Is For
+
+Use SkillBoard if you use more than one coding agent, skill pack, plugin, MCP
+tool, or marketplace and want one answer to:
+
+- Which skills can this agent use right now?
+- Which skill should win when several match the same task?
+- Which external or plugin skills are reviewed, blocked, or waiting for approval?
+- How can Codex, Claude, OpenCode, and Hermes follow the same skill policy?
+
+If you use one agent with a few hand-written local skills, you probably do not
+need SkillBoard yet. SkillBoard is for setups that have grown beyond one trusted
+skill folder and need workflow-scoped control without turning skill governance
+into a manual checklist.
+
+If you are changing routing, brief, bridge, policy, or workflow UX, read
+[AI Skill Routing Goal](docs/ai-skill-routing-goal.md) first; it defines the
+non-blocking `observe → route → work → explain briefly → ask after → remember
+policy` loop that development should preserve.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/NyXXiR/skillboard/main/skillboard.png" alt="SkillBoard architecture diagram: sources, inventory scanner, SkillBoard model, policy engine, and user and agent surfaces." width="100%">
@@ -95,8 +115,17 @@ See [Tested Value Proof](#tested-value-proof) for the executable proof.
 
 ## 5-Minute Quick Start
 
-Install the CLI. On a normal global install, SkillBoard auto-connects the
-agent layer for detected Codex, Claude, OpenCode, and Hermes user skill roots:
+Try it without a global install. These read-only commands download the latest
+package for one run and do not create project files:
+
+```bash
+npm exec --yes --package agent-skillboard@latest -- skillboard --version
+npm exec --yes --package agent-skillboard@latest -- skillboard help brief
+```
+
+Install the CLI when you want SkillBoard connected to your agent layer. On a
+normal global install, SkillBoard auto-connects the agent layer for detected
+Codex, Claude, OpenCode, and Hermes user skill roots:
 
 AI/automation/operator details:
 

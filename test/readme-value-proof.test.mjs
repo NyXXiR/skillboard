@@ -341,6 +341,18 @@ test("README leads with ask-your-AI workflow before command details", async () =
   );
 
   assert.match(firstScreen, /Keep AI-agent skills broadly available,\s+then route overlaps consistently/i);
+  assert.doesNotMatch(firstScreen, /## Goal/);
+  assert.match(firstScreen, /If you use more than one coding agent, skill pack, plugin, MCP\s+tool, or\s+marketplace/i);
+  assert.match(firstScreen, /answers the practical questions before you install\s+anything or change workflow policy/i);
+  assert.match(firstScreen, /which skills are usable now/i);
+  assert.match(firstScreen, /which one\s+should win when skills overlap/i);
+  assert.match(firstScreen, /which external skills need review/i);
+  assert.match(firstScreen, /## Who This Is For/);
+  assert.match(firstScreen, /Use SkillBoard if you use more than one coding agent/i);
+  assert.match(firstScreen, /skill pack, plugin, MCP\s+tool, or marketplace/i);
+  assert.match(firstScreen, /Which skills can this agent use right now\?/);
+  assert.match(firstScreen, /Which skill should win when several match the same task\?/);
+  assert.match(firstScreen, /If you use one agent with a few hand-written local skills/i);
   assert.match(firstScreen, /ask your AI normal work requests/i);
   assert.match(firstScreen, /No global install is required/i);
   assert.match(firstScreen, /Most use is read-only/i);
@@ -367,8 +379,12 @@ test("README leads with ask-your-AI workflow before command details", async () =
   assert.match(firstScreen, /You\s+do\s+not need to\s+memorize/i);
 
   assert.match(quickStart, /Install the CLI/i);
+  assert.match(quickStart, /Try it without a global install/i);
+  assert.match(quickStart, /npm exec --yes --package agent-skillboard@latest -- skillboard --version/);
+  assert.match(quickStart, /npm exec --yes --package agent-skillboard@latest -- skillboard help brief/);
+  assert.match(quickStart, /read-only commands[\s\S]{0,100}do not create project\s+files/i);
   assert.match(quickStart, /auto-connects the\s+agent layer/i);
-  assert.match(quickStart, /detected Codex, Claude, OpenCode,\s+and Hermes user skill roots/i);
+  assert.match(quickStart, /detected\s+Codex, Claude, OpenCode, and Hermes user skill roots/i);
   assert.match(quickStart, /npm install -g agent-skillboard/);
   assert.match(quickStart, /No separate setup\s+command is required after a normal global install/i);
   assert.match(quickStart, /skillboard setup --agent codex,claude,opencode,hermes --yes/);
