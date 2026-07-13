@@ -4,11 +4,12 @@ import { access, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import YAML from "yaml";
 
 const execFileAsync = promisify(execFile);
-const CLI = new URL("../bin/skillboard.mjs", import.meta.url).pathname;
+const CLI = fileURLToPath(new URL("../bin/skillboard.mjs", import.meta.url));
 
 test("skill forget removes only an absent unshared policy entry and restores doctor health", async () => {
   await withHome(async ({ home, env }) => {
@@ -171,6 +172,7 @@ async function withHome(callback) {
   const env = {
     ...process.env,
     HOME: home,
+    USERPROFILE: home,
     CODEX_HOME: join(home, ".codex"),
     CLAUDE_HOME: join(home, ".claude"),
     OPENCODE_HOME: join(home, ".config", "opencode"),

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { loadWorkspace } from "../workspace.mjs";
 import { mapV1ConfigToV2 } from "./v1-to-v2.mjs";
@@ -34,9 +34,10 @@ export async function migrateV2(options) {
   await recoverInterruptedMigration(configPath, inventoryPath, options.failpoint);
   return await withConfigLock(configPath, async () => {
     if (options.rollbackPath !== undefined) {
-      const rollbackPath = isAbsolute(options.rollbackPath)
+      const requestedRollbackPath = isAbsolute(options.rollbackPath)
         ? resolve(options.rollbackPath)
         : resolve(dirname(configPath), options.rollbackPath);
+      const rollbackPath = await realpath(requestedRollbackPath);
       return await rollbackMigration(configPath, inventoryPath, rollbackPath, options);
     }
     return await migrateForward(configPath, inventoryPath, options);

@@ -31,6 +31,7 @@ test("generated inventory is deterministic, observation-only, and preserves v2 p
       home,
       env: {
         HOME: home,
+        USERPROFILE: home,
         CODEX_HOME: join(home, ".codex"),
         HERMES_HOME: join(home, ".hermes"),
         CLAUDE_HOME: join(home, ".claude"),

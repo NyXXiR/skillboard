@@ -162,7 +162,7 @@ async function fixture(version, run) {
   const configPath = join(root, "skillboard.config.yaml");
   const skillsRoot = join(root, "skills");
   const env = {
-    ...process.env, HOME: root, CODEX_HOME: join(root, ".codex"), CLAUDE_HOME: join(root, ".claude"),
+    ...process.env, HOME: root, USERPROFILE: root, CODEX_HOME: join(root, ".codex"), CLAUDE_HOME: join(root, ".claude"),
     OPENCODE_HOME: join(root, ".config", "opencode"), HERMES_HOME: join(root, ".hermes")
   };
   await mkdir(skillsRoot);

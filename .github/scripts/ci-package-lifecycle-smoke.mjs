@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { execFile } from "node:child_process";
-import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -69,6 +69,20 @@ try {
   await assertCommandFails(run([
     "guard", "use", "smoke-skill", "--agent", "hermes", "--json"
   ]), /not installed for agent hermes/i, 2);
+
+  const migrationRoot = join(temp, "migration");
+  const migrationConfig = join(migrationRoot, "skillboard.config.yaml");
+  await mkdir(migrationRoot, { recursive: true });
+  await writeFile(migrationConfig, legacyMigrationFixture(), "utf8");
+  const migrated = JSON.parse((await run([
+    "migrate", "v2", "--config", migrationConfig, "--yes", "--json"
+  ])).stdout.toString());
+  assert.match(await readFile(migrationConfig, "utf8"), /version: 2/);
+  await run([
+    "migrate", "v2", "--config", migrationConfig,
+    "--rollback", join(migrationRoot, migrated.backup), "--json"
+  ]);
+  assert.match(await readFile(migrationConfig, "utf8"), /version: 1/);
 
   const preview = JSON.parse((await run(["uninstall", "--user", "--dry-run", "--json"])).stdout.toString());
   assert.equal(preview.dry_run, true);
@@ -160,4 +174,20 @@ function withoutNestedNpmExecConfig(env) {
   const sanitized = { ...env };
   delete sanitized.npm_config_call;
   return sanitized;
+}
+
+function legacyMigrationFixture() {
+  return `version: 1
+skills:
+  smoke-skill:
+    path: smoke-skill
+    status: active
+    invocation: manual-only
+    exposure: exported
+workflows:
+  daily:
+    harness: codex
+    active_skills: [smoke-skill]
+    blocked_skills: []
+`;
 }

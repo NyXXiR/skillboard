@@ -4,13 +4,14 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { canUseSkill } from "../src/control/can-use-guard.mjs";
 import { routeSkill } from "../src/route.mjs";
 import { loadWorkspace } from "../src/workspace.mjs";
 
 const execFileAsync = promisify(execFile);
-const CLI = new URL("../bin/skillboard.mjs", import.meta.url).pathname;
+const CLI = fileURLToPath(new URL("../bin/skillboard.mjs", import.meta.url));
 
 function workspace(overrides = {}) {
   return {

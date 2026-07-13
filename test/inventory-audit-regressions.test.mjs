@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import YAML from "yaml";
 import { auditSources, canUseSkill } from "../src/control.mjs";
@@ -14,7 +15,7 @@ import { verifySources } from "../src/source-verification.mjs";
 import { loadWorkspace } from "../src/workspace.mjs";
 
 const execFileAsync = promisify(execFile);
-const CLI = new URL("../bin/skillboard.mjs", import.meta.url).pathname;
+const CLI = fileURLToPath(new URL("../bin/skillboard.mjs", import.meta.url));
 
 test("fresh v2 init without scanning writes a protected empty generated inventory", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-init-empty-inventory-"));
@@ -26,7 +27,7 @@ test("fresh v2 init without scanning writes a protected empty generated inventor
     assert.equal(inventory.authoritative_for_availability, false);
     assert.deepEqual(inventory.skills, []);
     assert.deepEqual(inventory.install_units, []);
-    assert.equal((await stat(inventoryPath)).mode & 0o777, 0o600);
+    if (process.platform !== "win32") assert.equal((await stat(inventoryPath)).mode & 0o777, 0o600);
     assert.equal(result.created.includes(".skillboard/inventory.json"), true);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -120,7 +121,7 @@ test("generated inventory uses portable path tokens and is written with mode 060
 
     const result = await refreshAgentInventory({ root: project, roots: [], home, env: { HOME: home, SKILLBOARD_INIT_SCAN_ROOTS: "" } });
     const inventoryPath = join(project, ".skillboard", "inventory.json");
-    assert.equal((await stat(inventoryPath)).mode & 0o777, 0o600);
+    if (process.platform !== "win32") assert.equal((await stat(inventoryPath)).mode & 0o777, 0o600);
     assert.equal(result.configPath, "skillboard.config.yaml");
     assert.equal(result.inventoryPath, ".skillboard/inventory.json");
     assert.equal(JSON.stringify(result).includes(root), false);
@@ -252,7 +253,7 @@ test("packed v2 import preserves scoped policy and existing guard inventory", as
     assert.deepEqual(config.skills["existing.disabled"], { enabled: false, shared: false });
     assert.deepEqual(config.skills["imported.new"], { enabled: true, shared: false });
     const workspace = await loadWorkspace({ configPath, inventoryPath });
-    assert.equal((await stat(inventoryPath)).mode & 0o777, 0o600);
+    if (process.platform !== "win32") assert.equal((await stat(inventoryPath)).mode & 0o777, 0o600);
     assert.equal(canUseSkill(workspace, "existing.allowed", "review", "codex").allowed, true);
     assert.equal(canUseSkill(workspace, "existing.disabled", "review", "codex").allowed, false);
     const imported = canUseSkill(workspace, "imported.new", undefined, "codex");

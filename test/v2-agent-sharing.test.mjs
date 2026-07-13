@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { canUseSkill } from "../src/control/can-use-guard.mjs";
@@ -12,7 +13,7 @@ import { loadWorkspace, serializeV2Policy } from "../src/workspace.mjs";
 import { resolveUserStatePaths } from "../src/user-state-paths.mjs";
 
 const execFileAsync = promisify(execFile);
-const CLI = new URL("../bin/skillboard.mjs", import.meta.url).pathname;
+const CLI = fileURLToPath(new URL("../bin/skillboard.mjs", import.meta.url));
 
 test("v2 policy stores enabled plus opt-in sharing without workflow scope", async () => {
   await withFixture(async ({ configPath, inventoryPath }) => {
@@ -116,8 +117,8 @@ test("default state paths are user-level and independent of cwd", () => {
   const first = resolveUserStatePaths({ home: "/home/test-user", cwd: "/tmp/project-a" });
   const second = resolveUserStatePaths({ home: "/home/test-user", cwd: "/tmp/project-b" });
   assert.deepEqual(first, second);
-  assert.equal(first.configPath, "/home/test-user/skillboard.config.yaml");
-  assert.equal(first.inventoryPath, "/home/test-user/.skillboard/inventory.json");
+  assert.equal(first.configPath, join("/home/test-user", "skillboard.config.yaml"));
+  assert.equal(first.inventoryPath, join("/home/test-user", ".skillboard", "inventory.json"));
 });
 
 test("setup creates one home control plane and normal commands never initialize projects", async () => {
@@ -126,7 +127,7 @@ test("setup creates one home control plane and normal commands never initialize 
   const projectA = join(root, "project-a");
   const projectB = join(root, "project-b");
   const codexHome = join(home, ".codex");
-  const env = { ...process.env, HOME: home, CODEX_HOME: codexHome };
+  const env = { ...process.env, HOME: home, USERPROFILE: home, CODEX_HOME: codexHome };
   try {
     await mkdir(join(codexHome, "skills", "demo"), { recursive: true });
     await mkdir(projectA);
@@ -163,6 +164,7 @@ test("share and unshare promote one skill across agents while preserving its own
   const env = {
     ...process.env,
     HOME: home,
+    USERPROFILE: home,
     CODEX_HOME: codexHome,
     CLAUDE_HOME: claudeHome,
     HERMES_HOME: hermesHome,
@@ -202,6 +204,7 @@ test("share and unshare roll back policy and managed copies after an interrupted
   const env = {
     ...process.env,
     HOME: home,
+    USERPROFILE: home,
     CODEX_HOME: codexHome,
     CLAUDE_HOME: join(home, ".claude"),
     HERMES_HOME: hermesHome,
@@ -243,6 +246,7 @@ test("share dry-run reports an unmanaged target collision before confirmation", 
   const env = {
     ...process.env,
     HOME: home,
+    USERPROFILE: home,
     CODEX_HOME: codexHome,
     CLAUDE_HOME: join(home, ".claude"),
     HERMES_HOME: hermesHome,
@@ -273,6 +277,7 @@ test("share refuses a symlinked target root without writing through it", { skip:
   const env = {
     ...process.env,
     HOME: home,
+    USERPROFILE: home,
     CODEX_HOME: codexHome,
     CLAUDE_HOME: join(home, ".claude"),
     HERMES_HOME: hermesHome,
@@ -306,6 +311,7 @@ test("share copies the contents of an intentionally linked source skill", { skip
   const env = {
     ...process.env,
     HOME: home,
+    USERPROFILE: home,
     CODEX_HOME: codexHome,
     CLAUDE_HOME: join(home, ".claude"),
     HERMES_HOME: hermesHome,
@@ -333,6 +339,7 @@ test("unshare rejects a policy id that escapes managed skill roots", async () =>
   const env = {
     ...process.env,
     HOME: home,
+    USERPROFILE: home,
     CODEX_HOME: join(home, ".codex"),
     CLAUDE_HOME: join(home, ".claude"),
     HERMES_HOME: join(home, ".hermes"),
@@ -369,6 +376,7 @@ test("sharing rejects path-like ids before any managed file mutation", async () 
   const env = {
     ...process.env,
     HOME: home,
+    USERPROFILE: home,
     CODEX_HOME: codexHome,
     CLAUDE_HOME: join(home, ".claude"),
     HERMES_HOME: hermesHome,

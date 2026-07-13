@@ -3,7 +3,7 @@ import { chmod, lstat, mkdir, open, readFile, realpath, rename, rm, stat } from 
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 export async function createBackup(configPath, configBytes, inventoryPath, inventoryBytes, label = "v1") {
-  const stamp = new Date().toISOString().replaceAll(":", "-");
+  const stamp = new Date().toISOString().split(":").join("-");
   const unique = randomUUID().slice(0, 8);
   const configBackupPath = `${configPath}.${label}-${stamp}-${unique}.bak`;
   const inventoryBackupPath = inventoryBytes === null ? null : `${configBackupPath}.inventory`;
@@ -121,23 +121,24 @@ export async function canonicalMigrationPaths(requestedConfigPath, requestedInve
   if (!stats.isFile()) throw new Error("Migration config path must be a regular file.");
   const configPath = await realpath(requested);
   const root = dirname(configPath);
-  const inventoryPath = resolve(requestedInventoryPath ?? join(root, ".skillboard", "inventory.json"));
-  if (!isPathInside(root, inventoryPath)) {
-    throw new Error("Migration inventory target must remain inside the config directory.");
-  }
-  const inventoryStats = await lstat(inventoryPath).catch(missingOnly);
+  const requestedInventory = resolve(requestedInventoryPath ?? join(root, ".skillboard", "inventory.json"));
+  const inventoryStats = await lstat(requestedInventory).catch(missingOnly);
   if (inventoryStats?.isSymbolicLink()) {
     throw new Error("Migration inventory target must not be a symbolic link.");
   }
-  const inventoryDirectory = dirname(inventoryPath);
+  const inventoryDirectory = dirname(requestedInventory);
   const directoryStats = await lstat(inventoryDirectory).catch(missingOnly);
   if (directoryStats?.isSymbolicLink()) {
     throw new Error("Migration inventory directory must not be a symbolic link.");
   }
   const existingParent = await nearestExistingDirectory(inventoryDirectory);
   const realParent = await realpath(existingParent);
+  const inventoryPath = resolve(realParent, relative(existingParent, requestedInventory));
   if (!isPathInside(root, realParent)) {
     throw new Error("Migration inventory target resolves outside the config directory.");
+  }
+  if (!isPathInside(root, inventoryPath)) {
+    throw new Error("Migration inventory target must remain inside the config directory.");
   }
   return { configPath, inventoryPath };
 }

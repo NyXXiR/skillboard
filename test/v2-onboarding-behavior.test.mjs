@@ -4,6 +4,7 @@ import { cp, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import YAML from "yaml";
 
@@ -13,7 +14,7 @@ import { bridgeBlock, defaultConfig } from "../src/lifecycle-content.mjs";
 import { routeSkill } from "../src/route.mjs";
 
 const execFileAsync = promisify(execFile);
-const CLI = new URL("../bin/skillboard.mjs", import.meta.url).pathname;
+const CLI = fileURLToPath(new URL("../bin/skillboard.mjs", import.meta.url));
 
 test("explicit legacy init writes minimal v2 policy and brief reports config version 2", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-v2-init-contract-"));
@@ -39,7 +40,7 @@ test("setup creates home state and reaches guard from a project without init", a
     await mkdir(join(codexHome, "skills", "demo"), { recursive: true });
     await mkdir(project, { recursive: true });
     await cp("examples/skills/tdd/SKILL.md", join(codexHome, "skills", "demo", "SKILL.md"));
-    const env = { HOME: home, CODEX_HOME: codexHome };
+    const env = { HOME: home, USERPROFILE: home, CODEX_HOME: codexHome };
 
     await run(["setup", "--yes", "--agent", "codex"], env);
     const brief = JSON.parse((await run([
@@ -158,7 +159,7 @@ test("fresh inventory refresh registers custom roots without claiming an agent i
   try {
     const skillsRoot = join(root, "skills");
     const codexHome = join(root, ".codex");
-    const env = { HOME: root, CODEX_HOME: codexHome };
+    const env = { HOME: root, USERPROFILE: root, CODEX_HOME: codexHome };
     await mkdir(join(skillsRoot, "demo"), { recursive: true });
     await mkdir(join(codexHome, "skills"), { recursive: true });
     await cp("examples/skills/tdd/SKILL.md", join(skillsRoot, "demo", "SKILL.md"));

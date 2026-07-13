@@ -79,13 +79,15 @@ test("v2 brief, guard, doctor, and dashboard share enabled/agent-sharing semanti
     const directAfter = JSON.parse((await execFileAsync(process.execPath, directArgs, { cwd: process.cwd() })).stdout);
     assert.deepEqual(directAfter, directBefore);
 
-    const historicalHook = join(root, "historical-v1-hook.sh");
-    await writeFile(historicalHook, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} bin/skillboard.mjs guard use "$SKILLBOARD_SKILL_ID" --workflow release --config ${JSON.stringify(configPath)} --skills ${JSON.stringify(skillsRoot)}\n`);
-    await chmod(historicalHook, 0o755);
-    await assert.rejects(
-      execFileAsync(historicalHook, [], { cwd: process.cwd(), env: { ...process.env, SKILLBOARD_SKILL_ID: "global.on" } }),
-      (error) => error instanceof Error && /pre-v2 policy projection is stale/i.test(/** @type {Error & {stderr?: string}} */ (error).stderr ?? "")
-    );
+    if (process.platform !== "win32") {
+      const historicalHook = join(root, "historical-v1-hook.sh");
+      await writeFile(historicalHook, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} bin/skillboard.mjs guard use "$SKILLBOARD_SKILL_ID" --workflow release --config ${JSON.stringify(configPath)} --skills ${JSON.stringify(skillsRoot)}\n`);
+      await chmod(historicalHook, 0o755);
+      await assert.rejects(
+        execFileAsync(historicalHook, [], { cwd: process.cwd(), env: { ...process.env, SKILLBOARD_SKILL_ID: "global.on" } }),
+        (error) => error instanceof Error && /pre-v2 policy projection is stale/i.test(/** @type {Error & {stderr?: string}} */ (error).stderr ?? "")
+      );
+    }
   });
 });
 

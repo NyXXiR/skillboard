@@ -101,6 +101,9 @@ test("GitHub Actions publish workflow releases npm package from version tags", a
 test("GitHub Actions check workflow runs package smoke through a cross-platform Node script", async () => {
   const workflow = await readFile(resolve(".github/workflows/check.yml"), "utf8");
 
+  assert.match(workflow, /ubuntu-latest/);
+  assert.match(workflow, /macos-15-intel/);
+  assert.match(workflow, /windows-latest/);
   assert.match(workflow, /-\s+14/);
   assert.match(workflow, /-\s+20/);
   assert.match(workflow, /-\s+22/);

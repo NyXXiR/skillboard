@@ -5,12 +5,13 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, wri
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { withConfigLock } from "../src/migration/v2-files.mjs";
 import { migrateV2 } from "../src/migration/v2-transaction.mjs";
 
 const execFileAsync = promisify(execFile);
-const CLI = new URL("../bin/skillboard.mjs", import.meta.url).pathname;
+const CLI = fileURLToPath(new URL("../bin/skillboard.mjs", import.meta.url));
 
 test("migrate v2 previews without writes, applies once, and rolls back exact bytes", async () => {
   await withFixture(async ({ configPath, inventoryPath }) => {
@@ -320,6 +321,33 @@ test("rollback rejects a requested inventory target that differs from the manife
   });
 });
 
+test("migration canonicalizes a symlinked ancestor for inventory and rollback paths", async () => {
+  if (process.platform === "win32") return;
+  const root = await mkdtemp(join(tmpdir(), "skillboard-v2-migration-alias-"));
+  const realRoot = join(root, "real");
+  const aliasRoot = join(root, "alias");
+  try {
+    await mkdir(realRoot);
+    await symlink(realRoot, aliasRoot, "dir");
+    const configPath = join(aliasRoot, "skillboard.config.yaml");
+    const inventoryPath = join(aliasRoot, ".skillboard", "inventory.json");
+    await writeFile(configPath, fixture(), "utf8");
+
+    const applied = await migrateV2({ configPath, inventoryPath, apply: true });
+    assert.equal(JSON.parse(await readFile(join(realRoot, ".skillboard", "inventory.json"), "utf8")).generated, true);
+    await migrateV2({
+      configPath,
+      inventoryPath,
+      rollbackPath: join(aliasRoot, applied.backup)
+    });
+
+    assert.match(await readFile(configPath, "utf8"), /version: 1/);
+    await assert.rejects(stat(inventoryPath), { code: "ENOENT" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("apply and rollback preserve target modes while backup artifacts stay private", async () => {
   await withFixture(async ({ configPath, inventoryPath }) => {
     // Given: non-default modes on both existing migration targets.
@@ -331,15 +359,19 @@ test("apply and rollback preserve target modes while backup artifacts stay priva
 
     // When: migration applies and then rolls back through its manifest.
     const applied = JSON.parse((await run(["migrate", "v2", "--config", configPath, "--yes", "--json"])).stdout);
-    assert.equal((await stat(configPath)).mode & 0o777, 0o640);
-    assert.equal((await stat(inventoryPath)).mode & 0o777, 0o644);
-    assert.equal((await stat(join(dirname(configPath), applied.backup))).mode & 0o777, 0o600);
-    assert.equal((await stat(join(dirname(configPath), applied.manifest))).mode & 0o777, 0o600);
+    if (process.platform !== "win32") {
+      assert.equal((await stat(configPath)).mode & 0o777, 0o640);
+      assert.equal((await stat(inventoryPath)).mode & 0o777, 0o644);
+      assert.equal((await stat(join(dirname(configPath), applied.backup))).mode & 0o777, 0o600);
+      assert.equal((await stat(join(dirname(configPath), applied.manifest))).mode & 0o777, 0o600);
+    }
     await run(["migrate", "v2", "--config", configPath, "--rollback", join(dirname(configPath), applied.backup), "--json"]);
 
     // Then: exact bytes and original modes are restored.
-    assert.equal((await stat(configPath)).mode & 0o777, 0o640);
-    assert.equal((await stat(inventoryPath)).mode & 0o777, 0o644);
+    if (process.platform !== "win32") {
+      assert.equal((await stat(configPath)).mode & 0o777, 0o640);
+      assert.equal((await stat(inventoryPath)).mode & 0o777, 0o644);
+    }
     assert.deepEqual(await readFile(inventoryPath), oldInventory);
   });
 });

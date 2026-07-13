@@ -30,8 +30,13 @@ export function auditPath(path, options) {
 
 export function redactPathError(error, options) {
   const message = error instanceof Error ? error.message : String(error);
-  return message
-    .replaceAll(options.rootDir, "${PROJECT}")
-    .replaceAll(options.configDir, "${PROJECT}")
-    .replaceAll(homedir(), "${HOME}");
+  return replaceText(
+    replaceText(replaceText(message, options.rootDir, "${PROJECT}"), options.configDir, "${PROJECT}"),
+    homedir(),
+    "${HOME}"
+  );
+}
+
+function replaceText(value, search, replacement) {
+  return value.split(search).join(replacement);
 }
