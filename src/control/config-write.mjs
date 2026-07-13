@@ -1,4 +1,4 @@
-import { readFile, rename, rm, writeFile } from "node:fs/promises";
+import { open, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 import YAML from "yaml";
@@ -6,6 +6,7 @@ import { loadWorkspace } from "../workspace.mjs";
 import { checkPolicy } from "../policy.mjs";
 import { textChangePlan } from "../change-plan.mjs";
 import { canUseSkill } from "./can-use-guard.mjs";
+import { assertV2MutationVersion } from "../compatibility.mjs";
 
 export async function loadConfig(path) {
   const text = await readFile(path, "utf8");
@@ -21,10 +22,12 @@ export async function loadConfig(path) {
 }
 
 export async function writeCheckedConfig(document, originalText, options, message) {
+  assertV2MutationVersion(document.get("version") ?? 1);
   const nextText = preserveLineEndings(String(document), originalText);
   const plan = textChangePlan(originalText, nextText);
   const tempPath = tempConfigPath(options.configPath);
-  await writeFile(tempPath, nextText, { encoding: "utf8", flag: "wx" });
+  const originalMode = (await stat(options.configPath)).mode & 0o777;
+  await writeFile(tempPath, nextText, { encoding: "utf8", flag: "wx", mode: originalMode });
   try {
     const workspace = await loadWorkspace({ configPath: tempPath, skillsRoot: options.skillsRoot });
     const policy = checkPolicy(workspace);
@@ -47,6 +50,33 @@ export async function writeCheckedConfig(document, originalText, options, messag
     return { message, policy, dryRun: false, changed: plan.changed, plan };
   } finally {
     await rm(tempPath, { force: true });
+  }
+}
+
+export async function withPolicyMutationLock(configPath, operation) {
+  const canonicalPath = await realpath(configPath);
+  const lockPath = `${canonicalPath}.migrate.lock`;
+  const deadline = Date.now() + 5_000;
+  let handle;
+  while (handle === undefined) {
+    try {
+      handle = await open(lockPath, "wx", 0o600);
+    } catch (error) {
+      if (error?.code !== "EEXIST" || Date.now() >= deadline) {
+        throw error?.code === "EEXIST"
+          ? new Error("Another policy update is already using this config.")
+          : error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+  try {
+    await handle.writeFile(`${process.pid}\n`);
+    await handle.sync();
+    return await operation(canonicalPath);
+  } finally {
+    await handle.close();
+    await rm(lockPath, { force: true });
   }
 }
 

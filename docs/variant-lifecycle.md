@@ -1,86 +1,66 @@
 # Skill Variant Lifecycle
 
-SkillBoard treats a skill variant as a reviewed policy relationship plus a file snapshot trail. This is a manual adaptation lifecycle for cases such as `a -> claude.a`, where a human adapts a base skill for a specific agent or workflow and then asks SkillBoard to record, review, approve, or reset that relationship.
+A variant is a manual content adaptation with snapshot and digest history. The
+lifecycle does not authorize availability. A registered variant is usable only
+according to its ordinary v2 `enabled` entry and generated installation
+presence; optional preference ranks it and never changes availability.
 
-Variant lifecycle is policy registration. SkillBoard records metadata, snapshots, digests, and workflow preference changes; it does not convert skill bodies, does not rewrite skill bodies, and does not guarantee semantic equivalence of skill bodies.
+## Current v2 boundary
 
-## Lifecycle commands
+`variant status` remains a read-only advanced operator surface for content and
+inventory lifecycle metadata. Authorization-mutating `fork`, `approve`, and
+`reset` forms remain an explicit v1 compatibility boundary. Legacy capability
+or mode fields are never current availability gates. Runtime/action
+authorization remains with the agent or harness.
 
-All examples use the global `skillboard` command. From a clone, replace `skillboard ` with `node bin/skillboard.mjs `.
+## Content review flow
+
+1. Fork a variant from a known base.
+2. Edit its `SKILL.md` manually.
+3. Inspect live/base/approved digest drift.
+4. Approve the reviewed snapshot.
+5. Reset to a recorded base or approved snapshot when necessary.
+
+SkillBoard does not convert or rewrite skill bodies and does not promise semantic
+equivalence between base and variant.
+
+## Read-only inspection
 
 ```bash
-skillboard variant add <variant-id> --from <base-id> --capability <name> --workflow <name> --config <path> --skills <dir> [--path <relative-skill-path>] [--mode manual-only|router-only|workflow-auto] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]
-skillboard variant fork <variant-id> --from <base-id> --capability <name> --workflow <name> --path <relative-skill-path> --config <path> --skills <dir> [--adapted-for <label>] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]
-skillboard variant status <variant-id> --config <path> --skills <dir> [--json]
-skillboard variant approve <variant-id> --config <path> --skills <dir> [--mode manual-only|router-only|workflow-auto] [--dry-run] [--json]
-skillboard variant reset <variant-id> --to-base|--to-approved --config <path> --skills <dir> [--yes] [--dry-run] [--mode manual-only|router-only|workflow-auto] [--json]
+skillboard variant status <variant-id> --config <path> --skills <dir> --json
 ```
 
-Use `--json` in scripts. Success payloads return the command-specific lifecycle fields such as `message`, `dryRun`, `changed`, `plan`, `filePlan`, `skill`, `variant`, and `warnings`. Errors include `ok: false` with a stable `error.code` and `error.message`. Usage errors exit with code `2` in both plain and JSON modes.
+The `variant status` read-only payload reports stored content and inventory
+lifecycle metadata plus computed digest drift.
+Snapshots live under `.skillboard/variant-snapshots/<encoded-skill-id>/` and are
+created lazily. Path containment checks protect live and snapshot files.
 
-## Recommended review flow
+## Version 1 compatibility reference
 
-1. Register or fork the variant from a known base:
+Historical v1 commands accepted capability, workflow, owner-install-unit, and
+mode values such as `manual-only`, `router-only`, and `workflow-auto`. Those
+arguments describe the v1 migration/compatibility surface only; they do not
+authorize v2 availability.
 
-   ```bash
-   skillboard variant fork claude.a --from a --capability task-review --workflow claude-workflow --path claude/a --config skillboard.config.yaml --skills skills --json
-   ```
+```text
+skillboard variant fork <variant-id> --from <base-id> --capability <name> --workflow <name> --path <path> ...
+skillboard variant approve <variant-id> ...
+skillboard variant reset <variant-id> --to-base|--to-approved ...
+```
 
-   Fork creates a draft relationship and raw snapshot records without promoting the variant for automatic workflow use.
-
-2. Edit the variant `SKILL.md` by hand. This is where the actual adaptation happens.
-
-3. Inspect computed drift before approval:
-
-   ```bash
-   skillboard variant status claude.a --config skillboard.config.yaml --skills skills --json
-   ```
-
-   `variant.status` is the stored lifecycle state. `computedStatus` is derived from the live digest, the base digest, and the approved digest. A changed live file that differs from the base snapshot and has no matching approved snapshot is a draft candidate.
-
-4. Approve the reviewed variant:
-
-   ```bash
-   skillboard variant approve claude.a --config skillboard.config.yaml --skills skills --mode router-only --json
-   ```
-
-   Approval writes an approved snapshot, records the live digest, updates the skill metadata, and promotes the workflow preference/fallback policy for the chosen capability.
-
-5. Reset deliberately when needed:
-
-   ```bash
-   skillboard variant reset claude.a --to-base --config skillboard.config.yaml --skills skills --yes --json
-   skillboard variant reset claude.a --to-approved --config skillboard.config.yaml --skills skills --yes --json
-   ```
-
-   `--to-base` restores the base draft file and demotes workflow preference back to the base skill. `--to-approved` restores the approved snapshot and policy. Without `--yes`, mutating reset is rejected; use `--dry-run --json` to inspect the plan first.
-
-## Metadata and snapshots
-
-Variant metadata lives with the skill declaration in `skillboard.config.yaml`:
+Before using a migrated variant, set its v2 policy explicitly:
 
 ```yaml
+version: 2
 skills:
-  claude.a:
-    variant:
-      of: a
-      capability: task-review
-      workflow: claude-workflow
-      status: approved
-      adapted_for: claude
-      base:
-        content_digest: sha256:...
-        snapshot: .skillboard/variant-snapshots/claude.a/base.md
-      approved:
-        content_digest: sha256:...
-        snapshot: .skillboard/variant-snapshots/claude.a/approved.md
+  claude-review:
+    enabled: true
+    shared: false
+    preference:
+      intents:
+        - review
+      priority: 100
 ```
 
-Snapshots are raw file records under `.skillboard/variant-snapshots/<encoded-skill-id>/`. That directory is created lazily by lifecycle commands such as `variant fork` and `variant approve`; `skillboard init` does not need to pre-create snapshot directories. A reset can restore the base or approved content safely from those records. The lifecycle helpers verify that snapshot and live paths stay inside the configured workspace before writing files.
-
-## Safety boundaries
-
-- `variant fork` and `variant add` create policy metadata; they do not make a newly edited skill equivalent to the base.
-- `variant approve` should happen only after human review of the live `SKILL.md` body and the `variant status` digest output.
-- `variant reset` writes files only through the safe replacement helper and refuses ambiguous reset targets.
-- A variant is still governed by normal capability, workflow, exposure, install-unit, and invocation checks.
+These authorization-mutating compatibility commands do not change v2 policy.
+Use the ordinary v2 enable/disable/share/unshare commands for policy changes.

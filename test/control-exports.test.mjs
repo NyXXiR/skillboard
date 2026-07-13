@@ -3,7 +3,6 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import YAML from "yaml";
 
 const EXPECTED_EXPORTS = [
   "activateSkill",
@@ -72,13 +71,13 @@ test("index.mjs exports the expected control-derived public API", async () => {
   }
 });
 
-test("addSkillVariant creates a workflow preferred variant", async () => {
+test("addSkillVariant refuses v1 dry-run and write while preserving bytes", async () => {
   const { root, configPath, skillsRoot } = await writeVariantFixture();
   try {
     const { addSkillVariant } = await import("../src/control.mjs");
     const before = await readFile(configPath, "utf8");
 
-    const result = await addSkillVariant({
+    await assert.rejects(addSkillVariant({
       configPath,
       skillsRoot,
       variantId: "claude.review",
@@ -87,20 +86,10 @@ test("addSkillVariant creates a workflow preferred variant", async () => {
       workflow: "claude-workflow",
       path: "claude/review",
       dryRun: true
-    });
-
-    assert.equal(result.dryRun, true);
-    assert.equal(result.changed, true);
-    assert.equal(result.policy.ok, true);
+    }), /Version 1 policy is read-only\. Run `skillboard migrate v2`\./);
     assert.equal(await readFile(configPath, "utf8"), before);
-    assert.equal(result.plan.semanticAvailable, true);
-    const semanticPaths = result.plan.semanticChanges.map((change) => change.path);
-    assert.ok(semanticPaths.includes("/skills/claude.review"));
-    assert.ok(semanticPaths.includes("/capabilities/task-review/alternatives/base.review"));
-    assert.ok(semanticPaths.includes("/capabilities/task-review/alternatives/claude.review"));
-    assert.ok(semanticPaths.includes("/workflows/claude-workflow/required_capabilities/task-review/preferred"));
 
-    await addSkillVariant({
+    await assert.rejects(addSkillVariant({
       configPath,
       skillsRoot,
       variantId: "claude.review",
@@ -108,31 +97,14 @@ test("addSkillVariant creates a workflow preferred variant", async () => {
       capability: "task-review",
       workflow: "claude-workflow",
       path: "claude/review"
-    });
-
-    const config = YAML.parse(await readFile(configPath, "utf8"));
-    assert.deepEqual(config.skills["claude.review"], {
-      path: "claude/review",
-      status: "active",
-      invocation: "workflow-auto",
-      exposure: "exported",
-      category: "core"
-    });
-    assert.deepEqual(config.capabilities["task-review"].alternatives, ["base.review", "claude.review"]);
-    assert.equal(config.workflows["claude-workflow"].required_capabilities["task-review"].preferred, "claude.review");
-    assert.deepEqual(
-      config.workflows["claude-workflow"].required_capabilities["task-review"].fallback,
-      ["old.review", "base.review", "canonical.review", "extra.review"]
-    );
-    assert.deepEqual(config.workflows["claude-workflow"].active_skills, ["claude.review"]);
-    assert.deepEqual(config.workflows["claude-workflow"].blocked_skills, []);
-    assert.equal(config.skills["base.review"].replaced_by, undefined);
+    }), /Version 1 policy is read-only\. Run `skillboard migrate v2`\./);
+    assert.equal(await readFile(configPath, "utf8"), before);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("addSkillVariant preserves declared variant skill fields", async () => {
+test("addSkillVariant refuses a declared v1 variant while preserving bytes", async () => {
   const { root, configPath, skillsRoot } = await writeVariantFixture({
     variantSkill: `
   claude.review:
@@ -160,7 +132,8 @@ install_units:
   try {
     const { addSkillVariant } = await import("../src/control.mjs");
 
-    await addSkillVariant({
+    const before = await readFile(configPath, "utf8");
+    await assert.rejects(addSkillVariant({
       configPath,
       skillsRoot,
       variantId: "claude.review",
@@ -170,32 +143,22 @@ install_units:
       path: "ignored/path",
       category: "ignored-category",
       ownerInstallUnit: "ignored.owner"
-    });
-
-    const config = YAML.parse(await readFile(configPath, "utf8"));
-    assert.deepEqual(config.skills["claude.review"], {
-      path: "declared/claude-review",
-      status: "candidate",
-      invocation: "router-only",
-      exposure: "private",
-      category: "declared-category",
-      owner_install_unit: "local.variant"
-    });
-    assert.equal(config.workflows["claude-workflow"].required_capabilities["task-review"].preferred, "claude.review");
-    assert.deepEqual(config.capabilities["task-review"].alternatives, ["base.review", "claude.review"]);
+    }), /Version 1 policy is read-only\. Run `skillboard migrate v2`\./);
+    assert.equal(await readFile(configPath, "utf8"), before);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("addSkillVariant derives new variant invocation from capability policy", async () => {
+test("addSkillVariant refuses v1 capability policies while preserving bytes", async () => {
   const routerFixture = await writeVariantFixture({
     requiredCapabilities: "    required_capabilities: {}\n"
   });
   try {
     const { addSkillVariant } = await import("../src/control.mjs");
 
-    await addSkillVariant({
+    const before = await readFile(routerFixture.configPath, "utf8");
+    await assert.rejects(addSkillVariant({
       configPath: routerFixture.configPath,
       skillsRoot: routerFixture.skillsRoot,
       variantId: "claude.review",
@@ -203,10 +166,8 @@ test("addSkillVariant derives new variant invocation from capability policy", as
       capability: "task-review",
       workflow: "claude-workflow",
       path: "claude/review"
-    });
-
-    const config = YAML.parse(await readFile(routerFixture.configPath, "utf8"));
-    assert.equal(config.skills["claude.review"].invocation, "router-only");
+    }), /Version 1 policy is read-only\. Run `skillboard migrate v2`\./);
+    assert.equal(await readFile(routerFixture.configPath, "utf8"), before);
   } finally {
     await rm(routerFixture.root, { recursive: true, force: true });
   }
@@ -218,7 +179,8 @@ test("addSkillVariant derives new variant invocation from capability policy", as
   try {
     const { addSkillVariant } = await import("../src/control.mjs");
 
-    await addSkillVariant({
+    const before = await readFile(globalFixture.configPath, "utf8");
+    await assert.rejects(addSkillVariant({
       configPath: globalFixture.configPath,
       skillsRoot: globalFixture.skillsRoot,
       variantId: "claude.review",
@@ -226,10 +188,8 @@ test("addSkillVariant derives new variant invocation from capability policy", as
       capability: "task-review",
       workflow: "claude-workflow",
       path: "claude/review"
-    });
-
-    const config = YAML.parse(await readFile(globalFixture.configPath, "utf8"));
-    assert.equal(config.skills["claude.review"].invocation, "manual-only");
+    }), /Version 1 policy is read-only\. Run `skillboard migrate v2`\./);
+    assert.equal(await readFile(globalFixture.configPath, "utf8"), before);
   } finally {
     await rm(globalFixture.root, { recursive: true, force: true });
   }

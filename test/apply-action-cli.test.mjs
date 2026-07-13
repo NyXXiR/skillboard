@@ -39,7 +39,7 @@ test("apply-action dry-run previews the selected current action without mutating
   });
 });
 
-test("apply-action --yes --json applies a review action and returns a fresh post-apply brief", async () => {
+test("apply-action --yes --json refuses v1 review action without mutation", async () => {
   await withActionsFixture(async (paths) => {
     const originalConfig = await readFile(paths.configPath, "utf8");
     const result = await runSkillboard([
@@ -50,33 +50,16 @@ test("apply-action --yes --json applies a review action and returns a fresh post
       "--json"
     ]);
 
-    assert.equal(result.exitCode, 0, commandFailure(result));
-
+    assert.notEqual(result.exitCode, 0);
     const payload = parseJson(result);
-    assert.equal(payload.ok, true);
-    assert.equal(payload.mode, "applied");
-    assert.equal(payload.action.id, "review-install-unit:medium.pack");
-    assert.equal(payload.control.changed, true);
-    assert.equal(payload.brief.schema_version, 1);
-    assert.equal(payload.brief.health.config.valid, true);
-    assert.ok(Array.isArray(payload.brief.actions));
-    assert.equal(
-      payload.brief.actions.some((action) => action.id === "review-install-unit:medium.pack"),
-      false
-    );
-    assert.equal(
-      payload.brief.review_queue.some((entry) => entry.id === "install_unit:medium.pack"),
-      false
-    );
-
-    const updatedConfig = await readFile(paths.configPath, "utf8");
-    assert.notEqual(updatedConfig, originalConfig);
-    assert.match(updatedConfig, /medium\.pack:[\s\S]*trust_level: reviewed/);
+    assertStructuredError(payload, "migration-required", /^Version 1 policy is read-only\. Run `skillboard migrate v2`\.$/);
+    assert.equal(await readFile(paths.configPath, "utf8"), originalConfig);
   });
 });
 
-test("apply-action text mode prints the returned post-apply brief after mutation", async () => {
+test("apply-action text mode refuses v1 mutation without changing bytes", async () => {
   await withActionsFixture(async (paths) => {
+    const before = await readFile(paths.configPath, "utf8");
     const result = await runSkillboard([
       "apply-action",
       "review-install-unit:medium.pack",
@@ -84,30 +67,14 @@ test("apply-action text mode prints the returned post-apply brief after mutation
       "--yes"
     ]);
 
-    assert.equal(result.exitCode, 0, commandFailure(result));
-    assert.match(result.stdout, /Applied action: review-install-unit:medium\.pack/);
-    assert.match(result.stdout, /Returned post-apply brief:/);
-    assert.match(result.stdout, /# SkillBoard Brief/);
-    assert.doesNotMatch(result.stdout.split("Returned post-apply brief:")[1], /review-install-unit:medium\.pack/);
+    assert.notEqual(result.exitCode, 0);
+    assert.equal(result.stderr.trim(), "Version 1 policy is read-only. Run `skillboard migrate v2`.");
+    assert.equal(await readFile(paths.configPath, "utf8"), before);
   });
 });
 
-test("apply-action refuses a stale action id with structured JSON and no mutation", async () => {
+test("apply-action refuses a v1 action id with structured JSON and no mutation", async () => {
   await withActionsFixture(async (paths) => {
-    const manualReview = await runSkillboard([
-      "review",
-      "install-unit",
-      "medium.pack",
-      "--trust-level",
-      "reviewed",
-      "--config",
-      paths.configPath,
-      "--skills",
-      paths.skillsRoot,
-      "--json"
-    ]);
-    assert.equal(manualReview.exitCode, 0, commandFailure(manualReview));
-
     const configAfterManualReview = await readFile(paths.configPath, "utf8");
     const result = await runSkillboard([
       "apply-action",
@@ -122,7 +89,7 @@ test("apply-action refuses a stale action id with structured JSON and no mutatio
     assert.notEqual(result.exitCode, 0);
 
     const payload = parseJson(result);
-    assertStructuredError(payload, "stale-action", /current|stale|not found/i);
+    assertStructuredError(payload, "migration-required", /^Version 1 policy is read-only\. Run `skillboard migrate v2`\.$/);
   });
 });
 
@@ -152,12 +119,12 @@ test("apply-action without --yes previews medium-risk action and leaves config u
 test("apply-action destructive reset requires both --yes and --allow-destructive", async () => {
   await assertDestructiveResetRejected(
     ["--yes", "--json"],
-    "destructive-confirmation-required",
-    /--allow-destructive|destructive/i
+    "migration-required",
+    /^Version 1 policy is read-only\. Run `skillboard migrate v2`\.$/
   );
 });
 
-test("apply-action destructive reset purges all SkillBoard project state while preserving local skills", async () => {
+test("apply-action destructive reset refuses v1 and preserves project state", async () => {
   await withActionsFixture(async (paths) => {
     await mkdir(join(paths.root, "skills", "local-helper"), { recursive: true });
     await writeFile(
@@ -182,20 +149,18 @@ test("apply-action destructive reset purges all SkillBoard project state while p
       "--json"
     ]);
 
-    assert.equal(result.exitCode, 0, commandFailure(result));
+    assert.notEqual(result.exitCode, 0);
     const payload = parseJson(result);
-    assert.equal(payload.ok, true);
-    assert.equal(payload.mode, "applied");
-    assert.equal(payload.action.kind, "reset-cleanup");
-    assert.equal(await pathExists(join(paths.root, "skillboard.config.yaml")), false);
-    assert.equal(await pathExists(join(paths.root, ".skillboard")), false);
+    assertStructuredError(payload, "migration-required", /^Version 1 policy is read-only\. Run `skillboard migrate v2`\.$/);
+    assert.equal(await pathExists(join(paths.root, "skillboard.config.yaml")), true);
+    assert.equal(await pathExists(join(paths.root, ".skillboard")), true);
     assert.equal(await pathExists(join(paths.root, "skills", "local-helper", "SKILL.md")), true);
   });
 });
 
-test("apply-action cannot apply unresolved or unknown workflow actions", async () => {
-  await assertWorkflowActionRejected([], /workflow|select/i);
-  await assertWorkflowActionRejected(["--workflow", "missing-workflow"], /unknown workflow|workflow/i);
+test("apply-action refuses v1 before resolving workflow actions", async () => {
+  await assertWorkflowActionRejected([], /^Version 1 policy is read-only\. Run `skillboard migrate v2`\.$/);
+  await assertWorkflowActionRejected(["--workflow", "missing-workflow"], /^Version 1 policy is read-only\. Run `skillboard migrate v2`\.$/);
 });
 
 test("apply-action cannot activate a reviewed blocked runtime skill", async () => {
@@ -213,7 +178,7 @@ test("apply-action cannot activate a reviewed blocked runtime skill", async () =
     assert.equal(afterConfig, originalConfig);
     assert.notEqual(result.exitCode, 0);
     const payload = parseJson(result);
-    assertStructuredError(payload, "stale-action", /current|stale|not found/i);
+    assertStructuredError(payload, "migration-required", /^Version 1 policy is read-only\. Run `skillboard migrate v2`\.$/);
   });
 });
 

@@ -26,12 +26,14 @@ import {
   writeCheckedConfig
 } from "./config-write.mjs";
 import { canUseSkill } from "./can-use-guard.mjs";
+import { assertV2MutationVersion } from "../compatibility.mjs";
 
 const WRITABLE_INVOCATIONS = new Set(["manual-only", "router-only", "workflow-auto", "global-auto"]);
 const NON_ACTIVATABLE_STATUSES = new Set(["blocked", "deprecated", "archived", "removed"]);
 
 export async function activateSkill(options) {
   const { document, originalText } = await loadConfig(options.configPath);
+  assertV2MutationVersion(document.get("version") ?? 1);
   const skill = requireConfigSkill(document, options.skillId);
   const workflow = requireConfigWorkflow(document, options.workflow);
   const mode = options.mode ?? readMapString(skill, "invocation", "manual-only");
@@ -55,6 +57,7 @@ export async function activateSkill(options) {
 
 export async function addSkill(options) {
   const { document, originalText } = await loadConfig(options.configPath);
+  assertV2MutationVersion(document.get("version") ?? 1);
   const skills = ensureMapAt(document, ["skills"], "skills");
   if (skills.get(options.skillId, true) !== undefined) {
     throw new Error(`Skill already exists: ${options.skillId}`);
@@ -147,6 +150,7 @@ export async function addSkillVariant(options) {
 
 export async function blockSkill(options) {
   const { document, originalText } = await loadConfig(options.configPath);
+  assertV2MutationVersion(document.get("version") ?? 1);
   requireConfigSkill(document, options.skillId);
   const workflow = requireConfigWorkflow(document, options.workflow);
 
@@ -188,6 +192,7 @@ export async function removeSkill(options) {
 
 export async function preferSkill(options) {
   const { document, originalText } = await loadConfig(options.configPath);
+  assertV2MutationVersion(document.get("version") ?? 1);
   const skill = requireConfigSkill(document, options.skillId);
   const workflow = requireConfigWorkflow(document, options.workflow);
   const capabilities = requireMapAt(document, ["capabilities"], "capabilities");

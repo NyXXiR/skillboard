@@ -8,8 +8,8 @@ export async function installAgentIntegration(targets, ownership = null) {
   const updated = [];
   const unchanged = [];
   const preserved = [];
-  const content = agentIntegrationSkill();
   for (const target of targets) {
+    const content = agentIntegrationSkill(target.agent);
     if (!await isSafeManagedSkillTarget(target)) {
       preserved.push(`${target.agent}:${target.skillPath}`);
       continue;

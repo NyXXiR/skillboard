@@ -54,6 +54,12 @@ export async function uninstallProject(options) {
       }
       recordFileResult(entry.label, result, { removed, updated, preserved });
     }
+    if (!keepBridge) {
+      const inventoryPath = join(root, ".skillboard", "inventory.json");
+      const inventoryResult = await removeGeneratedInventory(inventoryPath, dryRun, root);
+      if (inventoryResult === "removed") plannedRemovedPaths.add(inventoryPath);
+      recordFileResult(".skillboard/inventory.json", inventoryResult, { removed, updated, preserved });
+    }
   }
 
   if (options.removeReports === true && options.removeProjectState !== true) {
@@ -197,6 +203,22 @@ async function removeGeneratedFile(path, expected, dryRun, root = null) {
   if (!dryRun) {
     await rm(path);
   }
+  return "removed";
+}
+
+async function removeGeneratedInventory(path, dryRun, root) {
+  if (await hasUnsafeAncestor(path, root)) return "preserved";
+  const stats = await pathStats(path);
+  if (stats === null) return "absent";
+  if (stats.isSymbolicLink() || !stats.isFile()) return "preserved";
+  let inventory;
+  try {
+    inventory = JSON.parse(await readFile(path, "utf8"));
+  } catch {
+    return "preserved";
+  }
+  if (inventory?.generated !== true || inventory?.authoritative_for_availability !== false) return "preserved";
+  if (!dryRun) await rm(path);
   return "removed";
 }
 

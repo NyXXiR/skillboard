@@ -5,11 +5,12 @@ import { renderSkillBrief } from "./brief-renderer.mjs";
 export async function runBriefCommand(options, stdout, paths) {
   const json = options.get("json") === "true";
   const result = await buildSkillBrief({
-    root: briefRoot(options),
+    root: briefRoot(options) ?? dirname(paths.configPath),
     configPath: paths.configPath,
     skillsRoot: paths.skillsRoot,
     workflow: options.get("workflow"),
     intent: options.get("intent"),
+    agent: options.get("agent"),
     includeActions: options.get("include-actions") === "true" || !json
   });
   writeBriefOutput(stdout, result, options);
@@ -22,7 +23,7 @@ function briefRoot(options) {
     return dir;
   }
   const config = options.get("config");
-  return config !== undefined && isAbsolute(config) ? dirname(config) : ".";
+  return config !== undefined && isAbsolute(config) ? dirname(config) : undefined;
 }
 
 function briefExitCode(result) {

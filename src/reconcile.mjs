@@ -1,6 +1,9 @@
 const SAFE_HARNESS_STATUSES = new Set(["available", "configured", "primary", "fallback"]);
 
 export function reconcileWorkspace(workspace, options = {}) {
+  if (workspace.version === 2) {
+    return reconcileV2Workspace(workspace);
+  }
   const configuredSkills = new Set(workspace.skills.map((skill) => skill.id));
   const actualHarnesses = options.actualHarnesses ?? [];
   const plan = {
@@ -44,6 +47,31 @@ export function reconcileWorkspace(workspace, options = {}) {
   }
 
   return plan;
+}
+
+function reconcileV2Workspace(workspace) {
+  const configuredSkills = new Set(workspace.skills.map((skill) => skill.id));
+  const observedSkills = workspace.inventory?.skills ?? workspace.installedSkills;
+  const skillChanges = observedSkills
+    .filter((skill) => !configuredSkills.has(skill.id))
+    .map((skill) => ({
+      type: "new-skill",
+      skillId: skill.id,
+      recommendedEnabled: true,
+      recommendedShared: false
+    }));
+  return {
+    skillChanges,
+    harnessChanges: [],
+    autoActions: skillChanges.map((change) => ({
+      action: "enable-skill-local",
+      skillId: change.skillId,
+      enabled: true,
+      shared: false
+    })),
+    decisionsRequired: [],
+    warnings: workspace.inventory?.integrityErrors ?? []
+  };
 }
 
 function reconcileHarnesses(workspace, actualHarnesses, plan) {

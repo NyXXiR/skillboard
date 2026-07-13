@@ -1,4 +1,5 @@
 export function renderDashboard(workspace) {
+  if (workspace.version === 2) return renderV2Dashboard(workspace);
   const lines = ["# SkillBoard", "", "## Defaults", ""];
   lines.push(`- Invocation policy: \`${workspace.defaults.invocationPolicy}\``);
   lines.push(`- Model auto invocation: \`${workspace.defaults.allowModelInvocation}\``);
@@ -72,6 +73,19 @@ export function renderDashboard(workspace) {
   return `${lines.join("\n")}\n`;
 }
 
+function renderV2Dashboard(workspace) {
+  const lines = ["# SkillBoard", "", "## Version 2 Policy", ""];
+  for (const skill of workspace.skills) {
+    const state = skill.enabled ? "enabled" : "disabled";
+    lines.push(`- \`${skill.id}\` — ${state}, ${skill.shared ? "shared across agents" : "agent-local"}`);
+  }
+  lines.push("", "## Runtime Readiness", "");
+  const errors = workspace.inventory?.integrityErrors ?? [];
+  lines.push(errors.length === 0 ? "- inventory ready" : `- inventory unavailable: ${errors.join("; ")}`);
+  lines.push("");
+  return `${lines.join("\n")}\n`;
+}
+
 export function renderReconcilePlan(plan) {
   const lines = ["# SkillBoard Reconcile Plan", "", "## Warnings", ""];
   if (plan.warnings.length === 0) {
@@ -85,7 +99,9 @@ export function renderReconcilePlan(plan) {
     lines.push("- none");
   }
   for (const action of plan.autoActions) {
-    if (action.action === "quarantine-skill") {
+    if (action.action === "enable-skill-local") {
+      lines.push(`- enable \`${action.skillId}\` where it is installed`);
+    } else if (action.action === "quarantine-skill") {
       lines.push(`- quarantine \`${action.skillId}\` as \`${action.recommendedStatus}\` / \`${action.recommendedInvocation}\` for capability \`${action.capability}\``);
     } else if (action.action === "disable-harness") {
       lines.push(`- disable new harness \`${action.harness}\` until a workflow opts in`);
@@ -97,7 +113,11 @@ export function renderReconcilePlan(plan) {
     lines.push("- none");
   }
   for (const change of plan.skillChanges) {
-    lines.push(`- \`${change.skillId}\`: ${change.type}, capability \`${change.capability}\`, recommend \`${change.recommendedStatus}\``);
+    if (change.recommendedEnabled !== undefined) {
+      lines.push(`- \`${change.skillId}\`: ${change.type}, recommend enabled \`${change.recommendedEnabled}\`, shared \`${change.recommendedShared}\``);
+    } else {
+      lines.push(`- \`${change.skillId}\`: ${change.type}, capability \`${change.capability}\`, recommend \`${change.recommendedStatus}\``);
+    }
   }
 
   lines.push("", "## Harness Changes", "");

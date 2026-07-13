@@ -1,0 +1,11 @@
+{
+  "format_version": 1,
+  "generated": true,
+  "authoritative_for_availability": false,
+  "skills": [],
+  "install_units": [],
+  "redactions": {
+    "path_count": 0,
+    "warnings": []
+  }
+}

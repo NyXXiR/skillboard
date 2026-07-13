@@ -28,6 +28,7 @@ test("package manifest is publishable as the SkillBoard CLI", async () => {
   });
   assert.equal(manifest.scripts.postinstall, "node bin/postinstall.mjs");
   assert.equal(manifest.publishConfig.access, "public");
+  assert.equal(manifest.engines.node, ">=14.21");
   assert.deepEqual(manifest.repository, {
     type: "git",
     url: "git+https://github.com/NyXXiR/skillboard.git"
@@ -68,7 +69,8 @@ test("package manifest includes the rollout operator runbook", async () => {
   const runbook = await readFile(resolve("docs/rollout-runbook.md"), "utf8");
 
   assert.match(readme, /\[Rollout runbook\]\(docs\/rollout-runbook\.md\)/);
-  assert.match(reference, /skillboard rollout \[audit\|plan\|apply\|rollback\|report\]/);
+  assert.match(reference, /Advanced operator commands/);
+  assert.match(reference, /rollout/);
   assert.match(runbook, /## Emergency rollback/);
   assert.match(runbook, /healthy.*0/s);
   assert.match(runbook, /rollback-needed.*4/s);
@@ -81,7 +83,7 @@ test("GitHub Actions publish workflow releases npm package from version tags", a
   assert.match(workflow, /tags:\s*\n\s+- 'v\*'/);
   assert.match(workflow, /id-token: write/);
   assert.match(workflow, /contents: read/);
-  assert.match(workflow, /node-version: 24/);
+  assert.match(workflow, /node-version: 22/);
   assert.match(workflow, /registry-url: https:\/\/registry\.npmjs\.org/);
   assert.doesNotMatch(workflow, /cache: npm/);
   assert.match(workflow, /npm ci/);
@@ -99,9 +101,13 @@ test("GitHub Actions publish workflow releases npm package from version tags", a
 test("GitHub Actions check workflow runs package smoke through a cross-platform Node script", async () => {
   const workflow = await readFile(resolve(".github/workflows/check.yml"), "utf8");
 
+  assert.match(workflow, /-\s+14/);
   assert.match(workflow, /-\s+20/);
   assert.match(workflow, /-\s+22/);
-  assert.match(workflow, /-\s+24/);
+  assert.match(workflow, /matrix\.node == 14/);
+  assert.match(workflow, /npm install --ignore-scripts --production/);
+  assert.match(workflow, /matrix\.node != 14/);
+  assert.match(workflow, /npm run check/);
   assert.match(workflow, /package and lifecycle smoke/);
   assert.match(workflow, /node \.github\/scripts\/ci-package-lifecycle-smoke\.mjs/);
   assert.doesNotMatch(workflow, /shell: bash/);
@@ -117,6 +123,7 @@ test("npm pack dry-run includes public runtime files and excludes work artifacts
   const [pack] = JSON.parse(result.stdout);
   const paths = pack.files.map((file) => file.path);
 
+  assert.equal(pack.version, "0.3.0");
   assert.ok(paths.includes("bin/skillboard.mjs"));
   assert.ok(paths.includes("bin/postinstall.mjs"));
   assert.ok(paths.includes("src/doctor.mjs"));
@@ -124,6 +131,8 @@ test("npm pack dry-run includes public runtime files and excludes work artifacts
   assert.ok(paths.includes("src/install-output-detector.mjs"));
   assert.ok(paths.includes("docs/install.md"));
   assert.ok(paths.includes("docs/reference.md"));
+  assert.ok(paths.includes("docs/policy-model.md"));
+  assert.ok(paths.includes("docs/versioning.md"));
   assert.ok(paths.includes("docs/rollout-runbook.md"));
   assert.equal(paths.includes("skillboard.png"), false);
   assert.equal(paths.some((path) => path.startsWith("docs/plan/")), false);
@@ -161,7 +170,8 @@ test("postinstall auto-runs agent setup for global installs without project file
     assert.match(result.stderr, /No project init was run/);
     assert.match(result.stderr, /setup later after adding another supported agent/i);
     assert.match(codexSkill, /SkillBoard Agent Integration/);
-    assert.equal(openCodeSkill, codexSkill);
+    assert.match(codexSkill, /integration is running for agent `codex`/i);
+    assert.match(openCodeSkill, /integration is running for agent `opencode`/i);
     assert.doesNotMatch(result.stderr, /skillboard init --dir/);
     assert.equal(await readFile(join(project, "skillboard.config.yaml"), "utf8").catch(() => null), null);
     assert.equal(await readFile(join(project, "AGENTS.md"), "utf8").catch(() => null), null);
@@ -504,7 +514,7 @@ test("setup preserves a symlinked managed agent skill directory without writing 
     assert.match(stdout.join(""), /Preserved: `codex:/);
     assert.equal(await readFile(outsideSkill, "utf8"), oldManaged);
     assert.equal((await lstat(join(skillRoot, "skillboard"))).isSymbolicLink(), true);
-    assert.deepEqual(chowns, []);
+    assert.deepEqual(chowns, homeStateChowns(userHome));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -560,7 +570,7 @@ test("setup preserves a symlinked agent skill root without writing through it", 
     assert.match(stdout.join(""), /Preserved: `codex:/);
     assert.equal(await readFile(join(outside, "skillboard", "SKILL.md"), "utf8").catch(() => null), null);
     assert.equal(await readlink(skillRoot), outside);
-    assert.deepEqual(chowns, []);
+    assert.deepEqual(chowns, homeStateChowns(userHome));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -826,7 +836,7 @@ test("setup under sudo skips chown at and below a symlinked ownership component"
 
     assert.equal(code, 0);
     assert.equal(await readFile(join(realCodexHome, "skills", "skillboard", "SKILL.md"), "utf8").catch(() => null), null);
-    assert.deepEqual(chowns, []);
+    assert.deepEqual(chowns, homeStateChowns(userHome));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -874,7 +884,7 @@ test("setup under sudo does not chown agent guidance outside the invoking user's
 
     assert.equal(code, 0);
     assert.match(skill, /SkillBoard Agent Integration/);
-    assert.deepEqual(chowns, []);
+    assert.deepEqual(chowns, homeStateChowns(userHome));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -924,7 +934,7 @@ test("packed package runs through npm exec agent-layer setup surface", async () 
     const npxAlias = await execNpm(["exec", "--yes", "--package", tarballPath, "--", "agent-skillboard", "help"], { cwd: temp });
 
     assert.match(help.stdout, /^SkillBoard - permissive AI skill overlap routing$/m);
-    assert.match(help.stdout, /Legacy project policy mode:/);
+    assert.match(help.stdout, /Legacy v1 project policy mode:/);
     assert.match(help.stdout, /init \[--dir <path>\]/);
     assert.match(help.stdout, /deprecated project-local policy bootstrap/i);
     assert.match(npxAlias.stdout, /^SkillBoard - permissive AI skill overlap routing$/m);
@@ -933,7 +943,7 @@ test("packed package runs through npm exec agent-layer setup surface", async () 
   }
 });
 
-test("packed package drives fresh project through intent brief and guard", async () => {
+test("packed package fresh v1 project refuses mutation and preserves bytes", async () => {
   const temp = await mkdtemp(join(tmpdir(), "skillboard-npm-intent-test-"));
   try {
     const project = join(temp, "project");
@@ -947,6 +957,7 @@ test("packed package drives fresh project through intent brief and guard", async
 
     await skillboard(["init", "--dir", project, "--no-scan-installed"]);
     const agentsBridge = await readFile(join(project, "AGENTS.md"), "utf8");
+    await writeFile(configPath, "version: 1\nskills: {}\nworkflows: {}\nharnesses: {}\ninstall_units: {}\n", "utf8");
     await mkdir(skillPath, { recursive: true });
     await writeFile(
       join(skillPath, "SKILL.md"),
@@ -954,52 +965,60 @@ test("packed package drives fresh project through intent brief and guard", async
       "utf8"
     );
     const baseArgs = ["--config", configPath, "--skills", skillsRoot];
-    await skillboard(["add", "skill", "user.test-first", "--path", "user-test-first", "--category", "testing", ...baseArgs]);
-    await skillboard(["add", "workflow", "daily-workflow", "--harness", "codex", "--skill", "user.test-first", ...baseArgs]);
-
-    const brief = await skillboard([
-      "brief",
-      "--intent",
-      "write tests before implementation",
-      "--workflow",
-      "daily-workflow",
-      ...baseArgs,
-      "--json"
-    ]);
-    const payload = JSON.parse(brief.stdout);
-    const guard = await skillboard(["guard", "use", "user.test-first", "--workflow", "daily-workflow", ...baseArgs, "--json"]);
+    const configBytes = await readFile(configPath, "utf8");
+    await assert.rejects(
+      skillboard(["add", "skill", "user.test-first", "--path", "user-test-first", "--category", "testing", ...baseArgs]),
+      /Version 1 policy is read-only\. Run `skillboard migrate v2`\./
+    );
+    assert.equal(await readFile(configPath, "utf8"), configBytes);
 
     assert.match(agentsBridge, /brief --intent <request>/i);
-    assert.match(agentsBridge, /assistant_guidance\.route/);
-    assert.match(agentsBridge, /route_candidates/);
-    assert.match(agentsBridge, /overlap_resolution/);
-    assert.match(agentsBridge, /policy_memory/);
-    assert.match(agentsBridge, /post_use_policy_suggestion/);
-    assert.match(agentsBridge, /ask after completion whether to remember the suggested policy/i);
-    assert.match(agentsBridge, /I will use <skill-id> for this request\./);
-    assert.match(agentsBridge, /I used <skill-id> for this request\./);
-    assert.match(agentsBridge, /ask a clarifying question/i);
-    assert.equal(payload.assistant_guidance.status, "ready");
-    assert.equal(payload.assistant_guidance.route.workflow, "daily-workflow");
-    assert.equal(payload.assistant_guidance.route.matched_capability, null);
-    assert.equal(payload.assistant_guidance.route.matched_skill, "user.test-first");
-    assert.equal(payload.assistant_guidance.route.recommended_skill, "user.test-first");
-    assert.equal(payload.assistant_guidance.route.route_candidates[0].skill, "user.test-first");
-    assert.equal(payload.assistant_guidance.route.route_candidates[0].selected, true);
-    assert.equal(payload.assistant_guidance.route.route_candidates[0].guard_allowed, true);
-    assert.equal(payload.assistant_guidance.route.usage_disclosure.confirmation_required, false);
-    assert.match(payload.assistant_guidance.route.usage_disclosure.start, /State at the start that user\.test-first is being used/);
-    assert.match(payload.assistant_guidance.route.usage_disclosure.finish, /State at completion that user\.test-first was used/);
-    assert.equal(payload.assistant_guidance.route.usage_disclosure.start_message, "I will use user.test-first for this request.");
-    assert.equal(payload.assistant_guidance.route.usage_disclosure.finish_message, "I used user.test-first for this request.");
-    assert.equal(payload.assistant_guidance.route.policy_memory, null);
-    assert.equal(payload.assistant_guidance.route.guard_allowed, true);
-    assert.match(payload.assistant_guidance.route.guard_command, /skillboard guard use user\.test-first/);
-    assert.equal(JSON.parse(guard.stdout).allowed, true);
+    assert.match(agentsBridge, /enabled/);
+    assert.match(agentsBridge, /sharing/);
+    assert.match(agentsBridge, /preference ranks enabled skills installed for the current\s+agent/i);
+    assert.match(agentsBridge, /guard use <skill-id>/);
+    assert.match(agentsBridge, /Do not ask for another approval when guard allows use/i);
+    assert.match(agentsBridge, /skillboard migrate v2/);
+    assert.match(agentsBridge, /audit metadata and never\s+determine availability/i);
   } finally {
     await rm(temp, { recursive: true, force: true });
   }
 });
+
+test("packed inventory refresh rejects invalid v2 policy before changing project bytes", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "skillboard-packed-invalid-refresh-"));
+  try {
+    const project = join(temp, "project");
+    const configPath = join(project, "skillboard.config.yaml");
+    const inventoryPath = join(project, ".skillboard", "inventory.json");
+    await mkdir(join(project, ".skillboard"), { recursive: true });
+    const config = "version: 2\nskills:\n  bad:\n    enabled: true\n    shared: all\n";
+    const inventory = Buffer.from("{\"existing\":true}\n");
+    await writeFile(configPath, config, "utf8");
+    await writeFile(inventoryPath, inventory);
+    const packResult = await execNpm(["pack", "--json", "--pack-destination", temp]);
+    const [pack] = JSON.parse(packResult.stdout);
+    const tarballPath = join(temp, pack.filename);
+
+    await assert.rejects(
+      execNpm(["exec", "--yes", "--package", tarballPath, "--", "skillboard", "inventory", "refresh", "--dir", project, "--json"], { cwd: temp }),
+      /skills\.bad\.shared is required and must be a boolean/
+    );
+    assert.equal(await readFile(configPath, "utf8"), config);
+    assert.deepEqual(await readFile(inventoryPath), inventory);
+    await assert.rejects(stat(join(project, ".skillboard-inventory-refresh.lock")), /ENOENT/);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+function homeStateChowns(home) {
+  return [
+    { path: join(home, "skillboard.config.yaml"), uid: 1234, gid: 5678 },
+    { path: join(home, ".skillboard"), uid: 1234, gid: 5678 },
+    { path: join(home, ".skillboard", "inventory.json"), uid: 1234, gid: 5678 }
+  ];
+}
 
 function execNpm(args, options = {}) {
   const env = withoutNestedNpmExecConfig(options.env ?? process.env);

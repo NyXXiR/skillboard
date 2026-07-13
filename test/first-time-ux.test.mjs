@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
+import YAML from "yaml";
 import { loadWorkspace } from "../src/index.mjs";
 import { runInitCommand } from "../src/lifecycle-cli.mjs";
 import { pathTailRegex } from "./helpers/path-pattern.mjs";
@@ -67,6 +68,7 @@ function assertInitNextWorkflowIntentCommand(stdout, workflow, dir) {
 async function makeInitializedProject() {
   const root = await mkdtemp(join(tmpdir(), "skillboard-ux-test-"));
   await execFileAsync(process.execPath, [BIN, "init", "--dir", root, "--no-scan-installed"]);
+  await writeFile(join(root, "skillboard.config.yaml"), "version: 1\nskills: {}\nworkflows: {}\nharnesses: {}\ninstall_units: {}\n", "utf8");
   return {
     root,
     configPath: join(root, "skillboard.config.yaml"),
@@ -107,15 +109,14 @@ test("missing SKILL.md frontmatter explains what frontmatter should look like", 
   }
 });
 
-test("add workflow without --harness suggests available harnesses", async () => {
+test("v1 add harness refuses mutation before workflow guidance and preserves config", async () => {
   const project = await makeInitializedProject();
   try {
-    await execFileAsync(process.execPath, [BIN, "add", "harness", "codex", "--config", project.configPath, "--skills", project.skillsRoot]);
-    const { stderr } = await execFileAsync(process.execPath, [BIN, "add", "workflow", "daily", "--config", project.configPath, "--skills", project.skillsRoot]).catch((error) => error);
-
-    assert.match(stderr, /--harness is required/);
-    assert.match(stderr, /Available harnesses: codex/);
-    assert.doesNotMatch(stderr, /Usage: skillboard add workflow.*--config.*--skills/);
+    const before = await readFile(project.configPath, "utf8");
+    const { stderr, code } = await execFileAsync(process.execPath, [BIN, "add", "harness", "codex", "--config", project.configPath, "--skills", project.skillsRoot]).catch((error) => error);
+    assert.equal(code, 1);
+    assert.equal(stderr.trim(), "Version 1 policy is read-only. Run `skillboard migrate v2`.");
+    assert.equal(await readFile(project.configPath, "utf8"), before);
   } finally {
     await project.cleanup();
   }
@@ -176,8 +177,8 @@ test("setup without confirmation explains the agent-layer boundary without mutat
 
     assert.equal(result.code, 1);
     assert.match(result.stdout, /SkillBoard setup installs agent-layer integration, not project files/);
-    assert.match(result.stdout, /does not create skillboard\.config\.yaml or \.skillboard\//);
-    assert.match(result.stdout, /skillboard init is deprecated project-local policy bootstrap/i);
+    assert.match(result.stdout, /creates ~\/skillboard\.config\.yaml and ~\/\.skillboard\/inventory\.json/);
+    assert.match(result.stdout, /skillboard init is not needed for normal use/i);
     assert.match(result.stdout, /not needed for normal use/i);
     assert.match(result.stdout, /Run with --yes to install agent-layer integration/);
     assert.match(result.stdout, /setup --agent codex --yes/);
@@ -200,22 +201,22 @@ test("setup --yes installs agent-layer guidance without project initialization",
     const openCodeSkill = await readFile(join(home, ".config", "opencode", "skills", "skillboard", "SKILL.md"), "utf8");
 
     assert.match(setup.stdout, /SkillBoard agent integration installed/);
-    assert.match(setup.stdout, /No project was initialized/);
-    assert.match(setup.stdout, /skillboard init is deprecated project-local policy bootstrap/i);
-    assert.match(setup.stdout, /not needed for normal use/i);
+    assert.match(setup.stdout, /no project was initialized/i);
+    assert.match(setup.stdout, /User policy: skillboard\.config\.yaml/);
     assert.match(setup.stdout, /opencode:/);
     assert.doesNotMatch(setup.stdout, /skillboard init --dir/);
     assert.match(skill, /name: skillboard/);
     assert.match(skill, /SkillBoard Agent Integration/);
-    assert.match(skill, /Installed user skills are usable by default/);
+    assert.match(skill, /Installed skills stay agent-local by default/);
     assert.match(skill, /For ordinary user requests, work normally/);
     assert.match(skill, /If the user explicitly asks for a specific installed skill/);
-    assert.match(skill, /workflow priority/);
+    assert.match(skill, /skillboard skill share <skill>/);
     assert.match(skill, /Do not ask for permission merely because you selected a skill/);
     assert.match(skill, /skillboard import-skill --from <source-agent> --to <this-agent>/);
     assert.match(skill, /needs-adaptation/);
-    assert.equal(openCodeSkill, skill);
-    assert.equal(await readFile(join(home, "skillboard.config.yaml"), "utf8").catch(() => null), null);
+    assert.match(openCodeSkill, /agent `opencode`/);
+    assert.match(skill, /agent `codex`/);
+    assert.equal(YAML.parse(await readFile(join(home, "skillboard.config.yaml"), "utf8")).version, 2);
     assert.equal(await readFile(join(home, "AGENTS.md"), "utf8").catch(() => null), null);
   } finally {
     await rm(home, { recursive: true, force: true });
@@ -272,7 +273,7 @@ test("uninstall --agent-layer removes only managed SkillBoard guidance", async (
     await assert.rejects(readFile(openCodeSkillPath, "utf8"), /ENOENT/);
     assert.match(await readFile(claudeSkillPath, "utf8"), /User-authored skillboard helper/);
     assert.match(await readFile(helperSkillPath, "utf8"), /Keep local helper/);
-    assert.equal(await readFile(join(home, "skillboard.config.yaml"), "utf8").catch(() => null), null);
+    assert.equal(YAML.parse(await readFile(join(home, "skillboard.config.yaml"), "utf8")).version, 2);
     assert.equal(await readFile(join(home, "AGENTS.md"), "utf8").catch(() => null), null);
   } finally {
     await rm(home, { recursive: true, force: true });
@@ -295,7 +296,7 @@ test("setup --yes detects Codex .agents skill roots without CODEX_HOME", async (
     assert.match(setup.stdout, pathTailRegex(".agents", "skills", "skillboard", "SKILL.md"));
     assert.match(skill, /SkillBoard Agent Integration/);
     assert.equal(await readFile(join(home, ".codex", "skills", "skillboard", "SKILL.md"), "utf8").catch(() => null), null);
-    assert.equal(await readFile(join(home, "skillboard.config.yaml"), "utf8").catch(() => null), null);
+    assert.equal(YAML.parse(await readFile(join(home, "skillboard.config.yaml"), "utf8")).version, 2);
     assert.equal(await readFile(join(home, "AGENTS.md"), "utf8").catch(() => null), null);
   } finally {
     await rm(home, { recursive: true, force: true });
@@ -321,7 +322,7 @@ test("setup --yes creates Codex .agents skills root when .agents home exists", a
     assert.match(setup.stdout, pathTailRegex(".agents", "skills", "skillboard", "SKILL.md"));
     assert.match(skill, /SkillBoard Agent Integration/);
     assert.equal(codexSkill, skill);
-    assert.equal(await readFile(join(home, "skillboard.config.yaml"), "utf8").catch(() => null), null);
+    assert.equal(YAML.parse(await readFile(join(home, "skillboard.config.yaml"), "utf8")).version, 2);
     assert.equal(await readFile(join(home, "AGENTS.md"), "utf8").catch(() => null), null);
   } finally {
     await rm(home, { recursive: true, force: true });
@@ -372,26 +373,17 @@ test("init summarizes large installed skill scans instead of printing the whole 
     assert.match(init.stdout, /Initialized SkillBoard:/);
     assert.match(init.stdout, /Scanned installed agent skills: 12/);
     assert.match(init.stdout, /Managed install units: 1/);
-    assert.match(init.stdout, /Added workflows: `hermes-codex-local-manual`/);
-    assert.match(init.stdout, /Added harnesses: `hermes`/);
     assert.match(init.stdout, /Added managed skills: 12/);
     assert.match(init.stdout, /- `skill-01`/);
     assert.match(init.stdout, /- `skill-05`/);
     assert.match(init.stdout, /- \.\.\. 7 more/);
     assert.doesNotMatch(init.stdout, /skill-12`/);
     assert.match(init.stdout, /Skill selection default:/);
-    assert.match(init.stdout, /No automatic model invocation was enabled/);
-    assert.match(init.stdout, /12 manual-only skills available/);
+    assert.match(init.stdout, /12 enabled skills/);
     assert.match(init.stdout, /Next:/);
     assert.match(init.stdout, /Ask your AI: "What skills can you use in this project\?"/);
     assertInitNextCommand(init.stdout, "doctor", project, " --summary");
-    assert.match(init.stdout, /Choose a workflow: `hermes-codex-local-manual`/);
-    assert.match(init.stdout, /Example workflow brief: `hermes-codex-local-manual`/);
-    assertInitNextWorkflowCommand(init.stdout, "hermes-codex-local-manual", project);
-    assert.match(init.stdout, /Example task routing: "write tests before implementation"/);
-    assertInitNextWorkflowIntentCommand(init.stdout, "hermes-codex-local-manual", project);
-    assertInitNextWorkflowCommand(init.stdout, "hermes-codex-local-manual", project, " --verbose");
-    assert.doesNotMatch(init.stdout, /node bin\/skillboard\.mjs brief --dir .* --verbose/);
+    assert.match(init.stdout, /node bin\/skillboard\.mjs brief --dir .* --verbose/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -408,13 +400,13 @@ test("init safety summary does not parse local SKILL.md files", async () => {
 
     assert.match(init.stdout, /Initialized SkillBoard:/);
     assert.match(init.stdout, /Skill selection default:/);
-    assert.match(init.stdout, /0 automatic skills enabled/);
+    assert.match(init.stdout, /0 enabled skills/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("init safety summary counts router-only skills separately", async () => {
+test("init safety summary projects legacy callable skills into v2-style counts", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-init-router-summary-"));
   try {
     await writeFile(
@@ -441,9 +433,8 @@ install_units: {}
     const init = await execFileAsync(process.execPath, [BIN, "init", "--dir", root, "--no-scan-installed"]);
 
     assert.match(init.stdout, /Skill selection default:/);
-    assert.match(init.stdout, /0 manual-only skills available/);
-    assert.match(init.stdout, /1 router-only skills available/);
-    assert.match(init.stdout, /0 blocked\/quarantined for safety/);
+    assert.match(init.stdout, /1 enabled skills/);
+    assert.match(init.stdout, /0 disabled skills/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -502,10 +493,8 @@ install_units: {}
 
     assert.match(check.stdout, /Policy check passed/);
     assert.match(init.stdout, /Skill selection default:/);
-    assert.match(init.stdout, /3 automatic skills enabled/);
-    assert.match(init.stdout, /2 manual-only skills available/);
-    assert.match(init.stdout, /1 router-only skills available/);
-    assert.match(init.stdout, /2 blocked\/quarantined for safety/);
+    assert.match(init.stdout, /6 enabled skills/);
+    assert.match(init.stdout, /2 disabled skills/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

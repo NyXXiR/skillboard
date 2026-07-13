@@ -1,6 +1,7 @@
-import { lstat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { lstat, realpath } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { loadWorkspace } from "./workspace.mjs";
+import { V1_MUTATION_ERROR } from "./compatibility.mjs";
 
 export const GUARD_HOOK_MODE = 0o755;
 
@@ -13,6 +14,7 @@ export async function buildGuardHookInstallPlan(options) {
   const workspace = await loadWorkspace({ configPath: options.configPath, skillsRoot: options.skillsRoot });
   requireWorkflow(workspace, options.workflow);
   const out = options.out ?? join(dirname(options.configPath), ".skillboard", "hooks", `skillboard-guard-${safeHookFilePart(options.workflow)}.sh`);
+  if (workspace.version === 2) await assertHookTargetContained(options.configPath, out);
   const command = options.command ?? "skillboard";
   const skillsRoot = options.skillsRoot ?? "skills";
   const script = renderGuardHookScript({
@@ -24,6 +26,7 @@ export async function buildGuardHookInstallPlan(options) {
   const target = await inspectHookTarget(out);
   const plannedMode = modeToOctal(GUARD_HOOK_MODE);
   const plan = {
+    policy_projection_version: workspace.version,
     path: out,
     workflow: options.workflow,
     command,
@@ -41,7 +44,25 @@ export async function buildGuardHookInstallPlan(options) {
   return { plan, script };
 }
 
+export async function assertHookTargetContained(configPath, targetPath) {
+  const root = await realpath(dirname(resolve(configPath)));
+  const target = resolve(targetPath);
+  const targetRelative = relative(root, target);
+  if (targetRelative === "" || targetRelative.startsWith("..") || isAbsolute(targetRelative)) {
+    throw new Error("Guard hook target must remain inside the config directory.");
+  }
+  let current = root;
+  for (const part of targetRelative.split(/[\\/]/u).slice(0, -1)) {
+    current = join(current, part);
+    const stats = await lstat(current).catch(missingOnly);
+    if (stats === undefined) continue;
+    if (stats.isSymbolicLink()) throw new Error("Guard hook parent must not be a symbolic link.");
+    if (!stats.isDirectory()) throw new Error("Guard hook parent must be a directory.");
+  }
+}
+
 export function assertGuardHookPlanIsInstallable(plan) {
+  if (plan.policy_projection_version !== 2) throw new Error(V1_MUTATION_ERROR);
   if (plan.target_exists) {
     throw new Error(`Refusing to overwrite existing hook path: ${plan.path}`);
   }
@@ -58,10 +79,14 @@ function renderGuardHookScript(options) {
   return `#!/usr/bin/env sh
 set -eu
 
+# SkillBoard policy projection version: 2
+
 SKILLBOARD_BIN=${shellQuote(options.command)}
 SKILLBOARD_CONFIG=${shellQuote(options.configPath)}
 SKILLBOARD_SKILLS=${shellQuote(options.skillsRoot)}
 SKILLBOARD_WORKFLOW=${shellQuote(options.workflow)}
+SKILLBOARD_POLICY_PROJECTION_VERSION=2
+export SKILLBOARD_POLICY_PROJECTION_VERSION
 
 if [ "\${SKILLBOARD_SKILL_ID:-}" != "" ]; then
   skill_id="$SKILLBOARD_SKILL_ID"
@@ -76,7 +101,7 @@ fi
 #   --skillboard-bin "node bin/skillboard.mjs"
 # Paths containing spaces should be provided through an environment wrapper.
 set -- $SKILLBOARD_BIN
-exec "$@" guard use "$skill_id" --workflow "$SKILLBOARD_WORKFLOW" --config "$SKILLBOARD_CONFIG" --skills "$SKILLBOARD_SKILLS"
+exec "$@" guard use "$skill_id" --hook-projection-version 2 --workflow "$SKILLBOARD_WORKFLOW" --config "$SKILLBOARD_CONFIG" --skills "$SKILLBOARD_SKILLS"
 `;
 }
 
@@ -125,6 +150,11 @@ async function inspectHookTarget(path) {
     return { exists: true, type: "directory" };
   }
   return { exists: true, type: "other" };
+}
+
+function missingOnly(error) {
+  if (error?.code === "ENOENT") return undefined;
+  throw error;
 }
 
 function modeToOctal(mode) {

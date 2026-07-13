@@ -21,22 +21,25 @@ test("direct source cli help renders AI-mediated help", async () => {
   assert.match(result.stdout, /SUDO_USER's agent homes/);
   assert.match(result.stdout, /postinstall auto-runs agent-layer guidance setup on install and update/);
   assert.match(result.stdout, /Run skillboard setup later after adding another supported agent/);
-  assert.match(result.stdout, /skillboard uninstall --agent-layer before package removal/);
+  assert.match(result.stdout, /skillboard uninstall --user --dry-run before package removal/);
+  assert.match(result.stdout, /skill forget <skill-id>/);
   assert.match(result.stdout, /import-skill --from <agent> --to <agent>/);
   const automationSection = result.stdout.slice(
-    result.stdout.indexOf("AI/automation operations:"),
-    result.stdout.indexOf("Legacy project policy mode:")
+    result.stdout.indexOf("Core AI/automation operations:"),
+    result.stdout.indexOf("Legacy v1 project policy mode:")
   );
   assert.doesNotMatch(automationSection, /^\s+init /m);
-  assert.match(result.stdout, /Legacy project policy mode:/);
+  assert.match(result.stdout, /Legacy v1 project policy mode:/);
   assert.match(result.stdout, /init \[--dir <path>\]/);
   assert.match(result.stdout, /deprecated project-local policy bootstrap/i);
   assert.match(result.stdout, /opencode/);
-  assert.match(result.stdout, /AI\/automation control loop/);
+  assert.match(result.stdout, /v2 AI\/automation control loop/);
   assert.doesNotMatch(result.stdout, /AI\/automation approval loop/);
-  assert.match(result.stdout, /For an already-allowed skill, disclose the selected skill at start and completion/i);
-  assert.match(result.stdout, /do not ask for another approval/i);
-  assert.match(result.stdout, /apply-action re-resolves current actions/);
+  assert.match(result.stdout, /Optional preference ranks only and never changes availability/i);
+  assert.match(result.stdout, /work without another approval/i);
+  assert.match(result.stdout, /Runtime\/action authorization is outside SkillBoard/i);
+  const v2Section = result.stdout.slice(result.stdout.indexOf("v2 AI/automation control loop:"));
+  assert.doesNotMatch(v2Section, /\b(?:invocation|exposure|trust_level|quarantined|manual-only|router-only|workflow-auto)\b/i);
 });
 
 test("direct source cli unknown command points to help", async () => {
@@ -74,18 +77,18 @@ test("primary AI-loop commands expose safe command-local help", async () => {
       },
       {
         args: ["bin/skillboard.mjs", "route", "--help"],
-        usage: /^Usage: skillboard route <intent> --workflow <name>/m,
-        forbidden: /Usage: skillboard route <intent> --workflow <name>\n$/
+        usage: /^Usage: skillboard route <intent> --agent codex\|claude\|opencode\|hermes/m,
+        forbidden: /Usage: skillboard route <intent> --agent codex\|claude\|opencode\|hermes\n$/
       },
       {
         args: ["bin/skillboard.mjs", "guard", "--help"],
-        usage: /^Usage: skillboard guard use <skill-id> --workflow <name>/m,
-        forbidden: /Usage: skillboard guard use <skill-id> --workflow <name>\n$/
+        usage: /^Usage: skillboard guard use <skill-id> --agent codex\|claude\|opencode\|hermes/m,
+        forbidden: /Usage: skillboard guard use <skill-id> --agent codex\|claude\|opencode\|hermes\n$/
       },
       {
         args: ["bin/skillboard.mjs", "can-use", "--help"],
-        usage: /^Usage: skillboard can-use <skill-id> --workflow <name>/m,
-        forbidden: /Usage: skillboard can-use <skill-id> --workflow <name>\n$/
+        usage: /^Usage: skillboard can-use <skill-id> --agent codex\|claude\|opencode\|hermes/m,
+        forbidden: /Usage: skillboard can-use <skill-id> --agent codex\|claude\|opencode\|hermes\n$/
       },
       {
         args: ["bin/skillboard.mjs", "apply-action", "--help"],
@@ -101,6 +104,8 @@ test("primary AI-loop commands expose safe command-local help", async () => {
       assert.equal(result.stderr, "");
       assert.match(result.stdout, entry.usage);
       if (entry.args[1] === "uninstall") {
+        assert.match(result.stdout, /--user/);
+        assert.match(result.stdout, /marker-owned shared copies/i);
         assert.match(result.stdout, /--agent-layer/);
         assert.match(result.stdout, /--keep-settings/);
         assert.match(result.stdout, /Default project cleanup removes SkillBoard settings/i);
@@ -116,7 +121,7 @@ test("primary AI-loop commands expose safe command-local help", async () => {
         assert.doesNotMatch(result.stdout, /Use it once per project before asking the AI/i);
       }
       if (entry.args[1] === "doctor") {
-        assert.match(result.stdout, /Checks legacy local policy workspace health/i);
+        assert.match(result.stdout, /Checks the user-level policy and generated inventory health/i);
         assert.doesNotMatch(result.stdout, /after init/i);
         assert.doesNotMatch(result.stdout, /SkillBoard project is ready/i);
       }
@@ -136,7 +141,7 @@ test("topic help exposes the route command without loading project config", asyn
   const result = await runSkillboard(["help", "route"]);
 
   assert.equal(result.code, 0, commandFailure(result));
-  assert.match(result.stdout, /^Usage: skillboard route <intent> --workflow <name>/m);
+  assert.match(result.stdout, /^Usage: skillboard route <intent> --agent codex\|claude\|opencode\|hermes/m);
   assert.match(result.stdout, /Suggests the routed skill for a user request when several allowed skills may overlap/);
   assert.match(result.stdout, /If the guard allows use, disclose the skill at start and completion; do not ask for another approval/i);
   assert.match(result.stdout, /If policy memory would reduce ambiguity, ask after completion whether to remember the routed skill/i);

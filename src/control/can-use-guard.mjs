@@ -6,8 +6,12 @@ import {
 import { workflowConflictEntriesForSkill } from "../conflicts.mjs";
 import { isModelSelectableInvocation, isUserControlledSource } from "../domain/source-classes.mjs";
 import { classifySkillTrust, workflowSkillRole } from "./source-trust.mjs";
+import { authorizeV2Skill } from "./v2-guard.mjs";
 
-export function canUseSkill(workspace, skillId, workflowName) {
+export function canUseSkill(workspace, skillId, workflowName, agentName) {
+  if (workspace.version === 2) {
+    return canUseV2Skill(workspace, skillId, agentName);
+  }
   const policy = checkPolicy(workspace);
   const skill = workspace.skills.find((candidate) => candidate.id === skillId);
   const workflow = workspace.workflows.find((candidate) => candidate.name === workflowName);
@@ -49,6 +53,22 @@ export function canUseSkill(workspace, skillId, workflowName) {
   }
 
   return canUseResult(reasons.length === 0, skillId, workflowName, skill, workflow, reasons, role, classifySkillTrust(workspace, skill));
+}
+
+function canUseV2Skill(workspace, skillId, agentName) {
+  const skill = workspace.skills.find((candidate) => candidate.id === skillId);
+  const authorization = authorizeV2Skill(skillId, skill, workspace.inventory, agentName);
+  return {
+    allowed: authorization.allowed,
+    automaticAllowed: authorization.allowed,
+    allowedUse: authorization.allowed ? allowedUse(skillId) : null,
+    skill: skillId,
+    workflow: null,
+    agent: agentName ?? null,
+    workflowKnown: true,
+    integrityError: authorization.integrityError,
+    reasons: authorization.reasons
+  };
 }
 
 function trustUseReasons(workspace, skill) {

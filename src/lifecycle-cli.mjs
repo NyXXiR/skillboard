@@ -2,6 +2,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { runAgentLayerUninstallCommand } from "./agent-integration-cli.mjs";
 import { initProject } from "./init.mjs";
 import { uninstallProject } from "./uninstall.mjs";
+import { uninstallUser } from "./user-uninstall.mjs";
 
 export { runSetupCommand } from "./agent-integration-cli.mjs";
 
@@ -40,6 +41,9 @@ export async function runInitCommand(options, stdout, runtime = defaultRuntime()
 }
 
 export async function runUninstallCommand(options, stdout, runtime = defaultRuntime()) {
+  if (options.get("user") === "true") {
+    return await runUserUninstallCommand(options, stdout, runtime);
+  }
   if (options.get("agent-layer") === "true") {
     return await runAgentLayerUninstallCommand(options, stdout, runtime);
   }
@@ -82,6 +86,36 @@ export async function runUninstallCommand(options, stdout, runtime = defaultRunt
   return 0;
 }
 
+async function runUserUninstallCommand(options, stdout, runtime) {
+  const allowed = new Set(["user", "dry-run", "yes", "json"]);
+  for (const option of options.keys()) {
+    if (!allowed.has(option)) {
+      throw new Error(`Unknown option for uninstall --user: --${option}`);
+    }
+  }
+  const dryRun = options.get("dry-run") === "true";
+  if (!dryRun && options.get("yes") !== "true") {
+    throw new Error("skillboard uninstall --user requires --yes; preview first with --dry-run");
+  }
+  const result = await uninstallUser({
+    dryRun,
+    env: runtime.env ?? process.env,
+    runtime
+  });
+  if (options.get("json") === "true") {
+    stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return 0;
+  }
+  stdout.write(`${dryRun ? "Dry run: " : ""}Uninstalled SkillBoard user state.\n`);
+  writeList(stdout, "Managed copies", result.managed_copies.map((copy) => copy.path));
+  writeList(stdout, "Guidance removed", result.guidance.removed);
+  writeList(stdout, "Guidance updated", result.guidance.updated);
+  writeList(stdout, "State", result.state_paths);
+  writeList(stdout, "Preserved", result.preserved);
+  if (dryRun) stdout.write("Run skillboard uninstall --user --yes to apply this plan.\n");
+  return 0;
+}
+
 function writeList(stdout, label, values) {
   if (values.length > 0) {
     stdout.write(`${label}: ${formatList(values)}\n`);
@@ -104,18 +138,12 @@ function writeCountedList(stdout, label, values) {
 
 function writeSafetyDefault(stdout, safety) {
   stdout.write("Skill selection default:\n");
-  stdout.write("- Installed user skills are usable unless runtime, user, or local instructions disable them.\n");
-  if (safety.automatic === 0) {
-    stdout.write("- No automatic model invocation was enabled.\n");
-  } else {
-    stdout.write(`- ${safety.automatic} automatic skills enabled by existing policy.\n`);
-  }
-  stdout.write("- Imported local skills are available on request in generated local policy.\n");
-  stdout.write("- Runtime/plugin/system skills require source review before automatic invocation.\n");
-  stdout.write(`- ${safety.automatic} automatic skills enabled\n`);
-  stdout.write(`- ${safety.manualOnly} manual-only skills available\n`);
-  stdout.write(`- ${safety.routerOnly} router-only skills available\n`);
-  stdout.write(`- ${safety.blocked} blocked/quarantined for safety\n`);
+  stdout.write("- Valid installed skills default to enabled and agent-local.\n");
+  stdout.write("- Users may disable a skill or explicitly share that skill across agents.\n");
+  stdout.write("- Optional preference ranks candidates and never changes availability.\n");
+  stdout.write("- Source and provenance are audit metadata, never availability.\n");
+  stdout.write(`- ${safety.enabled} enabled skills\n`);
+  stdout.write(`- ${safety.disabled} disabled skills\n`);
 }
 
 function writeNextCommands(stdout, next) {

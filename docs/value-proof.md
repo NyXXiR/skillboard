@@ -1,197 +1,39 @@
 # SkillBoard Value Proof
 
-This is the README-facing proof that SkillBoard gives a user more useful control
-than manually inspecting `/skills` or a raw workflow skill list.
-
-The proof is executable:
+The executable proof is the v2 contract and integration suite:
 
 ```bash
-node --test test/readme-value-proof.test.mjs
+node --test test/v2-agent-sharing.test.mjs test/v2-onboarding-behavior.test.mjs test/v2-guard-route.test.mjs test/v2-surface-integration.test.mjs
 ```
 
-The test uses repository fixtures, not a mocked string. It drives the same CLI
-surfaces a user or agent would use.
+## What it proves
 
-## GitHub-reader takeaway
+- Setup creates user-level state without project init.
+- Valid discovered skills default to enabled and agent-local.
+- Disabled skills and skills absent from the selected agent are denied.
+- Share and unshare preserve agent-owned originals.
+- Optional preference changes ranking without changing availability.
+- Source and provenance audits do not change guard results.
+- Commands produce the same result from different working directories.
+- Version 1 is read-only until explicit migration.
 
-The raw list answers inventory questions: which skill declarations are connected
-to this workflow?
-
-SkillBoard answers routing questions: which skills can actually run now, why
-are others blocked, which skill should steer the user's current request when
-several skills overlap, and what approved action changes the next state?
-
-In the tested fixture, the raw list can make the workflow look ready because it
-shows `matt.tdd active workflow-auto`. SkillBoard refuses that unsafe claim and
-reports 0 usable skills, 8 blocked skills, 2 policy errors, and 1 policy warning
-before invocation.
-
-## Case 1: Raw skill list vs SkillBoard brief
-
-Fixture:
+## Reproduce the user surface
 
 ```bash
-examples/skillboard.config.yaml
-examples/skills
+node bin/skillboard.mjs setup --yes --agent codex
+node bin/skillboard.mjs brief --agent codex --json
+node bin/skillboard.mjs check --config examples/v2-multi-source.config.yaml --skills examples/multi-source-skills
 ```
 
-`examples/skillboard.config.yaml` is an intentional policy-failure fixture. It
-is not the passing starter example; it exists to prove that SkillBoard refuses a
-raw-list availability claim when policy health fails.
+The policy contains only `enabled`, `shared`, and optional preference. Generated
+inventory records `installed_on`. Source and provenance remain optional audit
+metadata and never determine availability. Runtime and action authorization
+remain outside SkillBoard's scope.
 
-Workflow:
+## Version 1 compatibility proof
 
 ```bash
-codex-night-workflow
+skillboard migrate v2 --config <path> --json
+skillboard migrate v2 --config <path> --yes --json
+skillboard migrate v2 --config <path> --rollback <backup> --json
 ```
-
-Raw skill list command:
-
-```bash
-node bin/skillboard.mjs list skills \
-  --config examples/skillboard.config.yaml \
-  --skills examples/skills \
-  --workflow codex-night-workflow
-```
-
-Observed raw-list result:
-
-- Raw skill list: 4 workflow-linked rows.
-- It includes `matt.tdd active workflow-auto`.
-- It does not include policy health.
-
-SkillBoard brief command:
-
-```bash
-node bin/skillboard.mjs brief \
-  --config examples/skillboard.config.yaml \
-  --skills examples/skills \
-  --workflow codex-night-workflow
-```
-
-Observed brief result:
-
-- SkillBoard brief: 0 usable skills.
-- 8 blocked skills.
-- Policy errors: 2.
-- Policy warnings: 1.
-- The policy diagnostics identify `matt.grill-with-docs` as a non-callable
-  fallback in `requirement-review`.
-
-What this proves:
-
-- The raw list can make a workflow look usable because it reports declared
-  state such as `active` and `workflow-auto`.
-- The SkillBoard brief checks policy health before use and refuses the unsafe
-  availability claim.
-
-## Case 2: Approved action-card flow
-
-Fixture:
-
-```bash
-examples/multi-source.config.yaml
-examples/multi-source-skills
-```
-
-The test copies this fixture to a temporary project, including `AGENTS.md` and
-`CLAUDE.md`, then runs:
-
-```bash
-node bin/skillboard.mjs brief ... --include-actions --json
-node bin/skillboard.mjs apply-action activate-skill:anthropic.docx ... --yes --json
-node bin/skillboard.mjs brief ... --json
-```
-
-Observed action-card flow result:
-
-- Before apply, usable skills: 2.
-- The current action list includes `activate-skill:anthropic.docx`.
-- Applying that one approved action returns `changed: true`.
-- After apply, usable skills: 2 -> 3.
-- `anthropic.docx` appears in `manual_allowed`.
-- The final brief has 0 policy errors.
-
-What this proves:
-
-- SkillBoard is not just a catalog. It gives a current action id, applies one
-  approved change, then re-resolves the next availability state.
-- The user does not need to hand-edit YAML or infer enable/disable impact from
-  raw `SKILL.md` files.
-
-## Case 3: AI-mediated approved action proof
-
-The test also simulates the product path without calling an external LLM:
-
-```bash
-node bin/skillboard.mjs brief ... --include-actions --json
-node bin/skillboard.mjs apply-action <current-action-id> ... --yes --json
-node bin/skillboard.mjs guard use anthropic.docx ... --json
-node bin/skillboard.mjs guard use matt.grill-me ... --json
-```
-
-Observed AI-mediated result:
-
-- The simulated user asks for `anthropic.docx` to be made available.
-- The AI reads `assistant_guidance.choices` from the current brief.
-- The chosen confirmation maps to the current
-  `activate-skill:anthropic.docx` action id.
-- `apply-action --yes --json` returns a post-apply brief.
-- The returned brief no longer offers the stale activate action and now offers
-  the matching disable action.
-- `guard use anthropic.docx --workflow codex-night-workflow` fails before the
-  approved action and succeeds after it.
-- `guard use matt.grill-me --workflow codex-night-workflow` stays denied
-  because the workflow blocks that skill.
-
-What this proves:
-
-- The proof uses the current `assistant_guidance` action id instead of cached
-  output.
-- SkillBoard keeps the guard as the final boundary before invocation.
-- Blocked skills still produce a non-zero, machine-readable denial.
-
-## Case 4: AI route picks the right allowed skill
-
-The same fixture also proves that SkillBoard can help the AI choose the right
-skill before invocation:
-
-```bash
-node bin/skillboard.mjs route "write tests before implementation" \
-  --config examples/multi-source.config.yaml \
-  --skills examples/multi-source-skills \
-  --workflow codex-night-workflow \
-  --json
-```
-
-Observed route result:
-
-- Matched capability: `test-first-implementation`.
-- Match source: `capability`.
-- Confidence: `high`.
-- Recommended skill: `matt.tdd`.
-- Fallback skill: `private.tdd-work-continuity`.
-- Overlap resolution is exposed in route payloads when several allowed skills
-  match, so agents can explain the deterministic route without hiding the other
-  available skills.
-- Guard command: `skillboard guard use matt.tdd ...`.
-- Guard result for `matt.tdd`: allowed.
-- Start disclosure: `I will use matt.tdd for this request.`
-- Finish disclosure: `I used matt.tdd for this request.`
-
-The proof also checks `brief --intent "write tests before implementation"` so
-the recommendation appears inside `assistant_guidance.route`, not only through
-the standalone `route` command.
-
-For a request outside the workflow's declared capability, such as "ship a
-powerpoint deck", SkillBoard returns no recommended skill and tells the AI to:
-Ask a clarifying question before choosing a skill.
-
-What this proves:
-
-- The AI can ask SkillBoard which skill fits a normal user request instead of
-  guessing from raw `SKILL.md` text.
-- Allowed skill use stays low-friction: the AI discloses use at start and
-  finish instead of asking for redundant approval.
-- No-match results are explicit, so the AI can ask a clarifying question rather
-  than forcing a poor skill choice.

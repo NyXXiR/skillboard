@@ -1,6 +1,7 @@
 export const TOP_LEVEL_KEYS = [
   "ok",
   "schema_version",
+  "compatibility",
   "health",
   "workflow",
   "skills",
@@ -123,7 +124,7 @@ export const EXPECTED_INITIALIZED_CONTRACT = {
     goal_document: {
       keys: ["path", "purpose", "loop", "simplification_rule", "when_to_read"],
       path: "docs/ai-skill-routing-goal.md",
-      purpose: "Preserve SkillBoard as a permissive AI skill routing layer: keep skills broadly available, resolve overlaps deterministically, explain briefly, ask after use when policy learning helps, and remember usage policy without rewriting skill bodies.",
+      purpose: "Preserve SkillBoard v2 as a user-level control plane: enable or disable a skill, opt individual skills into cross-agent sharing, and use optional preference only to rank available overlaps.",
       loop: [
         "observe",
         "route",
@@ -138,14 +139,14 @@ export const EXPECTED_INITIALIZED_CONTRACT = {
         "before changing brief output",
         "before changing bridge instructions",
         "before changing policy UX",
-        "before changing workflow UX"
+        "before changing sharing UX"
       ]
     },
     choices: [],
     guard: {
       keys: ["required", "when", "command_hint", "allowed_use"],
       required: true,
-      when: "before invoking a skill",
+      when: "immediately before skill use",
       has_command_hint: true,
       allowed_use: {
         confirmation_required: false,

@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 import {
-  BASE_SKILL_CONTENT,
   CHANGED_SKILL_CONTENT,
+  lifecycleVariantSkill,
+  rawSha256,
   withControlVariantWorkspace
 } from "./helpers/variant-lifecycle-control-fixtures.mjs";
 
@@ -45,43 +48,26 @@ function forkArgs(configPath, skillsRoot, extra = []) {
   ];
 }
 
-test("cli variant lifecycle happy path", async () => {
-  await withControlVariantWorkspace({}, async ({ configPath, skillsRoot, variantFile }) => {
+test("cli variant lifecycle refuses v1 mutations and preserves bytes", async () => {
+  await withControlVariantWorkspace({}, async ({ configPath, skillsRoot }) => {
     const before = await readFile(configPath, "utf8");
-    const dryRun = await jsonCommand(forkArgs(configPath, skillsRoot, ["--dry-run"]));
-    assert.equal(dryRun.dryRun, true);
-    assert.equal(dryRun.variant.status, "draft");
-    assert.ok(dryRun.plan.changed);
-    assert.ok(dryRun.filePlan.length >= 2);
+    const dryRun = await jsonError(forkArgs(configPath, skillsRoot, ["--dry-run"]));
+    assert.equal(dryRun.payload.error.code, "lifecycle_error");
+    assert.equal(dryRun.payload.error.message, "Version 1 policy is read-only. Run `skillboard migrate v2`.");
     assert.equal(await readFile(configPath, "utf8"), before);
 
-    const fork = await jsonCommand(forkArgs(configPath, skillsRoot));
-    assert.equal(fork.changed, true);
-    assert.equal(fork.variant.base.contentDigest.startsWith("sha256:"), true);
-    assert.equal(await readFile(variantFile, "utf8"), BASE_SKILL_CONTENT);
-
-    await writeFile(variantFile, CHANGED_SKILL_CONTENT, "utf8");
-    const draftStatus = await jsonCommand(["variant", "status", "claude.review", ...baseArgs(configPath, skillsRoot)]);
-    assert.equal(draftStatus.computedStatus, "draft-changed");
-    assert.equal(draftStatus.files.live.exists, true);
-    assert.equal(draftStatus.approvedDigest, null);
-
-    const approved = await jsonCommand(["variant", "approve", "claude.review", "--mode", "workflow-auto", ...baseArgs(configPath, skillsRoot)]);
-    assert.equal(approved.variant.status, "approved");
-    assert.ok(approved.filePlan[0].path.includes("approved"));
-
-    const resetBase = await jsonCommand(["variant", "reset", "claude.review", "--to-base", "--yes", ...baseArgs(configPath, skillsRoot)]);
-    assert.equal(resetBase.variant.status, "draft");
-    assert.equal(await readFile(variantFile, "utf8"), BASE_SKILL_CONTENT);
-
-    const resetApproved = await jsonCommand(["variant", "reset", "claude.review", "--to-approved", "--yes", "--mode", "workflow-auto", ...baseArgs(configPath, skillsRoot)]);
-    assert.equal(resetApproved.variant.status, "approved");
-    assert.equal(await readFile(variantFile, "utf8"), CHANGED_SKILL_CONTENT);
+    const fork = await jsonError(forkArgs(configPath, skillsRoot));
+    assert.equal(fork.payload.error.code, "lifecycle_error");
+    assert.equal(fork.payload.error.message, "Version 1 policy is read-only. Run `skillboard migrate v2`.");
+    assert.equal(await readFile(configPath, "utf8"), before);
   });
 });
 
 test("cli variant lifecycle errors", async () => {
-  await withControlVariantWorkspace({}, async ({ configPath, skillsRoot }) => {
+  await withControlVariantWorkspace({
+    variantSkill: lifecycleVariantSkill(),
+    variantContent: CHANGED_SKILL_CONTENT
+  }, async ({ configPath, skillsRoot }) => {
     const plainUsage = await jsonError(["variant", "fork", "claude.review", ...baseArgs(configPath, skillsRoot)]);
     assert.equal(plainUsage.code, 2);
     assert.equal(plainUsage.payload.ok, false);
@@ -100,7 +86,9 @@ test("cli variant lifecycle errors", async () => {
     assert.equal(unknown.code, 2);
     assert.equal(unknown.payload.error.code, "unknown_variant_subcommand");
 
-    await jsonCommand(forkArgs(configPath, skillsRoot));
+    const v1Fork = await jsonError(forkArgs(configPath, skillsRoot));
+    assert.equal(v1Fork.payload.error.code, "lifecycle_error");
+    assert.match(v1Fork.payload.error.message, /Skill already exists: claude\.review/);
     const invalidApproveMode = await jsonError(["variant", "approve", "claude.review", "--mode", "bad", ...baseArgs(configPath, skillsRoot)]);
     assert.equal(invalidApproveMode.code, 2);
     assert.equal(invalidApproveMode.payload.error.code, "usage_error");
@@ -135,4 +123,43 @@ test("cli variant lifecycle errors", async () => {
     assert.equal(nonVariant.code, 1);
     assert.match(nonVariant.payload.error.message, /not a lifecycle variant/);
   });
+});
+
+test("cli variant lifecycle is an explicit v1 compatibility surface for v2 policy", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-v2-variant-boundary-"));
+  try {
+    const configPath = join(root, "skillboard.config.yaml");
+    const skillsRoot = join(root, "skills");
+    await mkdir(join(skillsRoot, "review"), { recursive: true });
+    await mkdir(join(root, ".skillboard"), { recursive: true });
+    await writeFile(join(skillsRoot, "review", "SKILL.md"), CHANGED_SKILL_CONTENT, "utf8");
+    await writeFile(configPath, "version: 2\nskills:\n  review:\n    enabled: true\n    shared: false\n", "utf8");
+    await writeFile(join(root, ".skillboard", "inventory.json"), JSON.stringify({
+      format_version: 1, generated: true, authoritative_for_availability: false,
+      skills: [{
+        id: "review", path: "review", owner_install_unit: "migration.unowned",
+        observations: {
+          variant: {
+            of: "base.review", adapted_for: "review", capability: "review", workflow: "daily", status: "draft",
+            base: {
+              content_digest: rawSha256("historical base\n"),
+              snapshot: ".skillboard/variant-snapshots/review/base.md"
+            }
+          }
+        }
+      }]
+    }), "utf8");
+
+    const status = await jsonCommand(["variant", "status", "review", ...baseArgs(configPath, skillsRoot)]);
+    assert.equal(status.skill, "review");
+    assert.equal(status.computedStatus, "draft-changed");
+    assert.equal(status.liveDigest, rawSha256(CHANGED_SKILL_CONTENT));
+    assert.match(status.warnings.join("\n"), /base snapshot missing/);
+
+    const unknown = await jsonError(["variant", "status", "review", "--mystery", ...baseArgs(configPath, skillsRoot)]);
+    assert.equal(unknown.code, 1);
+    assert.match(unknown.payload.error.message, /Unknown variant option: --mystery/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

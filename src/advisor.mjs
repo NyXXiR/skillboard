@@ -4,7 +4,7 @@ import {
 } from "./control.mjs";
 import { doctorProject } from "./doctor.mjs";
 import { routeSkill } from "./route.mjs";
-import { buildActionCards, buildInitActions } from "./advisor/actions.mjs";
+import { buildActionCards, buildInitActions, buildV2ActionCards } from "./advisor/actions.mjs";
 import {
   buildBrief,
   buildCleanup,
@@ -25,14 +25,14 @@ import { loadWorkspace } from "./workspace.mjs";
 
 export async function buildSkillBrief(options = {}) {
   const paths = resolveProjectPaths(options);
-  const cleanup = await buildCleanup(paths.root);
   const configDoctor = await doctorProject({
     root: paths.root,
     configPath: paths.configPath,
     skillsRoot: paths.skillsRoot
   });
 
-  if (!configDoctor.config.exists || !configDoctor.initialized) {
+  if (!configDoctor.config.exists) {
+    const cleanup = userStateCleanup();
     return buildBrief({
       ok: false,
       error: {
@@ -50,6 +50,7 @@ export async function buildSkillBrief(options = {}) {
   }
 
   if (!configDoctor.config.valid) {
+    const cleanup = userStateCleanup();
     return buildExpectedConfigError(configDoctor, paths, cleanup, {
       code: "invalid-config",
       message: configDoctor.config.error ?? "skillboard.config.yaml is invalid"
@@ -60,11 +61,14 @@ export async function buildSkillBrief(options = {}) {
   try {
     workspace = await loadWorkspace({ configPath: paths.configPath, skillsRoot: paths.skillsRoot });
   } catch (error) {
+    const cleanup = userStateCleanup();
     return buildExpectedConfigError(configDoctor, paths, cleanup, {
       code: "invalid-config",
       message: error instanceof Error ? error.message : String(error)
     }, options);
   }
+
+  const cleanup = workspace.version === 2 ? userStateCleanup() : await buildCleanup(paths.root);
 
   const doctor = await doctorProject({
     root: paths.root,
@@ -74,13 +78,16 @@ export async function buildSkillBrief(options = {}) {
     verifySources: options.verifySources
   });
   const sourceAudit = auditSources(workspace);
-  const workflow = resolveWorkflow(listWorkflows(workspace), options.workflow);
-  const reviewQueue = buildReviewQueue(workspace, sourceAudit);
+  const workflow = workspace.version === 2
+    ? emptyWorkflowState()
+    : resolveWorkflow(listWorkflows(workspace), options.workflow);
+  const reviewQueue = workspace.version === 2 ? [] : buildReviewQueue(workspace, sourceAudit);
 
   if (workflow.unknown) {
     const skills = skillsWithoutWorkflow(workspace);
     const actionData = actionsForBrief({ options, paths, workflow, skills, reviewQueue, cleanup, workspace });
     return buildBrief({
+      compatibility: workspace.compatibility,
       ok: false,
       error: {
         code: "unknown-workflow",
@@ -96,11 +103,13 @@ export async function buildSkillBrief(options = {}) {
     });
   }
 
-  const skills = skillsForWorkflow(workspace, workflow.selected, sourceAudit);
+  const skills = skillsForWorkflow(workspace, workflow.selected, sourceAudit, options.agent);
   const actionData = actionsForBrief({ options, paths, workflow, skills, reviewQueue, cleanup, workspace });
   const route = routeForBrief({ options, paths, workflow, workspace });
-  const availabilityOk = doctor.config.valid && doctor.policy.ok && doctor.sources.ok;
+  const availabilityOk = doctor.config.valid && doctor.policy.ok && doctor.inventory.ok
+    && (workspace.version === 2 || doctor.sources.ok);
   return buildBrief({
+    compatibility: workspace.compatibility,
     ok: availabilityOk,
     health: healthForBrief(doctor, paths, availabilityOk),
     workflow,
@@ -113,14 +122,22 @@ export async function buildSkillBrief(options = {}) {
   });
 }
 
+function userStateCleanup() {
+  return {
+    conservative: { dryRun: true, removed: [], updated: [], preserved: [] },
+    full_reset: { dryRun: true, removed: [], updated: [], preserved: [] }
+  };
+}
+
 function routeForBrief({ options, paths, workflow, workspace }) {
   const intent = options.intent?.trim();
-  if (intent === undefined || intent.length === 0 || workflow.selected === null || workflow.unknown || workflow.needs_selection) {
+  const workflowRequired = workspace.version !== 2 && workflow.selected === null;
+  if (intent === undefined || intent.length === 0 || workflowRequired || workflow.unknown || workflow.needs_selection) {
     return undefined;
   }
   return routeSkill(workspace, {
     intent,
-    workflow: workflow.selected,
+    ...(workspace.version === 2 ? { agent: options.agent } : workflow.selected === null ? {} : { workflow: workflow.selected }),
     configPath: paths.configPath,
     skillsRoot: paths.skillsRoot
   });
@@ -155,6 +172,7 @@ function actionsForBrief(context) {
   if (!requestedActions(context.options)) {
     return { reviewQueue: context.reviewQueue, actions: undefined };
   }
+  if (context.workspace.version === 2) return { reviewQueue: [], actions: buildV2ActionCards(context) };
   return buildActionCards(context);
 }
 

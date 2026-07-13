@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+## 0.3.0 — 2026-07-13
+
+### Changed
+
+- Replaced the v1 policy matrix with schema v2's user-level decisions:
+  enable/disable and explicit per-skill cross-agent sharing.
+- Made valid installed skills enabled and agent-local by default; `shared: true`
+  preserves originals while creating managed compatible copies.
+- Added generated `installed_on` inventory so route and guard evaluate the
+  selected agent without a user-managed agent matrix.
+- Made normal setup, brief, route, guard, and policy mutations use home state
+  from any working directory; project init is no longer part of the v2 flow.
+- Limited optional preference to candidate ranking; preference never changes
+  availability or sharing.
+- Moved source, provenance, install-unit, digest, alias, and risk observations to
+  optional generated audit metadata that cannot block a skill.
+- Added explicit preview, apply, and byte-restoring rollback documentation for
+  `skillboard migrate v2`.
+- Scheduled removal of the one-release v1 read-only compatibility window for
+  v0.4.0.
+- Added `skill forget` for explicit policy-only cleanup after an owning
+  installer removes a local skill.
+- Added `uninstall --user` dry-run and confirmed apply flows that remove all
+  marker-owned shared copies, managed guidance, and home state while preserving
+  agent-owned and unmanaged skills.
+- Restored the declared Node.js 14.21 runtime floor and added release gates for
+  Node.js 14.21, 20, and 22 on Ubuntu, macOS, and Windows.
+
+### Fixed
+
+- Prevented removed skills from leaving unrecoverable stale policy that keeps
+  doctor unhealthy.
+- Prevented package removal from orphaning SkillBoard-managed shared copies in
+  supported agent skill roots.
+- Replaced Node 15/16-only clone, string replacement, recursive copy, and npm
+  smoke-test APIs with Node.js 14.21-compatible paths.
+
+### Security
+
+- Clarified that SkillBoard does not authorize hooks, MCP servers, commands,
+  external writes, destructive actions, or secrets; those remain runtime and
+  harness permission decisions.
+
 ## 0.2.18 — 2026-07-07
 
 ### Changed

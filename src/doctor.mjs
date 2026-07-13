@@ -40,6 +40,7 @@ export async function doctorProject(options = {}) {
     },
     bridges,
     workspace: emptyWorkspaceSummary(),
+    inventory: { required: false, ok: true, path: null, errors: [] },
     policy: { ok: false, errors: [], warnings: [] },
     sources: { checked: false, verified: options.verifySources === true, ok: false, errors: [], warnings: [], blockingWarnings: [], units: [] },
     uninstall,
@@ -76,6 +77,7 @@ export async function doctorProject(options = {}) {
     : auditSources(workspace);
   const blockingWarnings = blockingSourceWarnings(sourceAudit.warnings);
   const workspaceSummary = summarizeWorkspace(workspace);
+  const inventory = inventoryHealth(workspace);
   const result = {
     ...base,
     initialized: true,
@@ -86,6 +88,7 @@ export async function doctorProject(options = {}) {
       error: null
     },
     workspace: workspaceSummary,
+    inventory,
     policy,
     sources: {
       checked: true,
@@ -102,10 +105,14 @@ export async function doctorProject(options = {}) {
 }
 
 function finalizeDoctor(result, recommendations) {
-  const bridgeOk = result.bridges.every((bridge) => bridge.status === "installed" || bridge.status === "absent")
-    && result.bridges.some((bridge) => bridge.status === "installed");
-  const ok = result.config.valid && bridgeOk && result.policy.ok && result.sources.ok;
-  const reviewRequired = ok && reviewRequiredFor(result);
+  const sourceAuditIsInformational = result.config.version === 2;
+  const bridgeOk = sourceAuditIsInformational || (
+    result.bridges.every((bridge) => bridge.status === "installed" || bridge.status === "absent")
+      && result.bridges.some((bridge) => bridge.status === "installed")
+  );
+  const ok = result.config.valid && bridgeOk && result.policy.ok && result.inventory.ok
+    && (sourceAuditIsInformational || result.sources.ok);
+  const reviewRequired = sourceAuditIsInformational ? false : ok && reviewRequiredFor(result);
   const strictOk = ok && !reviewRequired;
   return {
     ...result,
@@ -120,6 +127,15 @@ function finalizeDoctor(result, recommendations) {
 
 function doctorRecommendations(result) {
   const recommendations = [];
+  if (!result.inventory.ok) {
+    recommendations.push("run skillboard inventory refresh and fix generated inventory integrity errors");
+    for (const error of result.inventory.errors) {
+      const match = /^skill (?<skill>[^ ]+) is missing from generated inventory$/u.exec(error);
+      if (match?.groups?.skill !== undefined) {
+        recommendations.push(`reinstall ${match.groups.skill} or run skillboard skill forget ${match.groups.skill}`);
+      }
+    }
+  }
   if (!result.bridges.some((bridge) => bridge.status === "installed")) {
     recommendations.push("legacy project bridge blocks are absent; run skillboard init only if maintaining deprecated project-local policy");
   }
@@ -131,6 +147,9 @@ function doctorRecommendations(result) {
   }
   if (!result.policy.ok) {
     recommendations.push("run skillboard check and fix policy errors");
+  }
+  if (result.config.version === 2) {
+    return recommendations;
   }
   if (!result.sources.ok) {
     recommendations.push("run skillboard audit sources --verify and fix source verification errors");
@@ -148,6 +167,25 @@ function doctorRecommendations(result) {
   return recommendations;
 }
 
+function inventoryHealth(workspace) {
+  if (workspace.version !== 2) {
+    return { required: false, ok: true, path: null, errors: [] };
+  }
+  const errors = [...(workspace.inventory?.integrityErrors ?? ["generated inventory is unavailable"])];
+  const observed = new Set(workspace.inventory?.skillIds ?? []);
+  for (const skill of workspace.skills) {
+    if (!observed.has(skill.id)) {
+      errors.push(`skill ${skill.id} is missing from generated inventory`);
+    }
+  }
+  return {
+    required: true,
+    ok: errors.length === 0,
+    path: workspace.inventory?.path ?? null,
+    errors
+  };
+}
+
 function reviewRequiredFor(result) {
   return result.sources.blockingWarnings.length > 0
     || result.sources.warnings.length > 0
@@ -156,6 +194,13 @@ function reviewRequiredFor(result) {
 }
 
 function reviewSummaryFor(result) {
+  if (result.config.version === 2) {
+    return {
+      ...emptyReviewSummary(),
+      runtimeReady: result.workspace.skills.declared === 0 || result.workspace.skills.installed > 0,
+      auditInformational: true
+    };
+  }
   const highRiskReviewUnits = result.sources.units
     .filter((unit) => {
       return unit.permissionRisk === "high" && !["trusted", "reviewed"].includes(unit.trustLevel);
@@ -185,6 +230,20 @@ function blockingSourceWarnings(warnings) {
 }
 
 function summarizeWorkspace(workspace) {
+  if (workspace.version === 2) {
+    const enabled = workspace.skills.filter((skill) => skill.enabled).length;
+    return {
+      skills: {
+        declared: workspace.skills.length, installed: workspace.installedSkills.length,
+        enabled, disabled: workspace.skills.length - enabled,
+        shared: workspace.skills.filter((skill) => skill.shared).length,
+        local: workspace.skills.filter((skill) => !skill.shared).length,
+        modelSelectable: enabled, byStatus: {}, byInvocation: {}
+      },
+      workflows: workspace.workflows.length, harnesses: 0,
+      installUnits: { total: 0, bySourceClass: {}, highRisk: [], runtimeExtensions: [] }
+    };
+  }
   const skillsByStatus = countBy(workspace.skills, (skill) => skill.status);
   const skillsByInvocation = countBy(workspace.skills, (skill) => skill.invocation);
   const installUnitsByClass = countBy(workspace.installUnits, (unit) => installUnitSourceClass(unit));

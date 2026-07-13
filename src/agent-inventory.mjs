@@ -9,14 +9,25 @@ import {
   hermesProfileUnit,
   isHermesProfileSkillsPath,
   safeSegment,
+  sharedUserUnit,
   systemCodexUnit,
   userClaudeUnit,
   userCodexUnit,
-  userHermesUnit
+  userHermesUnit,
+  userOpenCodeUnit
 } from "./agent-inventory-platforms.mjs";
 import { readString, requireRecord } from "./config-helpers.mjs";
 
 export const agentInventoryDetectors = Object.freeze([
+  {
+    id: "shared-user-skills",
+    matches(path) {
+      return path.endsWith("/.agents/shared-skills") || path.endsWith("\\.agents\\shared-skills");
+    },
+    async discover(path, home) {
+      return await discoverSkillDirectory(path, sharedUserUnit(path, home), { excludeSystem: true });
+    }
+  },
   {
     id: "codex-plugin-cache",
     matches(path) {
@@ -54,6 +65,16 @@ export const agentInventoryDetectors = Object.freeze([
     },
     async discover(path, home) {
       return await discoverSkillDirectory(path, userClaudeUnit(path, home), { excludeSystem: true });
+    }
+  },
+  {
+    id: "opencode-user-skills",
+    matches(path) {
+      const normalized = path.replace(/\\/g, "/");
+      return normalized.endsWith("/.config/opencode/skills") || normalized.endsWith("/.opencode/skills");
+    },
+    async discover(path, home) {
+      return await discoverSkillDirectory(path, userOpenCodeUnit(path, home), { excludeSystem: true });
     }
   },
   {
@@ -416,6 +437,7 @@ async function inventoryFromGroups(groups, home, initialWarnings = []) {
       const skill = {
         id,
         path: sourceAlias.path,
+        skillFile: resolve(file),
         status: "quarantined",
         invocation: "blocked",
         exposure: "exported",

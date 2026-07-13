@@ -157,7 +157,7 @@ async function findSourceSkill(options) {
   throw new Error(`Source skill not found: ${options.skill} under ${root}`);
 }
 
-async function findSourceSkillInRoots(options) {
+export async function findSourceSkillInRoots(options) {
   const misses = [];
   for (const root of options.roots) {
     try {
@@ -200,7 +200,7 @@ function parseSkillFrontmatter(text) {
   return parsed !== null && typeof parsed === "object" ? parsed : {};
 }
 
-function analyzeAgentCompatibility(content, options) {
+export function analyzeAgentCompatibility(content, options) {
   const reasons = [];
   for (const [agent, markers] of Object.entries(AGENT_MARKERS)) {
     if (agent === options.targetAgent) {

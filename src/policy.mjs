@@ -14,6 +14,9 @@ const RULES = [
 ];
 
 export function checkPolicy(workspace) {
+  if (workspace.version === 2) {
+    return { ok: true, errors: [], warnings: [] };
+  }
   const ctx = buildPolicyContext(workspace);
   const errors = [];
   const warnings = [];

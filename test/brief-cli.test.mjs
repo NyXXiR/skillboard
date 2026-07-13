@@ -88,7 +88,7 @@ test("brief command intent json includes route-backed skill suggestion", async (
     assert.equal(result.code, 0);
     assert.equal(payload.assistant_guidance.status, "ready");
     assert.equal(payload.assistant_guidance.goal_document.path, "docs/ai-skill-routing-goal.md");
-    assert.match(payload.assistant_guidance.goal_document.purpose, /permissive AI skill routing layer/i);
+    assert.match(payload.assistant_guidance.goal_document.purpose, /user-level control plane/i);
     assert.deepEqual(payload.assistant_guidance.goal_document.loop, [
       "observe",
       "route",
@@ -660,7 +660,7 @@ test("brief command include-actions json guides review-needed decisions", async 
     const payload = JSON.parse(result.stdout);
 
     assert.equal(result.code, 1);
-    assertAssistantGuidance(payload, { status: "needs-decision", hasWorkflowGuardHint: true });
+    assertAssistantGuidance(payload, { status: "needs-decision", hasWorkflowGuardHint: false });
     assert.match(payload.assistant_guidance.summary, /1 user decision/);
     assert.ok(payload.assistant_guidance.choices.some((choice) => choice.risk === "high"));
   });
@@ -740,7 +740,7 @@ install_units:
     assert.ok(payload.actions.length > 0);
     assertAssistantGuidance(payload, {
       status: "blocked",
-      hasWorkflowGuardHint: true,
+      hasWorkflowGuardHint: false,
       choicesMatchActions: false
     });
     assert.deepEqual(payload.assistant_guidance.choices, []);
@@ -752,7 +752,7 @@ install_units:
   }
 });
 
-test("brief command guides initialized empty projects toward setup", async () => {
+test("brief command treats initialized empty v2 policy as ready and action-free", async () => {
   await withInitializedEmptyProject(async ({ configPath, root, skillsRoot }) => {
     const result = await runCli([
       "brief",
@@ -767,20 +767,16 @@ test("brief command guides initialized empty projects toward setup", async () =>
     assert.equal(result.code, 0);
     assert.match(result.stdout, /AI can use now: 0 \(0 automatic, 0 manual\)/);
     assert.match(result.stdout, /Workflow: none selected/);
-    assert.match(result.stdout, /setup|inventory refresh|discover|add harness|add workflow/i);
-    assert.match(result.stdout, /skillboard inventory refresh\b[\s\S]*--dry-run/i);
-    assert.match(result.stdout, /skillboard inventory refresh\b[\s\S]*--dir\b/i);
+    assert.doesNotMatch(result.stdout, /skillboard inventory refresh/);
 
     const nextAction = sectionBetween(result.stdout, "## Next safe action", "## What your AI can use now");
-    assert.doesNotMatch(nextAction, /^-\s*none$/m);
-    assert.match(nextAction, /setup|inventory refresh|discover|add harness|add workflow/i);
+    assert.match(nextAction, /^-\s*none$/m);
     assert.doesNotMatch(nextAction, /Reset SkillBoard generated project files|uninstall|cleanup/i);
 
     const suggestedActionsStart = result.stdout.indexOf("## Suggested next actions");
     assert.notEqual(suggestedActionsStart, -1);
     const suggestedActions = result.stdout.slice(suggestedActionsStart);
-    assert.doesNotMatch(suggestedActions, /^-\s*none$/m);
-    assert.match(suggestedActions, /setup|inventory refresh|discover|add harness|add workflow/i);
+    assert.match(suggestedActions, /^-\s*none$/m);
     assert.doesNotMatch(result.stdout, /## Advanced cleanup actions/);
   });
 });
@@ -803,7 +799,7 @@ test("brief command initialized empty project json omits actions by default", as
     assert.equal(payload.schema_version, 1);
     assert.equal(Object.hasOwn(payload, "actions"), false);
     assertAssistantGuidance(payload, {
-      status: "workflow-selection-needed",
+      status: "ready",
       hasWorkflowGuardHint: false,
       choicesMatchActions: false
     });
@@ -811,7 +807,7 @@ test("brief command initialized empty project json omits actions by default", as
   });
 });
 
-test("brief command initialized empty project include-actions json keeps returned action schema compatible", async () => {
+test("brief command initialized empty v2 project has no synthetic setup actions", async () => {
   await withInitializedEmptyProject(async ({ configPath, root, skillsRoot }) => {
     const result = await runCli([
       "brief",
@@ -829,19 +825,10 @@ test("brief command initialized empty project include-actions json keeps returne
     assert.equal(result.code, 0);
     assert.equal(payload.schema_version, 1);
     assert.ok(Array.isArray(payload.actions));
-    assert.ok(payload.actions.length > 0);
-    assert.ok(payload.actions.some((action) => action.kind === "setup-guidance"));
-    assert.notDeepEqual([...new Set(payload.actions.map((action) => action.kind))], ["reset-cleanup"]);
+    assert.deepEqual(payload.actions, []);
     assert.deepEqual(payload.assistant_guidance.choices, []);
     assert.doesNotMatch(payload.assistant_guidance.recommended_next_step, /approve/i);
 
-    for (const action of payload.actions) {
-      assert.equal(typeof action.id, "string");
-      assert.equal(typeof action.kind, "string");
-      assert.equal(typeof action.label, "string");
-      assert.ok(action.dry_run === null || typeof action.dry_run.display === "string");
-      assert.ok(action.apply === null || typeof action.apply.display === "string");
-    }
   });
 });
 
@@ -872,9 +859,9 @@ test("brief command missing config json exits with expected payload", async () =
       hasWorkflowGuardHint: false,
       choicesMatchActions: false
     });
-    assert.ok(payload.actions.some((action) => action.kind === "init-project"));
+    assert.ok(payload.actions.some((action) => action.kind === "setup-user"));
     assert.deepEqual(payload.assistant_guidance.choices, []);
-    assert.match(payload.assistant_guidance.recommended_next_step, /Initialize SkillBoard/);
+    assert.match(payload.assistant_guidance.recommended_next_step, /Run SkillBoard setup/);
     assert.doesNotMatch(payload.assistant_guidance.recommended_next_step, /approve/i);
     assert.deepEqual(await readdir(root), before);
   } finally {
@@ -905,7 +892,7 @@ test("brief command missing config json includes setup guidance without actions"
       choicesMatchActions: false
     });
     assert.deepEqual(payload.assistant_guidance.choices, []);
-    assert.match(payload.assistant_guidance.recommended_next_step, /Initialize SkillBoard/);
+    assert.match(payload.assistant_guidance.recommended_next_step, /Run SkillBoard setup/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -1008,12 +995,12 @@ test("brief command help lists command and options", async () => {
   const result = await runCli(["brief", "--help"]);
 
   assert.equal(result.code, 0);
-  assert.match(result.stdout, /^Usage: skillboard brief \[--workflow <name>\]/m);
+  assert.match(result.stdout, /^Usage: skillboard brief \[--agent codex\|claude\|opencode\|hermes\]/m);
   assert.match(result.stdout, /\[--intent <request>\]/);
   assert.match(result.stdout, /--include-actions/);
   assert.match(result.stdout, /--json/);
   assert.match(result.stdout, /--verbose/);
-  assert.match(result.stdout, /Reads the current SkillBoard brief/);
+  assert.match(result.stdout, /Reads the current user-level SkillBoard brief/);
   assert.doesNotMatch(result.stdout, /^# SkillBoard Brief/m);
 });
 
@@ -1021,7 +1008,7 @@ test("brief command help is available through help brief", async () => {
   const result = await runCli(["help", "brief"]);
 
   assert.equal(result.code, 0);
-  assert.match(result.stdout, /^Usage: skillboard brief \[--workflow <name>\]/m);
+  assert.match(result.stdout, /^Usage: skillboard brief \[--agent codex\|claude\|opencode\|hermes\]/m);
   assert.match(result.stdout, /guard use/);
   assert.doesNotMatch(result.stdout, /^SkillBoard - permissive AI skill overlap routing$/m);
 });
@@ -1404,7 +1391,7 @@ function assertAssistantGuidance(payload, { status, hasWorkflowGuardHint, choice
     "when_to_read"
   ]);
   assert.equal(payload.assistant_guidance.goal_document.path, "docs/ai-skill-routing-goal.md");
-  assert.match(payload.assistant_guidance.goal_document.purpose, /permissive AI skill routing layer/i);
+  assert.match(payload.assistant_guidance.goal_document.purpose, /user-level control plane/i);
   assert.deepEqual(payload.assistant_guidance.goal_document.loop, [
     "observe",
     "route",
@@ -1421,7 +1408,7 @@ function assertAssistantGuidance(payload, { status, hasWorkflowGuardHint, choice
     "before changing brief output",
     "before changing bridge instructions",
     "before changing policy UX",
-    "before changing workflow UX"
+    "before changing sharing UX"
   ]);
   assert.ok(
     payload.assistant_guidance.recommended_next_step === null
@@ -1429,7 +1416,7 @@ function assertAssistantGuidance(payload, { status, hasWorkflowGuardHint, choice
   );
   assert.deepEqual(payload.assistant_guidance.guard, {
     required: true,
-    when: "before invoking a skill",
+    when: "immediately before skill use",
     command_hint: hasWorkflowGuardHint ? payload.assistant_guidance.guard.command_hint : null,
     allowed_use: {
       confirmation_required: false,

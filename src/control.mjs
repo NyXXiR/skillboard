@@ -29,14 +29,22 @@ import { variantLifecycleStatus } from "./control/variant-status.mjs";
 import { addHarness, addWorkflow } from "./control/workflow-crud.mjs";
 import {
   GUARD_HOOK_MODE,
+  assertHookTargetContained,
   assertGuardHookPlanIsInstallable,
   buildGuardHookInstallPlan,
   planGuardHookInstall
 } from "./hook-plan.mjs";
 
 export { planGuardHookInstall } from "./hook-plan.mjs";
+export { setV2SkillEnabled, setV2SkillPreference, setV2SkillShared } from "./control/v2-skill-crud.mjs";
+export { forgetV2Skill } from "./control/v2-skill-forget.mjs";
 
 export function listSkills(workspace, options = {}) {
+  if (workspace.version === 2) {
+    return workspace.skills
+      .map((skill) => v2SkillSummary(workspace, skill))
+      .sort((left, right) => left.id.localeCompare(right.id));
+  }
   const workflow = options.workflow === undefined ? undefined : workflowByName(workspace, options.workflow);
   const skillIds = workflow === undefined
     ? new Set(workspace.skills.map((skill) => skill.id))
@@ -57,6 +65,9 @@ export function listSkills(workspace, options = {}) {
 }
 
 export function listWorkflows(workspace) {
+  if (workspace.version === 2) {
+    return [];
+  }
   return workspace.workflows.map((workflow) => ({
     name: workflow.name,
     harness: workflow.harness,
@@ -96,6 +107,12 @@ export function listInstallUnits(workspace) {
 
 export function explainSkill(workspace, skillId) {
   const skill = skillById(workspace, skillId);
+  if (workspace.version === 2) {
+    return {
+      ...v2SkillSummary(workspace, skill),
+      agents: v2InventoryObservation(workspace, skill.id).installed_on
+    };
+  }
   const source = classifySkillSource(workspace, skill);
   const workflows = workspace.workflows
     .map((workflow) => workflowSkillRole(workspace, workflow, skillId))
@@ -116,6 +133,43 @@ export function explainSkill(workspace, skillId) {
     capabilities,
     replacedBy: skill.replacedBy ?? null,
     conflictsWith: skill.conflictsWith
+  };
+}
+
+function v2SkillSummary(workspace, skill) {
+  const inventory = v2InventoryObservation(workspace, skill.id);
+  return {
+    id: skill.id,
+    enabled: skill.enabled,
+    shared: skill.shared,
+    preference: skill.preference,
+    path: inventory.path,
+    inventory,
+    variant: inventory.observations.variant ?? null
+  };
+}
+
+function v2InventoryObservation(workspace, skillId) {
+  const observed = workspace.inventory?.skills?.find((candidate) => candidate.id === skillId);
+  if (observed === undefined) {
+    return {
+      present: false, path: null, owner_install_unit: null, source: null,
+      category: null, description: null, content_digest: null, installed_on: [], aliases: [], observations: {}
+    };
+  }
+  return {
+    present: true,
+    path: observed.path,
+    owner_install_unit: observed.owner_install_unit,
+    source: observed.source ?? null,
+    category: observed.category ?? null,
+    description: observed.description ?? null,
+    content_digest: observed.content_digest ?? null,
+    installed_on: Array.isArray(observed.installed_on) ? observed.installed_on : [],
+    aliases: Array.isArray(observed.aliases) ? observed.aliases : [],
+    observations: observed.observations !== null && typeof observed.observations === "object" && !Array.isArray(observed.observations)
+      ? observed.observations
+      : {}
   };
 }
 
@@ -143,6 +197,7 @@ export async function installGuardHook(options) {
   const { plan, script } = await buildGuardHookInstallPlan(options);
   assertGuardHookPlanIsInstallable(plan);
 
+  await assertHookTargetContained(options.configPath, plan.path);
   await mkdir(dirname(plan.path), { recursive: true });
   await assertNewNonSymlinkPath(plan.path);
   await writeFile(plan.path, script, { encoding: "utf8", flag: "wx", mode: GUARD_HOOK_MODE });

@@ -1,8 +1,10 @@
 import { isAbsolute, relative, resolve } from "node:path";
+import { mkdir } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { installAgentIntegration, uninstallAgentIntegration } from "./agent-integration-files.mjs";
-import { resolveSetupHome, setupOwnership } from "./agent-integration-home.mjs";
+import { applyOwnership, resolveSetupHome, setupOwnership } from "./agent-integration-home.mjs";
 import { setupAgentSkillTargets, supportedAgentNames } from "./agent-skill-roots.mjs";
+import { refreshAgentInventory } from "./inventory-refresh.mjs";
 
 export async function runSetupCommand(options, stdout, runtime = defaultRuntime()) {
   if (options.get("dir") !== undefined) {
@@ -27,15 +29,22 @@ export async function runSetupCommand(options, stdout, runtime = defaultRuntime(
       return 1;
     }
   }
-  const result = await installAgentIntegration(targets, setupOwnership(env, runtime, home));
+  const ownership = setupOwnership(env, runtime, home);
+  const result = await installAgentIntegration(targets, ownership);
+  await mkdir(home, { recursive: true });
+  const inventory = await refreshAgentInventory({ root: home, home, env });
+  await applyOwnership(resolve(home, inventory.configPath), ownership);
+  if (inventory.inventoryPath !== null) await applyOwnership(resolve(home, inventory.inventoryPath), ownership);
   stdout.write("SkillBoard agent integration installed.\n");
   writeList(stdout, "Created", result.created);
   writeList(stdout, "Updated", result.updated);
   writeList(stdout, "Unchanged", result.unchanged);
   writeList(stdout, "Preserved", result.preserved);
+  stdout.write(`User policy: ${inventory.configPath}\n`);
+  stdout.write(`Observed skills: ${inventory.scan.scannedSkills}\n`);
   stdout.write("Next:\n");
   stdout.write("- Restart or refresh agents that cache user skills.\n");
-  stdout.write("- No project was initialized; skillboard init is deprecated project-local policy bootstrap and is not needed for normal use.\n");
+  stdout.write("- User-level policy and inventory were refreshed; no project was initialized.\n");
   stdout.write('- Ask the agent in a workspace: "Review this plan and point out weak assumptions."\n');
   stdout.write("- SkillBoard will step in when skills overlap, routing is ambiguous, or you ask for a skill decision.\n");
   return 0;
@@ -76,7 +85,7 @@ function writeList(stdout, label, values) {
 function writeSetupConfirmation(stdout, targets, command) {
   stdout.write("SkillBoard setup installs agent-layer integration, not project files.\n");
   stdout.write("It writes a SkillBoard guidance skill into detected user agent skill roots so agents can resolve skill priority when choices overlap.\n");
-  stdout.write("It does not create skillboard.config.yaml or .skillboard/; skillboard init is deprecated project-local policy bootstrap and is not needed for normal use.\n");
+  stdout.write("It creates ~/skillboard.config.yaml and ~/.skillboard/inventory.json as one user-level control plane; skillboard init is not needed for normal use.\n");
   stdout.write("Targets:\n");
   for (const target of targets) {
     stdout.write(`- ${target.agent}: ${target.skillPath}\n`);

@@ -19,16 +19,26 @@ import {
 } from "./domain/constants.mjs";
 import { parseInstallUnits } from "./install-units.mjs";
 import { normalizeSkillPath } from "./skill-paths.mjs";
+import { parseV2Policy, serializeV2Policy } from "./domain/v2-policy.mjs";
+import { loadV2InventoryIndex } from "./control/v2-guard.mjs";
+import { compatibilityForVersion } from "./compatibility.mjs";
 
+export { serializeV2Policy };
+
+/** @returns {Promise<any>} */
 export async function loadWorkspace(options) {
   const configText = await readFile(options.configPath, "utf8");
   const parsed = YAML.parse(configText);
   const config = requireRecord(parsed, "config root");
   const version = parseVersion(config.version);
+  if (version === 2) {
+    return loadV2Workspace(config, options);
+  }
   const skills = parseSkills(config.skills);
   const installUnits = parseInstallUnits(config.install_units);
   return {
     version,
+    compatibility: compatibilityForVersion(version),
     defaults: parseDefaults(config.defaults),
     installedSkills: await discoverInstalledSkills(options.skillsRoot, skills, {
       configPath: options.configPath,
@@ -41,6 +51,29 @@ export async function loadWorkspace(options) {
     harnesses: parseHarnesses(config.harnesses),
     installUnits,
     workflows: parseWorkflows(config.workflows)
+  };
+}
+
+async function loadV2Workspace(config, options) {
+  const { workflows, skills } = parseV2Policy(config);
+  const inventoryPath = options.inventoryPath ?? join(dirname(options.configPath), ".skillboard", "inventory.json");
+  const inventory = await loadV2InventoryIndex(inventoryPath);
+  return {
+    version: 2,
+    compatibility: null,
+    defaults: {},
+    installedSkills: await discoverInstalledSkills(options.skillsRoot, skills, {
+      configPath: options.configPath,
+      env: options.env ?? process.env,
+      home: options.home,
+      installUnits: []
+    }),
+    skills,
+    capabilities: [],
+    harnesses: [],
+    installUnits: inventory.installUnits ?? [],
+    workflows,
+    inventory
   };
 }
 
@@ -175,7 +208,7 @@ function parseVersion(value) {
   if (value === undefined) {
     return 1;
   }
-  if (value !== 1) {
+  if (value !== 1 && value !== 2) {
     throw new Error(`Unsupported config version: ${value}`);
   }
   return value;
@@ -194,6 +227,13 @@ function parseSkills(value) {
   const raw = requireRecord(value ?? {}, "skills");
   return Object.entries(raw).map(([id, entry]) => {
     const skill = requireRecord(entry, `skills.${id}`);
+    const v2Keys = ["enabled", "shared", "preference"].filter((key) => Object.prototype.hasOwnProperty.call(skill, key));
+    if (v2Keys.length > 0) {
+      throw new Error(
+        `skills.${id} uses version 2 key ${v2Keys.join(", ")} in a version 1 config. ` +
+        "Run `skillboard migrate v2` to convert the complete policy."
+      );
+    }
     const status = readString(skill, "status", "vendor");
     const invocation = readString(skill, "invocation", "manual-only");
     const exposure = readString(skill, "exposure", "exported");

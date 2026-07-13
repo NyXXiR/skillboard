@@ -47,6 +47,7 @@ export function renderSkillBrief(brief, options = {}) {
     `Workflow: ${workflowSummary(brief.workflow)}`,
     ""
   ];
+  if (brief.compatibility?.notice !== undefined) lines.push(brief.compatibility.notice, "");
   if (brief.error !== undefined) {
     lines.push(`Error: ${safeText(brief.error.message)}`, "");
   }

@@ -31,62 +31,28 @@ const FORK_OPTIONS = {
   category: "agent"
 };
 const APPROVED_CONTENT = `${BASE_SKILL_CONTENT}\nApproved adaptation.\n`;
+const V1_MIGRATION_REQUIRED = /Version 1 policy is read-only\. Run `skillboard migrate v2`\./;
 
-test("fork creates draft snapshot without promotion", async () => {
+test("fork refuses v1 dry-run and write without changing config or files", async () => {
   await withControlVariantWorkspace({}, async ({ configPath, root, skillsRoot, variantFile }) => {
     const before = await readFile(configPath, "utf8");
-    const expectedDigest = rawSha256(BASE_SKILL_CONTENT);
     const expectedSnapshot = snapshotPath("claude.review", "base");
 
-    const dryRun = await forkSkillVariant({ ...FORK_OPTIONS, configPath, skillsRoot, dryRun: true });
-    assert.equal(dryRun.dryRun, true);
-    assert.equal(dryRun.changed, true);
+    await assert.rejects(
+      forkSkillVariant({ ...FORK_OPTIONS, configPath, skillsRoot, dryRun: true }),
+      V1_MIGRATION_REQUIRED
+    );
     assert.equal(await readFile(configPath, "utf8"), before);
     await assert.rejects(readFile(variantFile, "utf8"), /ENOENT/);
     await assert.rejects(readFile(join(root, expectedSnapshot), "utf8"), /ENOENT/);
 
-    const result = await forkSkillVariant({ ...FORK_OPTIONS, configPath, skillsRoot });
-    assert.equal(result.dryRun, false);
-    assert.equal(result.variant.status, "draft");
-    assert.deepEqual(result.filePlan.map((entry) => entry.action), ["copy-skill-for-fork", "write-snapshot"]);
-
-    const config = await readConfig(configPath);
-    assert.deepEqual(config.skills["claude.review"], {
-      path: "claude/review",
-      status: "candidate",
-      invocation: "manual-only",
-      exposure: "exported",
-      category: "agent",
-      variant: {
-        of: "base.review",
-        adapted_for: "Claude review",
-        capability: "task-review",
-        workflow: "claude-workflow",
-        status: "draft",
-        base: { content_digest: expectedDigest, snapshot: expectedSnapshot }
-      }
-    });
-    assert.equal(config.workflows["claude-workflow"].required_capabilities["task-review"].preferred, "base.review");
-    assert.deepEqual(config.workflows["claude-workflow"].required_capabilities["task-review"].fallback, []);
-    assert.deepEqual(config.workflows["claude-workflow"].active_skills, ["base.review"]);
-    assert.equal(await readFile(variantFile, "utf8"), BASE_SKILL_CONTENT);
-    assert.equal(await readFile(join(root, expectedSnapshot), "utf8"), BASE_SKILL_CONTENT);
-
-    const workspace = await loadWorkspace({ configPath, skillsRoot });
-    const use = canUseSkill(workspace, "claude.review", "claude-workflow");
-    assert.equal(use.allowed, false);
-    assert.match(use.reasons.join("\n"), /not active, preferred, or fallback/);
-
-    const baseStatus = await variantLifecycleStatus({ configPath, skillsRoot, variantId: "claude.review" });
-    assert.equal(baseStatus.computedStatus, "draft-base");
-    assert.equal(baseStatus.liveDigest, expectedDigest);
-    assert.equal(baseStatus.baseDigest, expectedDigest);
-    assert.equal(baseStatus.approvedDigest, null);
-
-    await writeFile(variantFile, CHANGED_SKILL_CONTENT, "utf8");
-    const changedStatus = await variantLifecycleStatus({ configPath, skillsRoot, variantId: "claude.review" });
-    assert.equal(changedStatus.computedStatus, "draft-changed");
-    assert.equal(changedStatus.liveDigest, rawSha256(CHANGED_SKILL_CONTENT));
+    await assert.rejects(
+      forkSkillVariant({ ...FORK_OPTIONS, configPath, skillsRoot }),
+      V1_MIGRATION_REQUIRED
+    );
+    assert.equal(await readFile(configPath, "utf8"), before);
+    await assert.rejects(readFile(variantFile, "utf8"), /ENOENT/);
+    await assert.rejects(readFile(join(root, expectedSnapshot), "utf8"), /ENOENT/);
   });
 });
 
@@ -146,42 +112,28 @@ test("fork and status reject invalid lifecycle inputs", async () => {
   });
 });
 
-test("approve promotes reviewed variant after snapshot", async () => {
+test("approve refuses v1 dry-run and write while preserving bytes and snapshots", async () => {
   await withControlVariantWorkspace({
     variantSkill: lifecycleVariantSkill(),
     variantContent: CHANGED_SKILL_CONTENT
   }, async ({ configPath, root, skillsRoot }) => {
     const approvedSnapshot = snapshotPath("claude.review", "approved");
-    const approvedDigest = rawSha256(CHANGED_SKILL_CONTENT);
     const before = await readFile(configPath, "utf8");
     await writeSnapshot(root, snapshotPath("claude.review", "base"), BASE_SKILL_CONTENT);
 
-    const dryRun = await approveSkillVariant({ configPath, skillsRoot, variantId: "claude.review", mode: "workflow-auto", dryRun: true });
-    assert.equal(dryRun.dryRun, true);
-    assert.equal(dryRun.changed, true);
+    await assert.rejects(
+      approveSkillVariant({ configPath, skillsRoot, variantId: "claude.review", mode: "workflow-auto", dryRun: true }),
+      V1_MIGRATION_REQUIRED
+    );
     assert.equal(await readFile(configPath, "utf8"), before);
     await assert.rejects(readFile(join(root, approvedSnapshot), "utf8"), /ENOENT/);
 
-    const result = await approveSkillVariant({ configPath, skillsRoot, variantId: "claude.review", mode: "workflow-auto" });
-    assert.equal(result.variant.status, "approved");
-    assert.deepEqual(result.filePlan.map((entry) => entry.action), ["write-snapshot"]);
-
-    const config = await readConfig(configPath);
-    assert.equal(config.skills["claude.review"].status, "active");
-    assert.equal(config.skills["claude.review"].invocation, "workflow-auto");
-    assert.equal(config.skills["claude.review"].variant.status, "approved");
-    assert.deepEqual(config.skills["claude.review"].variant.approved, { content_digest: approvedDigest, snapshot: approvedSnapshot });
-    assert.deepEqual(config.capabilities["task-review"].alternatives, ["claude.review"]);
-    assert.equal(config.workflows["claude-workflow"].required_capabilities["task-review"].preferred, "claude.review");
-    assert.deepEqual(config.workflows["claude-workflow"].required_capabilities["task-review"].fallback, ["base.review"]);
-    assert.deepEqual(config.workflows["claude-workflow"].active_skills, ["base.review", "claude.review"]);
-    assert.equal(await readFile(join(root, approvedSnapshot), "utf8"), CHANGED_SKILL_CONTENT);
-
-    const workspace = await loadWorkspace({ configPath, skillsRoot });
-    assert.equal(canUseSkill(workspace, "claude.review", "claude-workflow").allowed, true);
-    const status = await variantLifecycleStatus({ configPath, skillsRoot, variantId: "claude.review" });
-    assert.equal(status.computedStatus, "approved");
-    assert.equal(status.approvedDigest, approvedDigest);
+    await assert.rejects(
+      approveSkillVariant({ configPath, skillsRoot, variantId: "claude.review", mode: "workflow-auto" }),
+      V1_MIGRATION_REQUIRED
+    );
+    assert.equal(await readFile(configPath, "utf8"), before);
+    await assert.rejects(readFile(join(root, approvedSnapshot), "utf8"), /ENOENT/);
   });
 });
 
@@ -206,46 +158,37 @@ test("approve rejects invalid lifecycle inputs", async () => {
   }, async ({ configPath, skillsRoot }) => {
     await assert.rejects(
       approveSkillVariant({ configPath, skillsRoot, variantId: "claude.review", mode: "workflow-auto" }),
-      /would not be usable|unreviewed non-user source/
+      V1_MIGRATION_REQUIRED
     );
   });
 });
 
-test("reset moves between base draft and approved variant", async () => {
+test("reset refuses v1 dry-run and writes while preserving config and live file", async () => {
   await withControlVariantWorkspace({
     variantSkill: lifecycleVariantSkill({ variantStatus: "approved", approvedDigest: rawSha256(APPROVED_CONTENT) }),
     variantContent: APPROVED_CONTENT
   }, async ({ configPath, root, skillsRoot, variantFile }) => {
     await writeSnapshot(root, snapshotPath("claude.review", "base"), BASE_SKILL_CONTENT);
     await writeSnapshot(root, snapshotPath("claude.review", "approved"), APPROVED_CONTENT);
-    await approveSkillVariant({ configPath, skillsRoot, variantId: "claude.review", mode: "workflow-auto" });
     const before = await readFile(configPath, "utf8");
 
-    const dryRun = await resetSkillVariant({ configPath, skillsRoot, variantId: "claude.review", toBase: true, dryRun: true });
-    assert.equal(dryRun.dryRun, true); assert.equal(await readFile(configPath, "utf8"), before);
+    await assert.rejects(
+      resetSkillVariant({ configPath, skillsRoot, variantId: "claude.review", toBase: true, dryRun: true }),
+      V1_MIGRATION_REQUIRED
+    );
+    assert.equal(await readFile(configPath, "utf8"), before);
     assert.equal(await readFile(variantFile, "utf8"), APPROVED_CONTENT);
 
-    const toBase = await resetSkillVariant({ configPath, skillsRoot, variantId: "claude.review", toBase: true, yes: true });
-    assert.equal(toBase.variant.status, "draft");
-    assert.equal(await readFile(variantFile, "utf8"), BASE_SKILL_CONTENT);
-    let config = await readConfig(configPath);
-    assert.equal(config.skills["claude.review"].status, "candidate"); assert.equal(config.skills["claude.review"].invocation, "manual-only");
-    assert.equal(config.skills["claude.review"].variant.status, "draft");
-    assert.equal(config.skills["claude.review"].variant.approved.content_digest, rawSha256(APPROVED_CONTENT));
-    assert.equal(config.workflows["claude-workflow"].required_capabilities["task-review"].preferred, "base.review");
-    assert.deepEqual(config.workflows["claude-workflow"].required_capabilities["task-review"].fallback, []); assert.deepEqual(config.workflows["claude-workflow"].active_skills, ["base.review"]);
-    let workspace = await loadWorkspace({ configPath, skillsRoot });
-    assert.equal(canUseSkill(workspace, "claude.review", "claude-workflow").allowed, false);
-
-    const toApproved = await resetSkillVariant({ configPath, skillsRoot, variantId: "claude.review", toApproved: true, yes: true, mode: "workflow-auto" });
-    assert.equal(toApproved.variant.status, "approved"); assert.equal(await readFile(variantFile, "utf8"), APPROVED_CONTENT);
-    config = await readConfig(configPath);
-    assert.equal(config.skills["claude.review"].status, "active");
-    assert.equal(config.workflows["claude-workflow"].required_capabilities["task-review"].preferred, "claude.review");
-    assert.deepEqual(config.workflows["claude-workflow"].required_capabilities["task-review"].fallback, ["base.review"]);
-    workspace = await loadWorkspace({ configPath, skillsRoot });
-    assert.equal(canUseSkill(workspace, "claude.review", "claude-workflow").allowed, true);
-    assert.equal((await variantLifecycleStatus({ configPath, skillsRoot, variantId: "claude.review" })).computedStatus, "approved");
+    await assert.rejects(
+      resetSkillVariant({ configPath, skillsRoot, variantId: "claude.review", toBase: true, yes: true }),
+      V1_MIGRATION_REQUIRED
+    );
+    await assert.rejects(
+      resetSkillVariant({ configPath, skillsRoot, variantId: "claude.review", toApproved: true, yes: true, mode: "workflow-auto" }),
+      V1_MIGRATION_REQUIRED
+    );
+    assert.equal(await readFile(configPath, "utf8"), before);
+    assert.equal(await readFile(variantFile, "utf8"), APPROVED_CONTENT);
   });
 });
 
@@ -276,7 +219,7 @@ test("reset protects unsafe writes", async () => {
     await writeSnapshot(root, snapshotPath("claude.review", "base"), BASE_SKILL_CONTENT);
     await writeSnapshot(root, snapshotPath("claude.review", "approved"), APPROVED_CONTENT);
     const before = await readFile(configPath, "utf8");
-    await assert.rejects(resetSkillVariant({ configPath, skillsRoot, variantId: "claude.review", toApproved: true, yes: true, mode: "workflow-auto" }), /would not be usable|unreviewed non-user source/);
+    await assert.rejects(resetSkillVariant({ configPath, skillsRoot, variantId: "claude.review", toApproved: true, yes: true, mode: "workflow-auto" }), V1_MIGRATION_REQUIRED);
     assert.equal(await readFile(configPath, "utf8"), before); assert.equal(await readFile(variantFile, "utf8"), CHANGED_SKILL_CONTENT);
   });
 });

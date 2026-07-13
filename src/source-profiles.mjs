@@ -30,6 +30,7 @@ export async function importSource(options) {
     skills.push({
       id,
       path,
+      skillFile: entry.file,
       status: pathRule?.status ?? profile.defaultStatus,
       invocation: safeDefaultInvocation(pathRule?.invocation ?? profile.defaultInvocation),
       exposure: pathRule?.exposure ?? profile.defaultExposure,
@@ -89,6 +90,9 @@ export function mergeImportFragment(configText, imported, options = {}) {
     throw new Error(`Invalid YAML config: ${document.errors.map((error) => error.message).join("; ")}`);
   }
   requireYamlMap(document.contents, "config root");
+  if (document.get("version") === 2) {
+    return mergeV2ImportFragment(document, configText, imported);
+  }
   const fragment = importFragment(imported);
   const replace = options.replace === true;
   const skillIds = Object.keys(fragment.skills);
@@ -118,6 +122,29 @@ export function mergeImportFragment(configText, imported, options = {}) {
     addedInstallUnits: unitIds,
     replacedSkills: duplicateSkills,
     replacedInstallUnits: duplicateUnits
+  };
+}
+
+function mergeV2ImportFragment(document, configText, imported) {
+  const existingSkills = ensureMap(document, "skills");
+  const addedSkills = [];
+  for (const skill of imported.skills) {
+    if (existingSkills.get(skill.id, true) !== undefined) {
+      continue;
+    }
+    existingSkills.set(skill.id, document.createNode({ enabled: true, shared: false }));
+    addedSkills.push(skill.id);
+  }
+  const text = preserveLineEndings(String(document), configText);
+  const plan = textChangePlan(configText, text);
+  return {
+    text,
+    changed: plan.changed,
+    plan,
+    addedSkills,
+    addedInstallUnits: [],
+    replacedSkills: [],
+    replacedInstallUnits: []
   };
 }
 

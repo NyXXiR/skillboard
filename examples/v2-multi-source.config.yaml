@@ -1,0 +1,35 @@
+version: 2
+
+skills:
+  anthropic.docx:
+    enabled: true
+    shared: true
+
+  omo.review-work:
+    enabled: true
+    shared: false
+    preference:
+      intents:
+        - review
+      priority: 90
+
+  private.tdd-work-continuity:
+    enabled: true
+    shared: false
+    preference:
+      intents:
+        - implementation
+        - testing
+      priority: 100
+
+  private.workflow-router:
+    enabled: true
+    shared: false
+    preference:
+      intents:
+        - routing
+      priority: 100
+
+  unused.example:
+    enabled: false
+    shared: false

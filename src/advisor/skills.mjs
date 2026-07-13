@@ -12,8 +12,8 @@ export function skillsWithoutWorkflow(workspace) {
   return sortSkillGroups(groups);
 }
 
-export function skillsForWorkflow(workspace, workflowName, sourceAudit = { units: [] }) {
-  if (workflowName === null) {
+export function skillsForWorkflow(workspace, workflowName, sourceAudit = { units: [] }, agentName) {
+  if (workflowName === null && workspace.version !== 2) {
     const groups = emptySkillGroups();
     groups.installed_only = installedOnlyEntries(workspace);
     return sortSkillGroups(groups);
@@ -24,7 +24,7 @@ export function skillsForWorkflow(workspace, workflowName, sourceAudit = { units
   for (const summary of listSkills(workspace)) {
     const skill = workspace.skills.find((candidate) => candidate.id === summary.id);
     const explanation = explainSkill(workspace, summary.id);
-    const use = canUseSkill(workspace, summary.id, workflowName);
+    const use = canUseSkill(workspace, summary.id, workflowName, agentName);
     const group = groupForDeclaredSkill(workspace, skill, use, sourceFindings);
     const entry = declaredSkillEntry(summary, explanation, use, group);
     if (use.allowed) {
@@ -42,6 +42,16 @@ export function skillsForWorkflow(workspace, workflowName, sourceAudit = { units
 }
 
 function declaredSkillEntry(summary, explanation, use, group) {
+  if (summary.enabled !== undefined) {
+    return {
+      id: summary.id, label: summary.id, path: summary.path,
+      reason: reasonForGroup(group, use?.reasons ?? []),
+      advanced: {
+        enabled: summary.enabled, shared: summary.shared, installed_on: explanation.inventory?.installed_on ?? [], preference: summary.preference,
+        runtime_ready: !(use?.reasons ?? []).some((reason) => reason.includes("Inventory integrity error"))
+      }
+    };
+  }
   return {
     id: summary.id,
     label: summary.id,
@@ -79,8 +89,9 @@ function groupForDeclaredSkill(workspace, skill, use, sourceFindings) {
 
 function installedOnlyEntries(workspace) {
   const declaredPaths = new Set(workspace.skills.map((skill) => skill.path));
+  const declaredIds = new Set(workspace.skills.map((skill) => skill.id));
   return workspace.installedSkills
-    .filter((skill) => !declaredPaths.has(skill.path))
+    .filter((skill) => !declaredPaths.has(skill.path) && !declaredIds.has(skill.id))
     .map((skill) => ({
       id: skill.id,
       label: skill.name ?? skill.id,
@@ -151,7 +162,9 @@ function findingsBySource(sourceAudit) {
 }
 
 function isNotInWorkflowReason(reason) {
-  return reason.includes("is not active, preferred, or fallback in workflow");
+  return reason.includes("is not active, preferred, or fallback in workflow")
+    || reason.includes("is not available in workflow")
+    || reason.includes("requires workflow");
 }
 
 function isReviewReason(reason) {

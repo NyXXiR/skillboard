@@ -7,4 +7,6 @@ dist/
 .omo/
 .ultrawork/
 .ultrawork/evidence/*.tmp
-.skillboard/
+!.skillboard/
+.skillboard/*
+!.skillboard/inventory.json

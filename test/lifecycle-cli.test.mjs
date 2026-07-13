@@ -100,8 +100,8 @@ test("cli uninstall keep-settings preserves generated project state directories"
     const result = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "uninstall", "--dir", root, "--keep-settings"]);
 
     assert.match(result.stdout, /Preserved: .*`skillboard\.config\.yaml`/);
-    assert.match(await readFile(join(root, "skillboard.config.yaml"), "utf8"), /version: 1/);
-    assert.deepEqual((await readdir(join(root, ".skillboard"))).sort(), ["hooks", "profiles", "reports"]);
+    assert.match(await readFile(join(root, "skillboard.config.yaml"), "utf8"), /version: 2/);
+    assert.deepEqual((await readdir(join(root, ".skillboard"))).sort(), ["hooks", "inventory.json", "profiles", "reports"]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -188,7 +188,7 @@ test("cli uninstall rejects mutually exclusive config removal flags", async () =
     }
     assert.equal(error?.code, 1);
     assert.match(error.stderr, /--remove-config and --reset-config are mutually exclusive/);
-    assert.match(await readFile(join(root, "skillboard.config.yaml"), "utf8"), /version: 1/);
+    assert.match(await readFile(join(root, "skillboard.config.yaml"), "utf8"), /version: 2/);
 
     let purgeError;
     try {
@@ -198,7 +198,7 @@ test("cli uninstall rejects mutually exclusive config removal flags", async () =
     }
     assert.equal(purgeError?.code, 1);
     assert.match(purgeError.stderr, /--remove-config cannot be combined with --purge/);
-    assert.match(await readFile(join(root, "skillboard.config.yaml"), "utf8"), /version: 1/);
+    assert.match(await readFile(join(root, "skillboard.config.yaml"), "utf8"), /version: 2/);
 
     let keepSettingsError;
     try {

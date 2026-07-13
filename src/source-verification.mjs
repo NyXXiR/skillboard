@@ -1,11 +1,14 @@
-import { lstat, readFile, readdir, readlink, writeFile } from "node:fs/promises";
-import { createHash, verify as verifySignature } from "node:crypto";
+import { lstat, readFile, writeFile } from "node:fs/promises";
+import { verify as verifySignature } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import YAML from "yaml";
+import { auditPath, expandPortablePath, portableObservation, redactPathError } from "./audit-paths.mjs";
 import { installUnitSourceClass, isLocalSourceReference } from "./domain/source-classes.mjs";
+import { V1_MUTATION_ERROR } from "./compatibility.mjs";
+import { skillContentDigest, sourceDigest } from "./source-digest.mjs";
 
-const DIGEST_PREFIX = "sha256:";
+export { skillContentDigest, sourceDigest };
 
 export async function verifySources(workspace, options = {}) {
   const configDir = options.configPath === undefined ? process.cwd() : dirname(resolve(options.configPath));
@@ -24,6 +27,7 @@ export async function verifySources(workspace, options = {}) {
 }
 
 export async function writeLockfile(workspace, options) {
+  if (workspace.version === 1) throw new Error(V1_MUTATION_ERROR);
   const verified = await verifySources(workspace, { configPath: options.configPath, rootDir: options.rootDir });
   if (!verified.ok && options.allowUnverified !== true) {
     throw new Error(`Cannot write lockfile because source verification failed:\n${verified.errors.join("\n")}`);
@@ -34,6 +38,7 @@ export async function writeLockfile(workspace, options) {
 }
 
 export async function renderLockfile(workspace, options = {}) {
+  if (workspace.version === 2) return renderV2Lockfile(workspace, options);
   const verified = options.verified ?? await verifySources(workspace, { configPath: options.configPath, rootDir: options.rootDir });
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   const skillDigests = await skillContentDigests(workspace, options.skillsRoot);
@@ -76,6 +81,20 @@ export async function renderLockfile(workspace, options = {}) {
   });
 }
 
+async function renderV2Lockfile(workspace, options) {
+  const generatedAt = options.generatedAt ?? new Date().toISOString();
+  return YAML.stringify({
+    version: 2,
+    policy_projection_version: 2,
+    generated_at: generatedAt,
+    audit_authoritative_for_availability: false,
+    skills: Object.fromEntries(workspace.skills.map((skill) => [skill.id, {
+      enabled: skill.enabled,
+      shared: skill.shared
+    }]))
+  });
+}
+
 async function verifyInstallUnit(unit, options) {
   const target = await verificationTarget(unit, options);
   const localPath = target.path;
@@ -87,7 +106,7 @@ async function verifyInstallUnit(unit, options) {
 
   if (localPath !== null && options.restrictToRoot === true && !isPathInside(options.rootDir, localPath)) {
     status = "unverified";
-    findings.push({ severity: "error", message: `${target.field} is outside the allowed root: ${localPath}` });
+    findings.push({ severity: "error", message: `${target.field} is outside the allowed root: ${auditPath(localPath, options)}` });
   } else if (localPath === null) {
     if (unit.sourceDigest === undefined) {
       findings.push({ severity: "warning", message: "remote or command source has no source_digest pin" });
@@ -117,16 +136,16 @@ async function verifyInstallUnit(unit, options) {
       }
     } catch (error) {
       status = "unverified";
-      findings.push({ severity: "error", message: `cannot verify local source: ${error instanceof Error ? error.message : String(error)}` });
+      findings.push({ severity: "error", message: `cannot verify local source: ${redactPathError(error, options)}` });
     }
   }
 
   return {
     id: unit.id,
     kind: unit.kind,
-    source: unit.source,
-    cachePath: unit.cachePath.length === 0 ? null : unit.cachePath,
-    verifiedPath: localPath,
+    source: portableObservation(unit.source, options),
+    cachePath: unit.cachePath.length === 0 ? null : portableObservation(unit.cachePath, options),
+    verifiedPath: localPath === null ? null : auditPath(localPath, options),
     verifiedField: target.field,
     sourceClass: installUnitSourceClass(unit),
     trustLevel: unit.trustLevel,
@@ -156,39 +175,6 @@ async function verificationTarget(unit, options) {
   return { path: await localSourcePath(unit.source, options, { allowBareRelative: false }), field: "source" };
 }
 
-export async function sourceDigest(path) {
-  const hash = createHash("sha256");
-  hash.update("skillboard-source-digest-v1\n");
-  await addPathDigest(hash, path, path);
-  return `${DIGEST_PREFIX}${hash.digest("hex")}`;
-}
-
-async function addPathDigest(hash, root, path) {
-  const stats = await lstat(path);
-  const rel = relative(root, path).replace(/\\/g, "/") || ".";
-  if (stats.isSymbolicLink()) {
-    hash.update(`symlink\0${rel}\0${await readlink(path)}\n`);
-    return;
-  }
-  if (stats.isDirectory()) {
-    hash.update(`dir\0${rel}\n`);
-    const entries = (await readdir(path, { withFileTypes: true }))
-      .filter((entry) => entry.name !== ".git" && entry.name !== "node_modules")
-      .sort((left, right) => left.name.localeCompare(right.name));
-    for (const entry of entries) {
-      await addPathDigest(hash, root, join(path, entry.name));
-    }
-    return;
-  }
-  if (!stats.isFile()) {
-    hash.update(`other\0${rel}\n`);
-    return;
-  }
-  hash.update(`file\0${rel}\0${stats.size}\0`);
-  hash.update(await readFile(path));
-  hash.update("\n");
-}
-
 function verifyDigestSignature(digest, signature, publicKey) {
   try {
     return verifySignature("sha256", Buffer.from(digest), publicKey, Buffer.from(signature, "base64"));
@@ -198,7 +184,10 @@ function verifyDigestSignature(digest, signature, publicKey) {
 }
 
 async function localSourcePath(source, paths, options) {
-  const value = source.trim();
+  const value = expandPortablePath(source.trim(), paths);
+  if (value === null) {
+    return null;
+  }
   if (!isLocalSourceReference(value, options)) {
     return null;
   }
@@ -214,6 +203,7 @@ async function localSourcePath(source, paths, options) {
   ]);
   return await firstExistingPath(candidates) ?? candidates[0] ?? null;
 }
+
 
 async function firstExistingPath(paths) {
   for (const path of paths) {
@@ -231,12 +221,6 @@ async function firstExistingPath(paths) {
 
 function uniquePaths(paths) {
   return [...new Set(paths)];
-}
-
-export async function skillContentDigest(skillFilePath) {
-  const hash = createHash("sha256");
-  hash.update(await readFile(skillFilePath));
-  return `${DIGEST_PREFIX}${hash.digest("hex")}`;
 }
 
 async function skillContentDigests(workspace, skillsRoot) {

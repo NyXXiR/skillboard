@@ -6,6 +6,7 @@ import { textChangePlan } from "./change-plan.mjs";
 import { TRUST_LEVEL_VALUES } from "./domain/constants.mjs";
 import { checkPolicy } from "./policy.mjs";
 import { loadWorkspace } from "./workspace.mjs";
+import { assertV2MutationVersion } from "./compatibility.mjs";
 
 export async function reviewInstallUnit(options) {
   const trustLevel = options.trustLevel ?? "reviewed";
@@ -14,6 +15,7 @@ export async function reviewInstallUnit(options) {
   }
 
   const { document, originalText } = await loadConfig(options.configPath);
+  assertV2MutationVersion(document.get("version") ?? 1);
   const installUnits = requireMapAt(document, ["install_units"], "install_units");
   const unit = installUnits.get(options.unitId, true);
   if (unit === undefined) {

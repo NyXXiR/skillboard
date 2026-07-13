@@ -1,100 +1,33 @@
-# Capability Routing
+# Routing
 
-Capability routing helps an AI choose a skill for the user's current request
-without making the user learn SkillBoard commands.
+Routing chooses among skills already available to the current agent. Guard
+decides availability from valid generated inventory, `enabled`, and
+`installed_on`; routing cannot override that verdict.
 
-SkillBoard is intentionally permissive at this layer: workflow-bound skills can
-remain broadly available, and routing only chooses the skill that should steer
-this request. When several allowed skills match, the response includes
-`overlap_resolution` so the AI can explain that the other skills stayed
-available while the workflow routed to one selected skill.
+## Resolution order
 
-For the normal AI-mediated flow, prefer `brief --intent`. It returns the
-availability brief and the routing result together:
+1. Remove skills missing valid inventory records.
+2. Remove disabled skills.
+3. Remove skills not installed for the selected agent.
+4. Honor an explicit user-selected skill if it remains eligible.
+5. Rank intent matches by optional preference and priority.
+6. Return one recommendation and ordered fallbacks.
 
-```bash
-skillboard brief \
-  --intent "write tests before implementation" \
-  --workflow codex-night-workflow \
-  --config skillboard.config.yaml \
-  --skills skills \
-  --json
-```
-
-Read `assistant_guidance.route` from the JSON output. It includes:
-
-- `matched_capability`
-- `match_source`
-- `confidence`
-- `matched_terms`
-- `recommendation_reason`
-- `recommended_skill`
-- `fallback_skills`
-- `route_candidates`
-- `overlap_resolution`
-- `policy_memory`
-- `post_use_policy_suggestion`
-- `guard_command`
-- `usage_disclosure`
-
-When `guard_allowed` is true, the AI should run the guard automatically before
-using the skill. It should not ask for another approval. It should disclose the
-skill at the start and at completion:
-
-```text
-I will use <skill-id> for this request.
-I used <skill-id> for this request.
-```
-
-When several skills match, inspect `route_candidates` before acting. Each entry
-shows the candidate skill, whether it was selected, whether the guard currently
-allows it, and the guard reason when it is denied. This is the field that tells
-an AI why a preferred skill was skipped and an allowed fallback was selected.
-Inspect `overlap_resolution` first when it is present: `status: resolved` with
-`mode: permissive-routing` means multiple allowed skills matched, SkillBoard
-kept them available, and the current workflow still has one deterministic route.
-When `policy_memory` is present, remembered or configured workflow policy
-selected the routed skill while other allowed skills were also available. The AI
-should mention that after completion so the user knows a stored policy
-preference shaped the route.
-
-When routing is safe but policy learning would reduce future ambiguity,
-SkillBoard may return `post_use_policy_suggestion`. This includes cases where a
-preferred skill is denied and an allowed fallback is selected, or where multiple
-allowed workflow-bound skills match and one allowed skill is selected
-deterministically. The AI should keep the task moving with the allowed routed
-skill, then ask after completion whether to remember that skill as the preferred
-workflow policy. The suggested policy command is informational until the user
-confirms it.
-
-Use `route` directly when an automation layer only needs the recommendation
-payload:
+Preference ranks only and never changes availability.
 
 ```bash
-skillboard route "write tests before implementation" \
-  --workflow codex-night-workflow \
-  --config skillboard.config.yaml \
-  --skills skills \
-  --json
+skillboard brief --intent "write tests" --agent codex --json
+skillboard route "write tests" --agent codex --json
+skillboard guard use test-first --agent codex --json
 ```
 
-Routing first matches declared workflow capabilities. If the workflow has skill
-bindings but no matching capability, it can fall back to workflow-bound skill
-metadata such as id, path, category, `SKILL.md` name, and `SKILL.md`
-description.
+These commands use `~/skillboard.config.yaml` and
+`~/.skillboard/inventory.json` from any working directory. Advanced
+`--config` and `--skills` overrides remain available for migration, testing,
+and legacy workspaces.
 
-Routing does not invoke the skill. The final boundary is still:
+When guard allows use, continue without another approval. Ask after completion
+only when remembering a preference would reduce future ambiguity.
 
-```bash
-skillboard guard use <skill-id> \
-  --workflow codex-night-workflow \
-  --config skillboard.config.yaml \
-  --skills skills
-```
-
-If no capability or workflow-bound skill matches, SkillBoard returns
-`recommended_skill: null`. Ask a clarifying question before choosing a skill.
-
-See [Value proof](value-proof.md) for an executable route example that selects
-`matt.tdd`, returns `private.tdd-work-continuity` as fallback, and verifies the
-guard and disclosure fields.
+Source and provenance findings are optional audit metadata and never determine
+availability. Runtime and action authorization are outside SkillBoard's scope.

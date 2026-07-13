@@ -7,7 +7,10 @@ import {
 
 export async function variantLifecycleStatus(options) {
   const workspace = await loadWorkspace({ configPath: options.configPath, skillsRoot: options.skillsRoot });
-  const skill = workspace.skills.find((candidate) => candidate.id === options.variantId);
+  const policySkill = workspace.skills.find((candidate) => candidate.id === options.variantId);
+  const skill = workspace.version === 2
+    ? historicalVariantSkill(workspace, policySkill)
+    : policySkill;
   if (skill === undefined) {
     throw new Error(`Unknown skill: ${options.variantId}`);
   }
@@ -37,6 +40,49 @@ export async function variantLifecycleStatus(options) {
     },
     warnings
   };
+}
+
+function historicalVariantSkill(workspace, policySkill) {
+  if (policySkill === undefined) return undefined;
+  const observed = workspace.inventory?.skills?.find((candidate) => candidate.id === policySkill.id);
+  const rawVariant = observed?.observations?.variant;
+  if (observed === undefined || rawVariant === undefined) return policySkill;
+  return {
+    ...policySkill,
+    path: observed.path,
+    variant: parseHistoricalVariant(rawVariant, policySkill.id)
+  };
+}
+
+function parseHistoricalVariant(raw, skillId) {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`Inventory variant observation for ${skillId} must be an object`);
+  }
+  const approved = raw.approved === undefined ? undefined : historicalCheckpoint(raw.approved, `${skillId}.approved`);
+  return {
+    of: requiredString(raw.of, `${skillId}.variant.of`),
+    adaptedFor: typeof raw.adapted_for === "string" ? raw.adapted_for : null,
+    capability: requiredString(raw.capability, `${skillId}.variant.capability`),
+    workflow: requiredString(raw.workflow, `${skillId}.variant.workflow`),
+    status: requiredString(raw.status, `${skillId}.variant.status`),
+    base: historicalCheckpoint(raw.base, `${skillId}.variant.base`),
+    ...(approved === undefined ? {} : { approved })
+  };
+}
+
+function historicalCheckpoint(raw, label) {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`Inventory variant checkpoint ${label} must be an object`);
+  }
+  return {
+    contentDigest: requiredString(raw.content_digest, `${label}.content_digest`),
+    snapshot: requiredString(raw.snapshot, `${label}.snapshot`)
+  };
+}
+
+function requiredString(value, label) {
+  if (typeof value !== "string" || value.length === 0) throw new Error(`${label} must be a non-empty string`);
+  return value;
 }
 
 function computeStatus(lifecycleStatus, liveDigest, baseDigest, approvedDigest) {

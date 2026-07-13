@@ -4,6 +4,9 @@ import {
 } from "./conflicts.mjs";
 
 export function impactDisable(workspace, skillId) {
+  if (workspace.version === 2) {
+    return impactDisableV2(workspace, skillId);
+  }
   const affectedWorkflowEntries = workspace.workflows
     .filter((workflow) => workflow.activeSkills.includes(skillId) || workflow.requiredCapabilities.some((capability) => {
       return capability.preferred === skillId || capability.fallback.includes(skillId);
@@ -23,6 +26,26 @@ export function impactDisable(workspace, skillId) {
     conflictingSkills,
     activeConflicts,
     risk: riskFor(skill, affectedWorkflows, alternatives)
+  };
+}
+
+function impactDisableV2(workspace, skillId) {
+  const skill = workspace.skills.find((candidate) => candidate.id === skillId);
+  const affectedAgents = skill?.enabled === true
+    ? workspace.inventory?.skills?.find((entry) => entry.id === skillId)?.installed_on ?? []
+    : [];
+  return {
+    skillId,
+    exists: skill !== undefined,
+    affectedWorkflows: [],
+    affectedAgents,
+    affectedOutputs: [],
+    alternatives: [],
+    conflictingSkills: [],
+    activeConflicts: [],
+    policyBefore: skill === undefined ? null : { enabled: skill.enabled, shared: skill.shared },
+    policyAfter: skill === undefined ? null : { enabled: false, shared: skill.shared },
+    risk: skill === undefined ? "unknown" : affectedAgents.length <= 1 ? "low" : "medium"
   };
 }
 

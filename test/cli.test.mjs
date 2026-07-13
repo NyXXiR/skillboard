@@ -10,6 +10,80 @@ import YAML from "yaml";
 import { displayCommand } from "./helpers/expected-command.mjs";
 
 const execFileAsync = promisify(execFile);
+const V1_READ_ONLY_ERROR = "Version 1 policy is read-only. Run `skillboard migrate v2`.";
+
+async function assertV1MutationRefused(args, configPath) {
+  const before = await readFile(configPath);
+  let error;
+  try {
+    await execFileAsync(process.execPath, ["bin/skillboard.mjs", ...args]);
+  } catch (caught) {
+    error = caught;
+  }
+  assert.equal(error?.code, 1);
+  assert.equal(error?.stderr, `${V1_READ_ONLY_ERROR}\n`);
+  assert.deepEqual(await readFile(configPath), before);
+}
+
+async function withV1MutationFixture(callback) {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-v1-mutation-"));
+  const configPath = join(root, "skillboard.config.yaml");
+  const skillsRoot = join(root, "skills");
+  await mkdir(skillsRoot, { recursive: true });
+  await writeFile(configPath, `version: 1
+defaults:
+  invocation_policy: deny-by-default
+skills:
+  base.review:
+    path: base/review
+    status: active
+    invocation: manual-only
+    exposure: exported
+  user.tdd:
+    path: user/tdd
+    status: active
+    invocation: manual-only
+    exposure: exported
+capabilities:
+  task-review:
+    canonical: base.review
+    alternatives: []
+    default_policy: manual-only
+  test-first-implementation:
+    canonical: user.tdd
+    alternatives: []
+    default_policy: manual-only
+harnesses:
+  codex:
+    status: primary
+    workflows: [daily-workflow]
+workflows:
+  daily-workflow:
+    harness: codex
+    active_skills: [base.review, user.tdd]
+    blocked_skills: []
+    required_capabilities:
+      task-review:
+        preferred: base.review
+        fallback: []
+        policy: manual-only
+      test-first-implementation:
+        preferred: user.tdd
+        fallback: []
+        policy: manual-only
+install_units:
+  user.local:
+    source: user
+    trust: reviewed
+    enabled: true
+    components: {}
+`, "utf8");
+  try {
+    await callback({ configPath, root, skillsRoot });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
 
 function testAgentEnv(home, overrides = {}) {
   return {
@@ -173,7 +247,7 @@ test("cli --version and -v print package version", async () => {
   assert.equal(shortFlag.stdout.trim(), pkg.version);
 });
 
-test("cli multi-source example is runnable from the project root without local path edits", async () => {
+test("cli multi-source v1 reads work while hook install refuses without changing config", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-first-user-example-"));
   try {
     const baseArgs = ["--config", "examples/multi-source.config.yaml", "--skills", "examples/multi-source-skills"];
@@ -210,17 +284,15 @@ test("cli multi-source example is runnable from the project root without local p
       ...baseArgs,
       "--json"
     ]);
-    const lock = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
+    await assertV1MutationRefused([
       "lock",
       "write",
       ...baseArgs,
       "--out",
       lockPath,
       "--json"
-    ]);
-    await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
+    ], join(process.cwd(), "examples", "multi-source.config.yaml"));
+    await assertV1MutationRefused([
       "hook",
       "install",
       "--workflow",
@@ -230,10 +302,8 @@ test("cli multi-source example is runnable from the project root without local p
       hookPath,
       "--skillboard-bin",
       "node bin/skillboard.mjs"
-    ]);
-    const hook = await execHookScript(hookPath, ["matt.tdd"]);
+    ], join(process.cwd(), "examples", "multi-source.config.yaml"));
     const auditPayload = JSON.parse(audit.stdout);
-    const lockText = await readFile(lockPath, "utf8");
 
     assert.match(check.stdout, /Policy check passed/);
     assert.match(list.stdout, /private\.tdd-work-continuity/);
@@ -242,15 +312,14 @@ test("cli multi-source example is runnable from the project root without local p
     assert.equal(auditPayload.ok, true);
     assert.equal(auditPayload.errors.length, 0);
     assert.equal(auditPayload.units.find((unit) => unit.id === "local.agent-skills-private").status, "verified-local");
-    assert.equal(JSON.parse(lock.stdout).path, lockPath);
-    assert.match(lockText, /local\.agent-skills-private/);
-    assert.equal(hook.stdout, "allow\n");
+    await assert.rejects(readFile(lockPath), { code: "ENOENT" });
+    await assert.rejects(readFile(hookPath), { code: "ENOENT" });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("cli init initializes legacy config and agent bridge files", async () => {
+test("cli init initializes v2 config and agent bridge files", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-init-test-"));
   try {
     const first = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", root, "--no-scan-installed"]);
@@ -271,45 +340,27 @@ test("cli init initializes legacy config and agent bridge files", async () => {
 
     assert.match(first.stdout, /Initialized SkillBoard/);
     assert.match(second.stdout, /SkillBoard already initialized/);
-    assert.match(config, /invocation_policy: deny-by-default/);
+    assert.equal(config, "version: 2\nskills: {}\n");
     assert.match(agents, /BEGIN SKILLBOARD/);
-    assert.match(agents, /answer skill availability questions from SkillBoard/i);
-    assert.match(agents, /translate user intent into current action ids/i);
+    assert.match(agents, /user-level policy/i);
+    assert.match(agents, /enabled/);
+    assert.match(agents, /share\/unshare/i);
     assert.match(agents, /brief --intent <request>/i);
-    assert.match(agents, /assistant_guidance\.route/);
-    assert.match(agents, /recommended_skill/);
-    assert.match(agents, /fallback_skills/);
-    assert.match(agents, /route_candidates/);
-    assert.match(agents, /overlap_resolution/);
-    assert.match(agents, /policy_memory/);
-    assert.match(agents, /post_use_policy_suggestion/);
-    assert.match(agents, /ask after completion whether to remember the suggested policy/i);
-    assert.match(agents, /guard_command/);
-    assert.match(agents, /I will use <skill-id> for this request\./);
-    assert.match(agents, /I used <skill-id> for this request\./);
-    assert.match(agents, /ask a clarifying question/i);
-    assert.match(agents, /ask for one confirmation/i);
-    assert.match(agents, /apply one current action/i);
-    assert.match(agents, /reread the post-apply brief/i);
-    assert.match(agents, /run the guard automatically before invocation/i);
-    assert.match(agents, /skillboard brief --json/);
+    assert.match(agents, /preference ranks enabled skills installed for the current\s+agent/i);
+    assert.match(agents, /one confirmation/i);
+    assert.match(agents, /post-apply brief/i);
+    assert.match(agents, /immediately\s+before use/i);
+    assert.match(agents, /skillboard brief --intent/);
     assert.match(agents, /skillboard apply-action <action-id>/);
     assert.match(agents, /skillboard guard use/);
-    assert.match(agents, /skillboard can-use/);
-    assert.match(agents, /skillboard audit sources/);
-    assert.match(agents, /skillboard doctor/);
-    assert.match(agents, /skillboard hook install/);
-    assert.match(agents, /current brief/i);
-    assert.match(agents, /cached or stale action ids/i);
-    assert.match(agents, /do not infer availability from `SKILL\.md` bodies/i);
+    assert.match(agents, /skillboard migrate v2/);
+    assert.match(agents, /audit metadata and never\s+determine availability/i);
+    assert.match(agents, /Runtime and action authorization are outside/i);
+    assert.match(agents, /cached action ids/i);
     assert.match(claude, /BEGIN SKILLBOARD/);
-    assert.match(claude, /translate user intent into current action ids/i);
+    assert.match(claude, /user-level policy/i);
     assert.match(claude, /brief --intent <request>/i);
-    assert.match(claude, /assistant_guidance\.route/);
-    assert.match(claude, /route_candidates/);
-    assert.match(claude, /overlap_resolution/);
-    assert.match(claude, /policy_memory/);
-    assert.match(claude, /post_use_policy_suggestion/);
+    assert.match(claude, /preference ranks enabled skills installed for the current\s+agent/i);
     assert.match(profilesReadme, /source profiles/);
     assert.match(hooksReadme, /skillboard hook install/);
     assert.equal(agents.match(/BEGIN SKILLBOARD/g).length, 1);
@@ -319,525 +370,76 @@ test("cli init initializes legacy config and agent bridge files", async () => {
   }
 });
 
-test("cli supports a first-time local skill control flow", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-user-flow-test-"));
-  try {
-    const project = join(root, "project");
-    const configPath = join(project, "skillboard.config.yaml");
-    const skillsRoot = join(project, "skills");
-    const skillPath = join(skillsRoot, "user-helper");
-    const impactPath = join(project, ".skillboard", "reports", "user-helper-impact.md");
-    const baseArgs = ["--config", configPath, "--skills", skillsRoot];
-
-    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", project, "--no-scan-installed"]);
-    await writeSkill(skillPath, "user-helper");
-    await writeFile(
-      configPath,
-      `version: 1
-defaults:
-  invocation_policy: deny-by-default
-  allow_model_invocation: false
-  require_explicit_workflow: true
-skills: {}
-capabilities:
-  task-review:
-    canonical: ""
-    alternatives: []
-    default_policy: manual-only
-harnesses:
-  codex:
-    status: primary
-    workflows:
-      - daily-workflow
-workflows:
-  daily-workflow:
-    harness: codex
-    active_skills: []
-    blocked_skills: []
-    required_capabilities:
-      task-review:
-        preferred: ""
-        fallback: []
-        policy: manual-only
-install_units: {}
-`,
-      "utf8"
-    );
-    const beforeAdd = await readFile(configPath, "utf8");
-    const dryAdd = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "add",
-      "skill",
-      "user.helper",
-      "--path",
-      "user-helper",
-      ...baseArgs,
-      "--dry-run",
-      "--json"
-    ]);
-    const dryAddPayload = JSON.parse(dryAdd.stdout);
-
-    assert.equal(dryAddPayload.dryRun, true);
-    assert.equal(await readFile(configPath, "utf8"), beforeAdd);
-    assert.ok(dryAddPayload.plan.semanticChanges.some((change) => change.path === "/skills/user.helper"));
-
-    const add = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "add",
-      "skill",
-      "user.helper",
-      "--path",
-      "user-helper",
-      ...baseArgs
-    ]);
-    const explainCandidate = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "explain",
-      "user.helper",
-      ...baseArgs
-    ]);
-    let deniedBeforeActivation;
-    try {
-      await execFileAsync(process.execPath, [
-        "bin/skillboard.mjs",
-        "can-use",
-        "user.helper",
-        "--workflow",
-        "daily-workflow",
-        ...baseArgs,
-        "--json"
-      ]);
-    } catch (caught) {
-      deniedBeforeActivation = caught;
-    }
-
-    assert.match(add.stdout, /Added user\.helper/);
-    assert.match(explainCandidate.stdout, /Status: candidate/);
-    assert.match(explainCandidate.stdout, /Source: user/);
-    assert.equal(deniedBeforeActivation.code, 2);
-    assert.match(JSON.parse(deniedBeforeActivation.stdout).reasons.join("\n"), /not active, preferred, or fallback/);
-
-    const activate = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "activate",
-      "user.helper",
-      "--workflow",
-      "daily-workflow",
-      ...baseArgs
-    ]);
-    const allowed = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "can-use",
-      "user.helper",
-      "--workflow",
-      "daily-workflow",
-      ...baseArgs,
-      "--json"
-    ]);
-    const list = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "list",
-      "skills",
-      "--workflow",
-      "daily-workflow",
-      ...baseArgs
-    ]);
-    const impact = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "impact",
-      "disable",
-      "user.helper",
-      ...baseArgs,
-      "--out",
-      impactPath
-    ]);
-    const impactReport = await readFile(impactPath, "utf8");
-
-    assert.match(activate.stdout, /Activated user\.helper/);
-    assert.equal(JSON.parse(allowed.stdout).allowed, true);
-    assert.equal(JSON.parse(allowed.stdout).automaticAllowed, false);
-    assert.match(list.stdout, /user\.helper\tactive\tmanual-only\tuser\towner=direct\troles=active/);
-    assert.match(impact.stdout, /Impact report written/);
-    assert.match(impactReport, /Affected workflows: `daily-workflow`/);
-
-    await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "block",
-      "user.helper",
-      "--workflow",
-      "daily-workflow",
-      ...baseArgs
-    ]);
-    let deniedAfterBlock;
-    try {
-      await execFileAsync(process.execPath, [
-        "bin/skillboard.mjs",
-        "can-use",
-        "user.helper",
-        "--workflow",
-        "daily-workflow",
-        ...baseArgs,
-        "--json"
-      ]);
-    } catch (caught) {
-      deniedAfterBlock = caught;
-    }
-    let removeWithoutForce;
-    try {
-      await execFileAsync(process.execPath, [
-        "bin/skillboard.mjs",
-        "remove",
-        "skill",
-        "user.helper",
-        ...baseArgs
-      ]);
-    } catch (caught) {
-      removeWithoutForce = caught;
-    }
-    const beforeRemove = await readFile(configPath, "utf8");
-    const dryRemove = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "remove",
-      "skill",
-      "user.helper",
-      ...baseArgs,
-      "--force",
-      "--dry-run",
-      "--json"
-    ]);
-    const dryRemovePayload = JSON.parse(dryRemove.stdout);
-
-    assert.equal(deniedAfterBlock.code, 2);
-    assert.match(JSON.parse(deniedAfterBlock.stdout).reasons.join("\n"), /blocks skill user\.helper/);
-    assert.equal(removeWithoutForce.code, 1);
-    assert.match(removeWithoutForce.stderr, /still referenced/);
-    assert.equal(dryRemovePayload.dryRun, true);
-    assert.equal(await readFile(configPath, "utf8"), beforeRemove);
-    assert.ok(dryRemovePayload.plan.semanticChanges.some((change) => change.path === "/skills/user.helper"));
-
-    const remove = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "remove",
-      "skill",
-      "user.helper",
-      ...baseArgs,
-      "--force"
-    ]);
-    const configAfterRemove = await readFile(configPath, "utf8");
-    const check = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "check", ...baseArgs]);
-    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "uninstall", "--dir", project]);
-
-    assert.match(remove.stdout, /Removed user\.helper/);
-    assert.doesNotMatch(configAfterRemove, /user\.helper/);
-    assert.equal(await readFile(join(skillPath, "SKILL.md"), "utf8").then((text) => text.includes("user-helper")), true);
-    assert.match(check.stdout, /Policy check passed/);
-    assert.equal(await readFile(join(skillPath, "SKILL.md"), "utf8").then((text) => text.includes("user-helper")), true);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("cli add workflow and harness supports manual local growth", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-add-workflow-test-"));
-  try {
-    const configPath = join(root, "skillboard.config.yaml");
-    const skillsRoot = join(root, "skills");
-    const baseArgs = ["--config", configPath, "--skills", skillsRoot];
-    await writeSkill(join(skillsRoot, "user-helper"), "user-helper");
-    await writeFile(
-      configPath,
-      `version: 1
-defaults:
-  invocation_policy: deny-by-default
-  allow_model_invocation: false
-  require_explicit_workflow: true
-skills:
-  user.helper:
-    path: user-helper
-    status: candidate
-    invocation: manual-only
-    exposure: exported
-    category: user
-capabilities: {}
-harnesses: {}
-workflows: {}
-install_units: {}
-`,
-      "utf8"
-    );
-
-    const addHarness = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "add",
-      "harness",
-      "codex",
-      "--status",
-      "configured",
-      "--command",
-      "$codex",
-      ...baseArgs
-    ]);
-    const addWorkflow = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "add",
-      "workflow",
-      "daily-workflow",
-      "--harness",
-      "codex",
-      "--skill",
-      "user.helper",
-      ...baseArgs
-    ]);
-    const allowed = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "can-use",
-      "user.helper",
-      "--workflow",
-      "daily-workflow",
-      ...baseArgs,
-      "--json"
-    ]);
-    const config = await readFile(configPath, "utf8");
-    const allowedPayload = JSON.parse(allowed.stdout);
-
-    assert.match(addHarness.stdout, /Added harness codex/);
-    assert.match(addWorkflow.stdout, /Added workflow daily-workflow/);
-    assert.match(config, /commands:\n\s+- \$codex/);
-    assert.match(config, /workflows:\n\s+- daily-workflow/);
-    assert.match(config, /user\.helper:\n\s+path: user-helper\n\s+status: active\n\s+invocation: manual-only/);
-    assert.equal(allowedPayload.allowed, true);
-    assert.equal(allowedPayload.automaticAllowed, false);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("cli add workflow refuses unreviewed non-user source manual bypass", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-runtime-bypass-test-"));
-  try {
-    const configPath = join(root, "skillboard.config.yaml");
-    const skillsRoot = join(root, "skills");
-    const baseArgs = ["--config", configPath, "--skills", skillsRoot];
-    await writeSkill(join(skillsRoot, "plugin-helper"), "plugin-helper");
-    await writeFile(
-      configPath,
-      `version: 1
-defaults:
-  invocation_policy: deny-by-default
-  allow_model_invocation: false
-  require_explicit_workflow: true
-skills:
-  plugin.helper:
-    path: plugin-helper
-    status: candidate
-    invocation: manual-only
-    exposure: unit-managed
-    category: plugin
-    owner_install_unit: acme.plugin
-capabilities: {}
-harnesses: {}
-workflows: {}
-install_units:
-  acme.plugin:
-    kind: plugin
-    source: npx acme install
-    scope: user-global
-    enabled: true
-    trust_level: unreviewed
-    permission_risk: high
-    provided_components:
-      - skills
-      - commands
-    components:
-      skills:
-        - plugin.helper
-      commands:
-        - $acme
-`,
-      "utf8"
-    );
-    const before = await readFile(configPath, "utf8");
-
-    let error;
-    try {
-      await execFileAsync(process.execPath, [
-        "bin/skillboard.mjs",
-        "add",
-        "workflow",
-        "unsafe-workflow",
-        "--harness",
-        "codex",
-        "--skill",
-        "plugin.helper",
-        ...baseArgs
-      ]);
-    } catch (caught) {
-      error = caught;
-    }
-    let denied;
-    try {
-      await execFileAsync(process.execPath, [
-        "bin/skillboard.mjs",
-        "can-use",
-        "plugin.helper",
-        "--workflow",
-        "unsafe-workflow",
-        ...baseArgs,
-        "--json"
-      ]);
-    } catch (caught) {
-      denied = caught;
-    }
-
-    assert.equal(error.code, 1);
-    assert.match(error.stderr, /unreviewed non-user source acme\.plugin/);
-    assert.equal(await readFile(configPath, "utf8"), before);
-    assert.equal(denied.code, 2);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("cli add workflow refuses medium-risk unreviewed plugin manual bypass", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-plugin-bypass-test-"));
-  try {
-    const configPath = join(root, "skillboard.config.yaml");
-    const skillsRoot = join(root, "skills");
-    const baseArgs = ["--config", configPath, "--skills", skillsRoot];
-    await writeSkill(join(skillsRoot, "plugin-helper"), "plugin-helper");
-    await writeFile(
-      configPath,
-      `version: 1
-defaults:
-  invocation_policy: deny-by-default
-  allow_model_invocation: false
-  require_explicit_workflow: true
-skills:
-  plugin.helper:
-    path: plugin-helper
-    status: candidate
-    invocation: manual-only
-    exposure: unit-managed
-    category: plugin
-    owner_install_unit: acme.plugin
-capabilities: {}
-harnesses: {}
-workflows: {}
-install_units:
-  acme.plugin:
-    kind: plugin
-    source: npx acme install
-    scope: user-global
-    enabled: true
-    trust_level: unreviewed
-    permission_risk: medium
-    provided_components:
-      - skills
-    components:
-      skills:
-        - plugin.helper
-`,
-      "utf8"
-    );
-    const before = await readFile(configPath, "utf8");
-
-    let error;
-    try {
-      await execFileAsync(process.execPath, [
-        "bin/skillboard.mjs",
-        "add",
-        "workflow",
-        "unsafe-workflow",
-        "--harness",
-        "codex",
-        "--skill",
-        "plugin.helper",
-        ...baseArgs
-      ]);
-    } catch (caught) {
-      error = caught;
-    }
-
-    assert.equal(error.code, 1);
-    assert.match(error.stderr, /unreviewed non-user source acme\.plugin/);
-    assert.equal(await readFile(configPath, "utf8"), before);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("cli add skill with workflow validates immediate usability", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-add-skill-workflow-validation-test-"));
-  try {
-    const configPath = join(root, "skillboard.config.yaml");
-    const skillsRoot = join(root, "skills");
-    const baseArgs = ["--config", configPath, "--skills", skillsRoot];
-    await writeSkill(join(skillsRoot, "disabled-helper"), "disabled-helper");
-    await writeFile(
-      configPath,
-      `version: 1
-defaults:
-  invocation_policy: deny-by-default
-  allow_model_invocation: false
-  require_explicit_workflow: true
-skills: {}
-capabilities: {}
-harnesses:
-  codex:
-    status: primary
-    workflows:
-      - daily-workflow
-workflows:
-  daily-workflow:
-    harness: codex
-    active_skills: []
-    blocked_skills: []
-install_units:
-  disabled.pack:
-    kind: skill
-    source: local disabled pack
-    scope: local
-    enabled: false
-    trust_level: trusted
-    permission_risk: low
-    provided_components:
-      - skills
-    components:
-      skills:
-        - disabled.helper
-`,
-      "utf8"
-    );
-    const before = await readFile(configPath, "utf8");
-
-    let error;
-    try {
-      await execFileAsync(process.execPath, [
-        "bin/skillboard.mjs",
+test("cli supports a first-time local skill control flow refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
         "add",
         "skill",
-        "disabled.helper",
+        "user.helper",
         "--path",
-        "disabled-helper",
-        "--owner-install-unit",
-        "disabled.pack",
+        "user-helper",
+        "--dry-run",
+        "--json",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
+});
+test("cli add workflow and harness supports manual local growth refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "add",
+        "harness",
+        "other",
+        "--status",
+        "configured",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
+});
+test("cli add workflow refuses unreviewed non-user source manual bypass refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "add",
+        "workflow",
+        "other-workflow",
+        "--harness",
+        "codex",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
+});
+test("cli add workflow refuses medium-risk unreviewed plugin manual bypass refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "add",
+        "workflow",
+        "plugin-workflow",
+        "--harness",
+        "codex",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
+});
+test("cli add skill with workflow validates immediate usability refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "add",
+        "skill",
+        "new.skill",
+        "--path",
+        "new-skill",
         "--workflow",
         "daily-workflow",
-        ...baseArgs
-      ]);
-    } catch (caught) {
-      error = caught;
-    }
-
-    assert.equal(error.code, 1);
-    assert.match(error.stderr, /Install unit disabled\.pack is disabled/);
-    assert.equal(await readFile(configPath, "utf8"), before);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
 });
-
-test("cli add skill rejects paths outside the skills root", async () => {
+test("cli add skill v1 form requires migration before path validation", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-add-skill-path-test-"));
   try {
     const configPath = join(root, "skillboard.config.yaml");
@@ -889,7 +491,7 @@ install_units: {}
     }
 
     assert.equal(error.code, 1);
-    assert.match(error.stderr, /skill path must stay under the skills root/);
+    assert.equal(error.stderr.trim(), "Version 1 policy is read-only. Run `skillboard migrate v2`.");
     assert.equal(await readFile(configPath, "utf8"), before);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -1024,7 +626,7 @@ test("cli doctor and status summarize initialized lifecycle health", async () =>
     assert.ok(payload.uninstall.removed.includes("skillboard.config.yaml"));
     assert.ok(payload.uninstall.removed.includes(".skillboard"));
     assert.equal(statusPayload.ok, true);
-    assert.equal(statusPayload.config.version, 1);
+    assert.equal(statusPayload.config.version, 2);
     assert.match(status.stdout, /SkillBoard doctor: passed/);
     assert.match(status.stdout, /Uninstall dry run: remove/);
   } finally {
@@ -1038,17 +640,12 @@ test("cli doctor gives actionable guidance for unmanaged bridge files", async ()
     await execFileAsync(process.execPath, ["bin/skillboard.mjs", "init", "--dir", root, "--no-scan-installed"]);
     await writeFile(join(root, "AGENTS.md"), "# Existing unmanaged rules\n", "utf8");
 
-    let error;
-    try {
-      await execFileAsync(process.execPath, ["bin/skillboard.mjs", "doctor", "--dir", root, "--json"]);
-    } catch (caught) {
-      error = caught;
-    }
-    const payload = JSON.parse(error.stdout);
+    const result = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "doctor", "--dir", root, "--json"]);
+    const payload = JSON.parse(result.stdout);
 
-    assert.equal(error.code, 1);
-    assert.equal(payload.ok, false);
+    assert.equal(payload.ok, true);
     assert.equal(payload.bridges.find((bridge) => bridge.file === "AGENTS.md").status, "unmanaged");
+    assert.ok(payload.uninstall.preserved.includes("AGENTS.md"));
     assert.ok(payload.recommendations.includes("legacy project bridge is unmanaged; run skillboard init only if maintaining deprecated project-local policy"));
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -1242,7 +839,7 @@ test("cli impact disable --json writes a machine-readable payload", async () => 
   assert.deepEqual(payload.alternatives, ["meerkat.test-first-implementation"]);
 });
 
-test("cli init scans installed local user skills into manual workflow state", async () => {
+test("cli init scans installed skills into enabled agent-local v2 policy", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-init-scan-test-"));
   try {
     const home = join(root, "home");
@@ -1286,21 +883,12 @@ test("cli init scans installed local user skills into manual workflow state", as
       "--skills",
       join(project, "skills")
     ], { env });
-    const units = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "list",
-      "install-units",
-      "--config",
-      configPath,
-      "--skills",
-      join(project, "skills")
-    ], { env });
     const localUse = await execFileAsync(process.execPath, [
       "bin/skillboard.mjs",
       "can-use",
       "local-helper",
-      "--workflow",
-      "codex-local-manual",
+      "--agent",
+      "codex",
       "--config",
       configPath,
       "--skills",
@@ -1311,48 +899,24 @@ test("cli init scans installed local user skills into manual workflow state", as
 
     assert.match(init.stdout, /Scanned installed agent skills: 3/);
     assert.match(init.stdout, /Managed install units: 3/);
-    assert.match(init.stdout, /Added workflows: `codex-local-manual`/);
-    assert.match(init.stdout, /Added harnesses: `codex`/);
     assert.match(init.stdout, /Added managed skills: 3/);
     assert.match(init.stdout, /- `local-helper`/);
     assert.match(init.stdout, /Skill selection default:/);
-    assert.match(init.stdout, /No automatic model invocation was enabled/);
-    assert.match(init.stdout, /Imported local skills are available on request in generated local policy/);
-    assert.match(init.stdout, /Runtime\/plugin\/system skills require source review before automatic invocation/);
-    assert.match(init.stdout, /automatic skills enabled/);
-    assert.match(init.stdout, /manual-only skills available/);
-    assert.match(init.stdout, /blocked\/quarantined for safety/);
+    assert.match(init.stdout, /Valid installed skills default to enabled and agent-local/);
+    assert.match(init.stdout, /3 enabled skills/);
+    assert.match(init.stdout, /0 disabled skills/);
     assert.match(init.stdout, /Next:/);
     assert.match(init.stdout, /Ask your AI: "What skills can you use in this project\?"/);
     assertInitNextCommand(init.stdout, "doctor", project, " --summary");
-    assert.match(init.stdout, /Choose a workflow: `codex-local-manual`/);
-    assert.match(init.stdout, /Example workflow brief: `codex-local-manual`/);
-    assertInitNextWorkflowCommand(init.stdout, "codex-local-manual", project);
-    assert.match(init.stdout, /Example task routing: "write tests before implementation"/);
-    assertInitNextWorkflowIntentCommand(init.stdout, "codex-local-manual", project);
     assert.match(config, /system-helper:/);
     assert.match(config, /local-helper:/);
     assert.match(config, /demo:review:/);
-    assert.match(config, /status: quarantined/);
-    assert.match(config, /invocation: blocked/);
-    assert.match(config, /local-helper:\n\s+path: local-helper\n\s+status: active\n\s+invocation: manual-only/);
-    assert.match(config, /codex-local-manual:\n\s+harness: codex\n\s+active_skills:\n\s+- local-helper/);
-    assert.match(config, /owner_install_unit: codex\.system-skills/);
-    assert.match(config, /owner_install_unit: codex\.user-skills/);
-    assert.match(config, /owner_install_unit: codex\.plugin\.demo/);
-    assert.match(config, /provided_components:\n\s+- skills\n\s+- commands\n\s+- hook\n\s+- mcp-server/);
-    assert.match(config, /commands:\n\s+- \$demo-command/);
-    assert.match(config, /hooks:\n\s+- pre-tool-use-demo/);
-    assert.match(config, /mcp_servers:\n\s+- demo_mcp/);
-    assert.match(config, /modified_config_files:\n\s+- ~\/\.codex\/config\.toml/);
-    assert.match(config, /permission_risk: high/);
+    assert.deepEqual(YAML.parse(config).skills["local-helper"], { enabled: true, shared: false });
+    assert.doesNotMatch(config, /trust_level|invocation|exposure|owner_install_unit/);
     assert.match(check.stdout, /Policy check passed/);
-    assert.match(check.stdout, /provides runtime components but is unreviewed/);
-    assert.match(units.stdout, /codex\.system-skills\tagent\truntime-extension/);
-    assert.match(units.stdout, /codex\.user-skills\tskill\tuser/);
-    assert.match(units.stdout, /codex\.plugin\.demo\tplugin\texternal-package.*risk=high/);
+    const inventory = JSON.parse(await readFile(join(project, ".skillboard", "inventory.json"), "utf8"));
+    assert.ok(inventory.install_units.some((unit) => unit.id === "codex.plugin.demo"));
     assert.equal(localUsePayload.allowed, true);
-    assert.equal(localUsePayload.automaticAllowed, false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -1383,11 +947,10 @@ test("cli init scanned local skills remain routable by SKILL description metadat
     const skillsRoot = join(project, "skills");
     const brief = await execFileAsync(process.execPath, [
       "bin/skillboard.mjs",
-      "brief",
-      "--intent",
+      "route",
       "write failing tests before implementation",
-      "--workflow",
-      "codex-local-manual",
+      "--agent",
+      "codex",
       "--config",
       configPath,
       "--skills",
@@ -1396,40 +959,18 @@ test("cli init scanned local skills remain routable by SKILL description metadat
     ], { env });
     const payload = JSON.parse(brief.stdout);
 
-    assert.equal(payload.assistant_guidance.route.match_source, "skill-metadata");
-    assert.equal(payload.assistant_guidance.route.recommended_skill, "test-first");
-    assert.ok(payload.assistant_guidance.route.matched_terms.includes("implementation"));
-    assert.ok(payload.assistant_guidance.route.matched_terms.includes("failing"));
-    assert.match(payload.assistant_guidance.route.recommendation_reason, /SKILL\.md description/);
-    assert.equal(payload.assistant_guidance.route.guard_allowed, true);
-
-    const textBrief = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "brief",
-      "--intent",
-      "write failing tests before implementation",
-      "--workflow",
-      "codex-local-manual",
-      "--config",
-      configPath,
-      "--skills",
-      skillsRoot
-    ], { env });
-    assert.match(
-      textBrief.stdout,
-      /Why: Matched workflow skill metadata for test-first through .*SKILL\.md description .*recommended test-first because the guard allows test-first\./
-    );
-    assert.match(
-      textBrief.stdout,
-      /Disclosure: run the guard automatically, state at the start that `test-first` is being used, and state at completion that it was used\. No extra user approval is needed when the guard allows it\./
-    );
+    assert.equal(payload.match_source, "skill-metadata");
+    assert.equal(payload.recommended_skill, "test-first");
+    assert.ok(payload.matched_terms.includes("implementation"));
+    assert.ok(payload.matched_terms.includes("failing"));
+    assert.equal(payload.guard.allowed, true);
 
     const unrelated = await execFileAsync(process.execPath, [
       "bin/skillboard.mjs",
       "route",
       "organize a team calendar",
-      "--workflow",
-      "codex-local-manual",
+      "--agent",
+      "codex",
       "--config",
       configPath,
       "--skills",
@@ -1445,7 +986,7 @@ test("cli init scanned local skills remain routable by SKILL description metadat
   }
 });
 
-test("cli init scans Codex-visible .agents skills into manual workflow state", async () => {
+test("cli init scans Codex-visible .agents skills into local v2 policy", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-init-agents-root-test-"));
   try {
     const home = join(root, "home");
@@ -1464,9 +1005,8 @@ test("cli init scans Codex-visible .agents skills into manual workflow state", a
     const configPath = join(project, "skillboard.config.yaml");
     const config = await readFile(configPath, "utf8");
 
-    assert.match(config, /owner_install_unit: codex\.user-skills/);
-    assert.match(config, /codex-local-manual:/);
-    assert.match(config, /test-first/);
+    assert.deepEqual(YAML.parse(config).skills["test-first"], { enabled: true, shared: false });
+    assert.doesNotMatch(config, /owner_install_unit|codex-local-manual/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -1502,8 +1042,8 @@ test("cli inventory refresh rescans installed skills and supports dry-run", asyn
     assert.equal(dryRunPayload.plan.semanticAvailable, true);
     assert.ok(dryRunPayload.plan.semanticChanges.some((change) => change.path === "/skills/local-helper"));
     assert.deepEqual(dryRunPayload.scan.addedSkills, ["local-helper"]);
-    assert.deepEqual(dryRunPayload.scan.addedWorkflows, ["codex-local-manual"]);
-    assert.deepEqual(dryRunPayload.scan.addedHarnesses, ["codex"]);
+    assert.deepEqual(dryRunPayload.scan.addedWorkflows, []);
+    assert.deepEqual(dryRunPayload.scan.addedHarnesses, []);
     assert.match(dryRunPayload.scan.warnings.join("\n"), /broken-helper[\\/]SKILL\.md skipped/);
     assert.equal(afterDryRun, before);
 
@@ -1519,19 +1059,16 @@ test("cli inventory refresh rescans installed skills and supports dry-run", asyn
     assert.match(refresh.stdout, /Inventory refreshed/);
     assert.match(refresh.stdout, /Semantic changes:/);
     assert.match(refresh.stdout, /Added skills: `local-helper`/);
-    assert.match(refresh.stdout, /Added workflows: `codex-local-manual`/);
-    assert.match(refresh.stdout, /Added harnesses: `codex`/);
     assert.match(refresh.stdout, /Scan warnings: `.*broken-helper[\\/]SKILL\.md skipped/);
     assert.match(config, /local-helper:/);
-    assert.match(config, /status: active/);
-    assert.match(config, /invocation: manual-only/);
-    assert.match(config, /codex-local-manual:/);
+    assert.match(config, /enabled: true/);
+    assert.match(config, /shared: false/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("cli init scans Hermes profile skills into canonical manual workflow state", async () => {
+test("cli init scans Hermes profile skills into local v2 policy", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-hermes-init-scan-test-"));
   try {
     const home = join(root, "home");
@@ -1555,12 +1092,9 @@ test("cli init scans Hermes profile skills into canonical manual workflow state"
 
     assert.match(init.stdout, /Scanned installed agent skills: 2/);
     assert.match(init.stdout, /Managed install units: 1/);
-    assert.match(init.stdout, /Added workflows: `hermes-codex-local-manual`/);
-    assert.match(init.stdout, /Added harnesses: `hermes`/);
-    assert.match(config, /apple-notes:\n\s+path: apple-notes\n\s+status: active\n\s+invocation: manual-only/);
-    assert.match(config, /software-review:\n\s+path: software\/review\n\s+status: active\n\s+invocation: manual-only/);
-    assert.match(config, /owner_install_unit: hermes\.profile\.codex\.skills/);
-    assert.match(config, /hermes-codex-local-manual:\n\s+harness: hermes\n\s+active_skills:\n\s+- apple-notes\n\s+- software-review/);
+    assert.match(init.stdout, /2 enabled skills/);
+    assert.deepEqual(YAML.parse(config).skills["apple-notes"], { enabled: true, shared: false });
+    assert.deepEqual(YAML.parse(config).skills["software-review"], { enabled: true, shared: false });
     assert.match(check.stdout, /Policy check passed/);
     assert.doesNotMatch(check.stdout, /SKILL-STATUS-001/);
   } finally {
@@ -1593,12 +1127,10 @@ test("cli init keeps duplicate skill ids canonical and records source aliases", 
 
     assert.match(init.stdout, /Scanned installed agent skills: 2/);
     assert.match(init.stdout, /Added managed skills: 1/);
-    assert.match(config, /^  airtable:\n\s+path: airtable\n\s+status: active\n\s+invocation: manual-only/m);
-    assert.match(config, /owner_install_unit: codex\.user-skills/);
-    assert.match(config, /source_aliases:\n\s+- owner_install_unit: hermes\.profile\.codex\.skills\n\s+path: airtable/);
+    assert.deepEqual(YAML.parse(config).skills.airtable, { enabled: true, shared: false });
+    const inventory = JSON.parse(await readFile(join(project, ".skillboard", "inventory.json"), "utf8"));
+    assert.ok(inventory.skills.find((skill) => skill.id === "airtable").aliases.length > 0);
     assert.doesNotMatch(config, /airtable-2:/);
-    assert.match(config, /codex-local-manual:\n\s+harness: codex\n\s+active_skills:\n\s+- airtable/);
-    assert.match(config, /hermes-codex-local-manual:\n\s+harness: hermes\n\s+active_skills:\n\s+- airtable/);
     assert.match(check.stdout, /Policy check passed/);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -2399,119 +1931,21 @@ test("CLI route keeps no-match as clarification without post-use policy suggesti
   assert.match(payload.recommendation_reason, /Ask a clarifying question/);
 });
 
-test("brief intent learns ask-after preference through explicit prefer command and ask-after routing end-to-end CLI smoke", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-ask-after-e2e-cli-"));
-  try {
-    const configPath = join(root, "skillboard.config.yaml");
-    const skillsRoot = join(root, "skills");
-    await mkdir(join(skillsRoot, "user-tdd"), { recursive: true });
-    await mkdir(join(skillsRoot, "private-tdd"), { recursive: true });
-    await writeFile(
-      join(skillsRoot, "user-tdd", "SKILL.md"),
-      "---\nname: user-tdd\ndescription: Write tests before implementation with local project conventions.\n---\n# user-tdd\n",
-      "utf8"
-    );
-    await writeFile(
-      join(skillsRoot, "private-tdd", "SKILL.md"),
-      "---\nname: private-tdd\ndescription: Keep TDD work continuous while writing tests before implementation.\n---\n# private-tdd\n",
-      "utf8"
-    );
-    await writeFile(configPath, ambiguousAllowedRouteConfig(), "utf8");
-    const baseArgs = ["--config", configPath, "--skills", skillsRoot, "--workflow", "daily-workflow"];
-
-    const route = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "route",
-      "write tests before implementation",
-      ...baseArgs,
-      "--json"
-    ]);
-    const routePayload = JSON.parse(route.stdout);
-    assert.equal(routePayload.recommended_skill, "user.tdd");
-    assert.equal(routePayload.post_use_policy_suggestion.suggested_policy.capability, "test-first-implementation");
-
-    const brief = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "brief",
-      "--intent",
-      "write tests before implementation",
-      ...baseArgs,
-      "--json"
-    ]);
-    const briefPayload = JSON.parse(brief.stdout);
-    const selectedSkill = briefPayload.assistant_guidance.route.recommended_skill;
-    const matchedCapability = briefPayload.assistant_guidance.route.matched_capability;
-    assert.equal(selectedSkill, "user.tdd");
-    assert.equal(matchedCapability, "test-first-implementation");
-    assert.equal(briefPayload.assistant_guidance.route.post_use_policy_suggestion.requires_confirmation, true);
-
-    const guard = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "guard",
-      "use",
-      selectedSkill,
-      ...baseArgs,
-      "--json"
-    ]);
-    const guardPayload = JSON.parse(guard.stdout);
-    assert.equal(guardPayload.allowed, true);
-    assert.equal(guardPayload.allowedUse.confirmationRequired, false);
-    assert.equal(guardPayload.allowedUse.startMessage, "I will use user.tdd for this request.");
-    assert.equal(guardPayload.allowedUse.finishMessage, "I used user.tdd for this request.");
-
-    const preference = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "prefer",
-      selectedSkill,
-      "--capability",
-      matchedCapability,
-      ...baseArgs,
-      "--json"
-    ]);
-    const preferencePayload = JSON.parse(preference.stdout);
-    assert.equal(preferencePayload.changed, true);
-    assert.match(preferencePayload.message, /Preferred user\.tdd/);
-
-    const secondBrief = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "brief",
-      "--intent",
-      "write tests before implementation",
-      ...baseArgs,
-      "--json"
-    ]);
-    const secondPayload = JSON.parse(secondBrief.stdout);
-    assert.equal(secondPayload.assistant_guidance.route.recommended_skill, "user.tdd");
-    assert.equal(secondPayload.assistant_guidance.route.post_use_policy_suggestion, null);
-    assert.deepEqual(secondPayload.assistant_guidance.route.policy_memory, {
-      status: "applied",
-      mode: "remembered-or-configured-preference",
-      selected_skill: "user.tdd",
-      available_alternatives: ["private.tdd-work-continuity"],
-      summary: "Remembered or configured policy selected user.tdd for test-first-implementation in daily-workflow; other allowed skills were also available: private.tdd-work-continuity.",
-      finish_disclosure: "I used user.tdd for this request because SkillBoard has a remembered or configured preference for it; other allowed skills were also available: private.tdd-work-continuity."
-    });
-    assert.equal(
-      secondPayload.assistant_guidance.route.usage_disclosure.finish_message,
-      "I used user.tdd for this request because SkillBoard has a remembered or configured preference for it; other allowed skills were also available: private.tdd-work-continuity."
-    );
-
-    const reroute = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "route",
-      "write tests before implementation",
-      ...baseArgs,
-      "--json"
-    ]);
-    const reroutePayload = JSON.parse(reroute.stdout);
-    assert.equal(reroutePayload.recommended_skill, "user.tdd");
-    assert.equal(reroutePayload.post_use_policy_suggestion, null);
-    assert.equal(reroutePayload.policy_memory.selected_skill, "user.tdd");
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+test("brief intent learns ask-after preference through explicit prefer command and ask-after routing end-to-end CLI smoke refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "prefer",
+        "user.tdd",
+        "--capability",
+        "test-first-implementation",
+        "--workflow",
+        "daily-workflow",
+        "--json",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
 });
-
 test("brief intent suppresses ask-after suggestions for no-match and guard-denied routes", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-ask-after-suppression-cli-"));
   try {
@@ -3113,95 +2547,19 @@ install_units:
   }
 });
 
-test("cli audit verify checks local source digests and lock write records verified sources", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-source-verify-test-"));
-  try {
-    const sourceRoot = join(root, "source");
-    const configPath = join(root, "skillboard.config.yaml");
+test("cli audit verify checks local source digests and lock write records verified sources refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, root, skillsRoot }) => {
     const lockPath = join(root, "skillboard.lock.yaml");
-    await mkdir(sourceRoot, { recursive: true });
-    await writeFile(join(sourceRoot, "README.md"), "local skill source\n", "utf8");
-    await writeFile(
-      configPath,
-      `version: 1
-skills: {}
-workflows: {}
-install_units:
-  local.verified:
-    kind: skill
-    source: ${sourceRoot}
-    scope: project
-    enabled: true
-    trust_level: trusted
-    permission_risk: low
-`,
-      "utf8"
-    );
-    const firstAudit = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "audit",
-      "sources",
-      "--verify",
-      "--config",
-      configPath,
-      "--skills",
-      join(root, "skills"),
-      "--json"
-    ]);
-    const firstPayload = JSON.parse(firstAudit.stdout);
-    const digest = firstPayload.units[0].actualDigest;
-    await writeFile(
-      configPath,
-      `version: 1
-skills: {}
-workflows: {}
-install_units:
-  local.verified:
-    kind: skill
-    source: ${sourceRoot}
-    scope: project
-    source_digest: ${digest}
-    enabled: true
-    trust_level: trusted
-    permission_risk: low
-`,
-      "utf8"
-    );
-    const verifiedAudit = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "audit",
-      "sources",
-      "--verify",
-      "--config",
-      configPath,
-      "--skills",
-      join(root, "skills"),
-      "--json"
-    ]);
-    const lock = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "lock",
-      "write",
-      "--config",
-      configPath,
-      "--skills",
-      join(root, "skills"),
-      "--out",
-      lockPath,
-      "--json"
-    ]);
-    const verifiedPayload = JSON.parse(verifiedAudit.stdout);
-    const lockText = await readFile(lockPath, "utf8");
-
-    assert.equal(verifiedPayload.units[0].digestVerified, true);
-    assert.equal(JSON.parse(lock.stdout).path, lockPath);
-    assert.match(lockText, /digest_verified: true/);
-    assert.match(lockText, new RegExp(digest.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+    await assertV1MutationRefused([
+        "lock",
+        "write",
+        "--out", lockPath,
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+    await assert.rejects(readFile(lockPath), { code: "ENOENT" });
+  });
 });
-
 test("cli audit verify treats slash command sources as metadata sources", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-slash-source-test-"));
   try {
@@ -3244,250 +2602,91 @@ install_units:
   }
 });
 
-test("cli lock write refuses verification errors by default", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-lock-failure-test-"));
-  try {
-    const sourceRoot = join(root, "source");
-    const configPath = join(root, "skillboard.config.yaml");
+test("cli lock write refuses verification errors by default refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, root, skillsRoot }) => {
     const lockPath = join(root, "skillboard.lock.yaml");
-    await mkdir(sourceRoot, { recursive: true });
-    await writeFile(join(sourceRoot, "README.md"), "changed local source\n", "utf8");
-    await writeFile(
-      configPath,
-      `version: 1
-skills: {}
-workflows: {}
-install_units:
-  local.bad-digest:
-    kind: skill
-    source: ${sourceRoot}
-    scope: project
-    source_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
-    enabled: true
-    trust_level: trusted
-    permission_risk: low
-`,
-      "utf8"
-    );
-
-    let error;
-    try {
-      await execFileAsync(process.execPath, [
-        "bin/skillboard.mjs",
+    await assertV1MutationRefused([
         "lock",
         "write",
-        "--config",
-        configPath,
-        "--skills",
-        join(root, "skills"),
-        "--out",
-        lockPath
-      ]);
-    } catch (caught) {
-      error = caught;
-    }
-
-    assert.equal(error.code, 1);
-    assert.match(error.stderr, /Cannot write lockfile because source verification failed/);
-    await assert.rejects(readFile(lockPath, "utf8"), /ENOENT/);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+        "--out", lockPath,
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+    await assert.rejects(readFile(lockPath), { code: "ENOENT" });
+  });
 });
-
-test("cli lock write allow-unverified records an explicit unverified lock", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-lock-allow-unverified-test-"));
-  try {
-    const sourceRoot = join(root, "source");
-    const configPath = join(root, "skillboard.config.yaml");
+test("cli lock write allow-unverified records an explicit unverified lock refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, root, skillsRoot }) => {
     const lockPath = join(root, "skillboard.lock.yaml");
-    await mkdir(sourceRoot, { recursive: true });
-    await writeFile(join(sourceRoot, "README.md"), "changed local source\n", "utf8");
-    await writeFile(
-      configPath,
-      `version: 1
-skills: {}
-workflows: {}
-install_units:
-  local.bad-digest:
-    kind: skill
-    source: ${sourceRoot}
-    scope: project
-    source_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
-    enabled: true
-    trust_level: trusted
-    permission_risk: low
-`,
-      "utf8"
-    );
-
-    const result = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "lock",
-      "write",
-      "--config",
-      configPath,
-      "--skills",
-      join(root, "skills"),
-      "--out",
-      lockPath,
-      "--allow-unverified",
-      "--json"
-    ]);
-    const lockText = await readFile(lockPath, "utf8");
-
-    assert.equal(JSON.parse(result.stdout).path, lockPath);
-    assert.match(lockText, /digest_verified: false/);
-    assert.match(lockText, /source_digest: sha256:/);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+    await assertV1MutationRefused([
+        "lock",
+        "write",
+        "--allow-unverified",
+        "--out", lockPath,
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+    await assert.rejects(readFile(lockPath), { code: "ENOENT" });
+  });
 });
-
-test("cli variant add dry-run reports semantic changes without writing config", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-dry-run-test-"));
-  try {
-    const configPath = join(root, "skillboard.config.yaml");
-    const skillsRoot = join(root, "skills");
-    await writeFile(configPath, variantAddCliConfig(), "utf8");
-    const before = await readFile(configPath, "utf8");
-
-    const result = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "variant",
-      "add",
-      "claude.review",
-      "--from",
-      "base.review",
-      "--capability",
-      "task-review",
-      "--workflow",
-      "claude-workflow",
-      "--path",
-      "claude/review",
-      "--config",
-      configPath,
-      "--skills",
-      skillsRoot,
-      "--dry-run",
-      "--json"
-    ]);
-    const payload = JSON.parse(result.stdout);
-    const semanticPaths = payload.plan.semanticChanges.map((change) => change.path);
-
-    assert.equal(await readFile(configPath, "utf8"), before);
-    assert.equal(payload.dryRun, true);
-    assert.equal(payload.changed, true);
-    assert.equal(payload.plan.semanticAvailable, true);
-    assert.ok(semanticPaths.includes("/skills/claude.review"));
-    assert.ok(semanticPaths.includes("/capabilities/task-review/alternatives/base.review"));
-    assert.ok(semanticPaths.includes("/capabilities/task-review/alternatives/claude.review"));
-    assert.ok(semanticPaths.includes("/workflows/claude-workflow/required_capabilities/task-review/preferred"));
-    assert.ok(semanticPaths.some((path) => path.startsWith("/workflows/claude-workflow/required_capabilities/task-review/fallback/")));
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+test("cli variant add dry-run reports semantic changes without writing config refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "variant",
+        "add",
+        "claude.review",
+        "--from",
+        "base.review",
+        "--capability",
+        "task-review",
+        "--workflow",
+        "daily-workflow",
+        "--path",
+        "claude/review",
+        "--dry-run",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
 });
-
-test("cli variant add writes config and preserves YAML comments", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-apply-test-"));
-  try {
-    const configPath = join(root, "skillboard.config.yaml");
-    const skillsRoot = join(root, "skills");
-    await writeFile(configPath, variantAddCliConfig(), "utf8");
-
-    const result = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "variant",
-      "add",
-      "claude.review",
-      "--from",
-      "base.review",
-      "--capability",
-      "task-review",
-      "--workflow",
-      "claude-workflow",
-      "--path",
-      "claude/review",
-      "--mode",
-      "router-only",
-      "--category",
-      "agent-bridge",
-      "--config",
-      configPath,
-      "--skills",
-      skillsRoot
-    ]);
-    const configText = await readFile(configPath, "utf8");
-    const config = YAML.parse(configText);
-
-    assert.match(result.stdout, /Added variant claude\.review for base\.review in claude-workflow/);
-    assert.match(configText, /# variant add should preserve comments through control writes/);
-    assert.deepEqual(config.skills["claude.review"], {
-      path: "claude/review",
-      status: "active",
-      invocation: "router-only",
-      exposure: "exported",
-      category: "agent-bridge"
-    });
-    assert.deepEqual(config.capabilities["task-review"].alternatives, ["base.review", "claude.review"]);
-    assert.equal(config.workflows["claude-workflow"].required_capabilities["task-review"].preferred, "claude.review");
-    assert.deepEqual(
-      config.workflows["claude-workflow"].required_capabilities["task-review"].fallback,
-      ["old.review", "base.review", "canonical.review"]
-    );
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+test("cli variant add writes config and preserves YAML comments refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "variant",
+        "add",
+        "claude.review",
+        "--from",
+        "base.review",
+        "--capability",
+        "task-review",
+        "--workflow",
+        "daily-workflow",
+        "--path",
+        "claude/review",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
 });
-
-test("cli variant add preserves declared variant skill fields without path", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-existing-test-"));
-  try {
-    const configPath = join(root, "skillboard.config.yaml");
-    const skillsRoot = join(root, "skills");
-    await writeFile(configPath, variantAddCliConfig({
-      variantSkill: `  claude.review:
-    path: declared/claude-review
-    status: active
-    invocation: router-only
-    exposure: private
-    category: declared-category
-`
-    }), "utf8");
-
-    await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "variant",
-      "add",
-      "claude.review",
-      "--from",
-      "base.review",
-      "--capability",
-      "task-review",
-      "--workflow",
-      "claude-workflow",
-      "--config",
-      configPath,
-      "--skills",
-      skillsRoot,
-      "--json"
-    ]);
-    const config = YAML.parse(await readFile(configPath, "utf8"));
-
-    assert.deepEqual(config.skills["claude.review"], {
-      path: "declared/claude-review",
-      status: "active",
-      invocation: "router-only",
-      exposure: "private",
-      category: "declared-category"
-    });
-    assert.equal(config.workflows["claude-workflow"].required_capabilities["task-review"].preferred, "claude.review");
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+test("cli variant add preserves declared variant skill fields without path refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "variant",
+        "add",
+        "claude.review",
+        "--from",
+        "base.review",
+        "--capability",
+        "task-review",
+        "--workflow",
+        "daily-workflow",
+        "--path",
+        "claude/review",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
 });
-
 test("cli variant add requires path for undeclared variants without changing config", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-missing-path-test-"));
   try {
@@ -3576,65 +2775,27 @@ test("cli variant add reports unknown base capability and workflow through contr
   }
 });
 
-test("cli variant add owner records a reviewed install unit component", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-owner-test-"));
-  try {
-    const configPath = join(root, "skillboard.config.yaml");
-    const skillsRoot = join(root, "skills");
-    await writeFile(configPath, variantAddCliConfig({
-      installUnits: `install_units:
-  user.local:
-    kind: skill
-    source: ./skills
-    scope: project
-    provided_components:
-      - skills
-    components:
-      skills:
-        - base.review
-    enabled: true
-    trust_level: reviewed
-    permission_risk: low
-`
-    }), "utf8");
-
-    const result = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "variant",
-      "add",
-      "claude.review",
-      "--from",
-      "base.review",
-      "--capability",
-      "task-review",
-      "--workflow",
-      "claude-workflow",
-      "--path",
-      "claude/review",
-      "--owner-install-unit",
-      "user.local",
-      "--mode",
-      "manual-only",
-      "--config",
-      configPath,
-      "--skills",
-      skillsRoot,
-      "--json"
-    ]);
-    const payload = JSON.parse(result.stdout);
-    const config = YAML.parse(await readFile(configPath, "utf8"));
-
-    assert.equal(payload.changed, true);
-    assert.equal(config.skills["claude.review"].owner_install_unit, "user.local");
-    assert.deepEqual(config.install_units["user.local"].components.skills, ["base.review", "claude.review"]);
-    assert.equal(config.install_units["user.local"].trust_level, "reviewed");
-    assert.equal(config.install_units["user.local"].enabled, true);
-    assert.deepEqual(config.install_units["user.local"].provided_components, ["skills"]);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+test("cli variant add owner records a reviewed install unit component refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "variant",
+        "add",
+        "claude.review",
+        "--from",
+        "base.review",
+        "--capability",
+        "task-review",
+        "--workflow",
+        "daily-workflow",
+        "--path",
+        "claude/review",
+        "--owner-install-unit",
+        "user.local",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
 });
-
 test("cli variant add owner refuses an unknown install unit without changing config", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-owner-unknown-test-"));
   try {
@@ -3677,368 +2838,145 @@ test("cli variant add owner refuses an unknown install unit without changing con
   }
 });
 
-test("cli variant add owner option preserves an existing variant owner fields", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-owner-existing-test-"));
-  try {
-    const configPath = join(root, "skillboard.config.yaml");
-    const skillsRoot = join(root, "skills");
-    await writeFile(configPath, variantAddCliConfig({
-      variantSkill: `  claude.review:
-    path: declared/claude-review
-    status: active
-    invocation: manual-only
-    exposure: exported
-    category: declared-category
-    owner_install_unit: user.existing
-`,
-      installUnits: `install_units:
-  user.existing:
-    kind: skill
-    source: ./existing
-    scope: project
-    provided_components:
-      - skills
-    components:
-      skills:
-        - claude.review
-    enabled: true
-    trust_level: reviewed
-    permission_risk: low
-  user.other:
-    kind: skill
-    source: ./other
-    scope: project
-    provided_components:
-      - skills
-    components:
-      skills:
-        - base.review
-    enabled: true
-    trust_level: trusted
-    permission_risk: low
-`
-    }), "utf8");
-
-    await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "variant",
-      "add",
-      "claude.review",
-      "--from",
-      "base.review",
-      "--capability",
-      "task-review",
-      "--workflow",
-      "claude-workflow",
-      "--owner-install-unit",
-      "user.other",
-      "--config",
-      configPath,
-      "--skills",
-      skillsRoot,
-      "--json"
-    ]);
-    const config = YAML.parse(await readFile(configPath, "utf8"));
-
-    assert.deepEqual(config.skills["claude.review"], {
-      path: "declared/claude-review",
-      status: "active",
-      invocation: "manual-only",
-      exposure: "exported",
-      category: "declared-category",
-      owner_install_unit: "user.existing"
-    });
-    assert.deepEqual(config.install_units["user.existing"].components.skills, ["claude.review"]);
-    assert.deepEqual(config.install_units["user.other"].components.skills, ["base.review"]);
-    assert.equal(config.workflows["claude-workflow"].required_capabilities["task-review"].preferred, "claude.review");
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("cli variant add unreviewed non-user owner is refused and preserves config", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-variant-add-unreviewed-owner-test-"));
-  try {
-    const configPath = join(root, "skillboard.config.yaml");
-    const skillsRoot = join(root, "skills");
-    const original = variantAddCliConfig({
-      installUnits: `install_units:
-  github.vendor.skills:
-    kind: marketplace
-    source: github.com/vendor/skills
-    scope: project
-    provided_components:
-      - skills
-    components:
-      skills:
-        - base.review
-    enabled: true
-    trust_level: unreviewed
-    permission_risk: medium
-`
-    });
-    await writeFile(configPath, original, "utf8");
-
-    let error;
-    try {
-      await execFileAsync(process.execPath, [
-        "bin/skillboard.mjs",
+test("cli variant add owner option preserves an existing variant owner fields refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
         "variant",
         "add",
-        "vendor.review",
+        "base.review",
         "--from",
         "base.review",
         "--capability",
         "task-review",
         "--workflow",
-        "claude-workflow",
-        "--path",
-        "vendor/review",
+        "daily-workflow",
         "--owner-install-unit",
-        "github.vendor.skills",
-        "--mode",
-        "manual-only",
-        "--config",
-        configPath,
-        "--skills",
-        skillsRoot
-      ]);
-    } catch (caught) {
-      error = caught;
-    }
-
-    assert.equal(error.code, 1);
-    assert.match(error.stderr, /Control update would not be usable|belongs to unreviewed non-user source|source github\.vendor\.skills is unreviewed/);
-    assert.equal(await readFile(configPath, "utf8"), original);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("cli variant add inspection passes check and brief exposes the preferred workflow skill", async () => {
-  await withAppliedVariantAddFixture("skillboard-variant-add-inspection-test-", async ({ configPath, skillsRoot }) => {
-    const baseArgs = ["--config", configPath, "--skills", skillsRoot];
-    const check = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "check", ...baseArgs]);
-    let brief;
-    try {
-      brief = await execFileAsync(process.execPath, [
-        "bin/skillboard.mjs",
-        "brief",
-        "--workflow",
-        "claude-workflow",
-        ...baseArgs,
-        "--json"
-      ]);
-    } catch (caught) {
-      brief = caught;
-    }
-    const payload = JSON.parse(brief.stdout);
-    const usable = [
-      ...payload.skills.automatic_allowed,
-      ...payload.skills.manual_allowed
-    ];
-    const variant = usable.find((skill) => skill.id === "claude.review");
-
-    assert.match(check.stdout, /Policy check passed/);
-    assert.equal(payload.health.policy.ok, true);
-    assert.ok(variant, "expected claude.review in a usable brief group");
-    assert.deepEqual(variant.advanced.workflow_roles, ["active", "preferred"]);
-    assert.deepEqual(variant.advanced.capability_roles, [
-      { capability: "task-review", role: "preferred", policy: "workflow-auto" }
-    ]);
+        "user.local",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
   });
 });
-
-test("cli variant add can-use allows the preferred active variant and denies blocked mutations", async () => {
-  await withAppliedVariantAddFixture("skillboard-variant-add-can-use-test-", async ({ configPath, skillsRoot }) => {
-    const baseArgs = ["--config", configPath, "--skills", skillsRoot];
-    const canUse = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "can-use",
-      "claude.review",
-      "--workflow",
-      "claude-workflow",
-      ...baseArgs,
-      "--json"
-    ]);
-    const allowed = JSON.parse(canUse.stdout);
-
-    assert.equal(allowed.allowed, true);
-    assert.equal(allowed.automaticAllowed, true);
-    assert.ok(allowed.roles.includes("active"));
-    assert.ok(allowed.roles.includes("preferred"));
-    assert.deepEqual(allowed.capabilityRoles, [
-      { capability: "task-review", role: "preferred", policy: "workflow-auto" }
-    ]);
-
-    const config = YAML.parse(await readFile(configPath, "utf8"));
-    config.workflows["claude-workflow"].blocked_skills.push("claude.review");
-    await writeFile(configPath, YAML.stringify(config), "utf8");
-
-    let checkError;
-    try {
-      await execFileAsync(process.execPath, ["bin/skillboard.mjs", "check", ...baseArgs]);
-    } catch (caught) {
-      checkError = caught;
-    }
-    let blockedError;
-    try {
-      await execFileAsync(process.execPath, [
-        "bin/skillboard.mjs",
-        "can-use",
+test("cli variant add unreviewed non-user owner is refused and preserves config refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "variant",
+        "add",
         "claude.review",
-        "--workflow",
-        "claude-workflow",
-        ...baseArgs,
-        "--json"
-      ]);
-    } catch (caught) {
-      blockedError = caught;
-    }
-    const blocked = JSON.parse(blockedError.stdout);
-
-    assert.equal(checkError.code, 1);
-    assert.equal(blockedError.code, 2);
-    assert.equal(blocked.allowed, false);
-    assert.match(blocked.reasons.join("\n"), /blocks skill claude\.review|prefers blocked skill: claude\.review/);
-  });
-});
-
-test("cli variant add explain reports capability alternative and workflow preferred state", async () => {
-  await withAppliedVariantAddFixture("skillboard-variant-add-explain-test-", async ({ configPath, skillsRoot }) => {
-    const explain = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "explain",
-      "claude.review",
-      "--config",
-      configPath,
-      "--skills",
-      skillsRoot,
-      "--json"
-    ]);
-    const payload = JSON.parse(explain.stdout);
-
-    assert.ok(payload.capabilities.some((capability) => {
-      return capability.name === "task-review" && capability.role === "alternative";
-    }));
-    assert.deepEqual(payload.workflows, [
-      {
-        workflow: "claude-workflow",
-        roles: ["active", "preferred"],
-        capabilityRoles: [
-          { capability: "task-review", role: "preferred", policy: "workflow-auto" }
-        ]
-      }
-    ]);
-  });
-});
-
-test("cli variant add impact reports capability alternatives for the base skill", async () => {
-  await withAppliedVariantAddFixture("skillboard-variant-add-impact-test-", async ({ configPath, skillsRoot }) => {
-    const impact = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "impact",
-      "disable",
-      "base.review",
-      "--config",
-      configPath,
-      "--skills",
-      skillsRoot,
-      "--json"
-    ]);
-    const payload = JSON.parse(impact.stdout);
-
-    assert.equal(payload.skillId, "base.review");
-    assert.ok(payload.alternatives.includes("claude.review"));
-  });
-});
-
-test("cli variant add help shows public command usage", async () => {
-  const result = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "--help"]);
-
-  assert.match(result.stdout, /route <intent> --workflow <name>/);
-  assert.match(result.stdout, /variant add <variant-id> --from <base-id> --capability <name> --workflow <name>/);
-  assert.match(result.stdout, /\[--mode manual-only\|router-only\|workflow-auto\]/);
-  assert.match(result.stdout, /\[--owner-install-unit <unit-id>\]/);
-});
-
-test("cli prefer refuses unusable unreviewed external skills", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-prefer-trust-test-"));
-  try {
-    const configPath = join(root, "skillboard.config.yaml");
-    const original = `version: 1
-skills:
-  vendor.router:
-    path: vendor/router
-    status: active
-    invocation: manual-only
-    exposure: exported
-    owner_install_unit: github.vendor.skills
-capabilities:
-  code-review:
-    canonical: vendor.router
-    alternatives: []
-    default_policy: manual-only
-workflows:
-  review-workflow:
-    harness: codex
-    active_skills: []
-    blocked_skills: []
-    required_capabilities:
-      code-review:
-        preferred: ""
-        fallback: []
-        policy: manual-only
-harnesses:
-  codex:
-    status: primary
-    workflows:
-      - review-workflow
-install_units:
-  github.vendor.skills:
-    kind: marketplace
-    source: github.com/vendor/skills
-    scope: project
-    provided_components:
-      - skills
-    components:
-      skills:
-        - vendor.router
-    enabled: true
-    trust_level: unreviewed
-    permission_risk: medium
-`;
-    await writeFile(configPath, original, "utf8");
-
-    let error;
-    try {
-      await execFileAsync(process.execPath, [
-        "bin/skillboard.mjs",
-        "prefer",
-        "vendor.router",
-        "--workflow",
-        "review-workflow",
+        "--from",
+        "base.review",
         "--capability",
-        "code-review",
-        "--config",
-        configPath,
-        "--skills",
-        join(root, "skills")
-      ]);
-    } catch (caught) {
-      error = caught;
-    }
+        "task-review",
+        "--workflow",
+        "daily-workflow",
+        "--path",
+        "claude/review",
+        "--owner-install-unit",
+        "user.local",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
+});
+test("cli variant add inspection passes check and brief exposes the preferred workflow skill refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "variant",
+        "add",
+        "claude.review",
+        "--from",
+        "base.review",
+        "--capability",
+        "task-review",
+        "--workflow",
+        "daily-workflow",
+        "--path",
+        "claude/review",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
+});
+test("cli variant add can-use allows the preferred active variant and denies blocked mutations refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "variant",
+        "add",
+        "claude.review",
+        "--from",
+        "base.review",
+        "--capability",
+        "task-review",
+        "--workflow",
+        "daily-workflow",
+        "--path",
+        "claude/review",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
+});
+test("cli variant add explain reports capability alternative and workflow preferred state refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "variant",
+        "add",
+        "claude.review",
+        "--from",
+        "base.review",
+        "--capability",
+        "task-review",
+        "--workflow",
+        "daily-workflow",
+        "--path",
+        "claude/review",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
+});
+test("cli variant add impact reports capability alternatives for the base skill refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "variant",
+        "add",
+        "claude.review",
+        "--from",
+        "base.review",
+        "--capability",
+        "task-review",
+        "--workflow",
+        "daily-workflow",
+        "--path",
+        "claude/review",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
+});
+test("cli variant help exposes only the v2 compatibility boundary", async () => {
+  const result = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "help", "variant"]);
 
-    assert.equal(error.code, 1);
-    assert.match(error.stderr, /Control update would not be usable/);
-    assert.match(error.stderr, /unreviewed non-user source github\.vendor\.skills/);
-    assert.equal(await readFile(configPath, "utf8"), original);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+  assert.match(result.stdout, /variant lifecycle is compatibility-only/i);
+  assert.match(result.stdout, /relationships and checkpoints in content or inventory metadata/i);
+  assert.doesNotMatch(result.stdout, /capability|manual-only|router-only|workflow-auto|owner-install-unit/);
 });
 
-test("cli prefer refuses reviewed blocked runtime skills", async () => {
+test("cli prefer refuses unusable unreviewed external skills refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "prefer",
+        "user.tdd",
+        "--workflow",
+        "daily-workflow",
+        "--capability",
+        "test-first-implementation",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
+});
+test("cli prefer v1 form requires migration before legacy status validation", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-prefer-blocked-test-"));
   try {
     const configPath = join(root, "skillboard.config.yaml");
@@ -4107,178 +3045,71 @@ install_units:
     }
 
     assert.equal(error.code, 1);
-    assert.match(error.stderr, /status: blocked/);
+    assert.equal(error.stderr.trim(), "Version 1 policy is read-only. Run `skillboard migrate v2`.");
     assert.equal(await readFile(configPath, "utf8"), original);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("cli prefer lets user skills take workflow capability priority", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-prefer-test-"));
-  try {
-    const configPath = join(root, "skillboard.config.yaml");
-    const sourceConfig = (await readFile("examples/multi-source.config.yaml", "utf8"))
-      .replace(/  private\.tdd-work-continuity:\r?\n/, "  # user preference should survive control writes\n  private.tdd-work-continuity:\n");
-    await writeFile(configPath, sourceConfig, "utf8");
-
-    const result = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "prefer",
-      "private.tdd-work-continuity",
-      "--workflow",
-      "codex-night-workflow",
-      "--capability",
-      "test-first-implementation",
-      "--config",
-      configPath,
-      "--skills",
-      "examples/multi-source-skills"
-    ]);
-    const canUse = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "can-use",
-      "private.tdd-work-continuity",
-      "--workflow",
-      "codex-night-workflow",
-      "--config",
-      configPath,
-      "--skills",
-      "examples/multi-source-skills",
-      "--json"
-    ]);
-    const config = await readFile(configPath, "utf8");
-
-    assert.match(result.stdout, /Preferred private\.tdd-work-continuity/);
-    assert.match(config, /# user preference should survive control writes/);
-    assert.match(config, /preferred: private\.tdd-work-continuity/);
-    assert.match(config, /- matt\.tdd/);
-    assert.deepEqual(JSON.parse(canUse.stdout).roles, ["active", "preferred"]);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("cli dry-run validates a control change without writing config", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-dry-run-test-"));
-  try {
-    const configPath = join(root, "skillboard.config.yaml");
-    await writeFile(configPath, await readFile("examples/multi-source.config.yaml", "utf8"), "utf8");
-    const before = await readFile(configPath, "utf8");
-
-    const result = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "prefer",
-      "private.tdd-work-continuity",
-      "--workflow",
-      "codex-night-workflow",
-      "--capability",
-      "test-first-implementation",
-      "--config",
-      configPath,
-      "--skills",
-      "examples/multi-source-skills",
-      "--dry-run",
-      "--json"
-    ]);
-    const after = await readFile(configPath, "utf8");
-    const payload = JSON.parse(result.stdout);
-
-    assert.equal(after, before);
-    assert.equal(payload.dryRun, true);
-    assert.equal(payload.changed, true);
-    assert.equal(payload.plan.changedLineCount > 0, true);
-    assert.equal(payload.plan.semanticAvailable, true);
-    assert.ok(payload.plan.semanticChanges.some((change) => change.path.includes("/preferred")));
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("cli failed control writes preserve the original config and cleanup temp files", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-atomic-failure-test-"));
-  try {
-    const configPath = join(root, "skillboard.config.yaml");
-    const original = `version: 1
-skills:
-  sample.skill:
-    path: sample
-    status: candidate
-    invocation: manual-only
-    exposure: exported
-workflows:
-  broken-workflow:
-    harness: missing-harness
-    active_skills: []
-    blocked_skills: []
-`;
-    await writeFile(configPath, original, "utf8");
-    let error;
-    try {
-      await execFileAsync(process.execPath, [
-        "bin/skillboard.mjs",
-        "activate",
-        "sample.skill",
+test("cli prefer lets user skills take workflow capability priority refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "prefer",
+        "user.tdd",
         "--workflow",
-        "broken-workflow",
-        "--mode",
-        "workflow-auto",
-        "--config",
-        configPath,
-        "--skills",
-        join(root, "skills")
-      ]);
-    } catch (caught) {
-      error = caught;
-    }
-
-    assert.equal(error.code, 1);
-    assert.match(error.stderr, /Policy update would create invalid config/);
-    assert.equal(await readFile(configPath, "utf8"), original);
-    assert.deepEqual((await readdir(root)).filter((entry) => entry.includes(".tmp")), []);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+        "daily-workflow",
+        "--capability",
+        "test-first-implementation",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
 });
-
-test("cli block removes a skill from workflow active and capability slots", async () => {
-  const root = await mkdtemp(join(tmpdir(), "skillboard-block-test-"));
-  try {
-    const configPath = join(root, "skillboard.config.yaml");
-    await writeFile(configPath, await readFile("examples/multi-source.config.yaml", "utf8"), "utf8");
-
-    const result = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "block",
-      "matt.tdd",
-      "--workflow",
-      "codex-night-workflow",
-      "--config",
-      configPath,
-      "--skills",
-      "examples/multi-source-skills"
-    ]);
-    const canUseError = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "check",
-      "--config",
-      configPath,
-      "--skills",
-      "examples/multi-source-skills"
-    ]);
-    const config = await readFile(configPath, "utf8");
-
-    assert.match(result.stdout, /Blocked matt\.tdd/);
-    assert.match(canUseError.stdout, /Policy check passed/);
-    assert.match(config, /blocked_skills:\r?\n\s+- matt\.grill-me\r?\n\s+- matt\.tdd/);
-    assert.doesNotMatch(config, /preferred: matt\.tdd/);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+test("cli dry-run validates a control change without writing config refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "prefer",
+        "user.tdd",
+        "--workflow",
+        "daily-workflow",
+        "--capability",
+        "test-first-implementation",
+        "--dry-run",
+        "--json",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
 });
-
+test("cli failed control writes preserve the original config and cleanup temp files refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "prefer",
+        "user.tdd",
+        "--workflow",
+        "daily-workflow",
+        "--capability",
+        "test-first-implementation",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
+});
+test("cli block removes a skill from workflow active and capability slots refuses v1 policy without changing config bytes", async () => {
+  await withV1MutationFixture(async ({ configPath, skillsRoot }) => {
+    await assertV1MutationRefused([
+        "block",
+        "base.review",
+        "--workflow",
+        "daily-workflow",
+        "--config", configPath,
+        "--skills", skillsRoot
+      ], configPath);
+  });
+});
 test("cli help documents the rollout operator command surface", async () => {
-  const result = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "--help"]);
+  const result = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "help", "rollout"]);
 
   assert.match(result.stdout, /rollout \[audit\|plan\|apply\|rollback\|report\]/);
   assert.match(result.stdout, /--json/);

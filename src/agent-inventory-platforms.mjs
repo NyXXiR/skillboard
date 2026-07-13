@@ -6,13 +6,19 @@ export async function defaultScanRoots(home, env) {
   const agentRoots = await Promise.all([
     agentSkillRootCandidates("codex", home, env),
     agentSkillRootCandidates("claude", home, env),
+    agentSkillRootCandidates("opencode", home, env),
     agentSkillRootCandidates("hermes", home, env)
   ]);
   return [
     join(codexHome, "skills", ".system"),
     join(codexHome, "plugins", "cache"),
+    join(home, ".agents", "shared-skills"),
     ...agentRoots.flat().map((root) => root.skillRoot)
   ];
+}
+
+export function sharedUserUnit(path, home) {
+  return userSkillUnit("shared.user-skills", path, home);
 }
 
 export function systemCodexUnit(path, home) {
@@ -36,6 +42,10 @@ export function userCodexUnit(path, home) {
 
 export function userClaudeUnit(path, home) {
   return userSkillUnit("claude.user-skills", path, home);
+}
+
+export function userOpenCodeUnit(path, home) {
+  return userSkillUnit("opencode.user-skills", path, home);
 }
 
 export function userHermesUnit(path, home) {

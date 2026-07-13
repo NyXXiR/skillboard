@@ -24,6 +24,38 @@ export function selectRoute(workspace, workflow, intent) {
   };
 }
 
+export function selectV2Route(workspace, intent, agentName) {
+  const intentKey = phraseKey(intent);
+  const intentTokens = tokensFor(intent);
+  const candidates = workspace.skills
+    .map((skill) => {
+      const guard = canUseSkill(workspace, skill.id, undefined, agentName);
+      const explicit = exactSkillIdMention(intentKey, skill.id);
+      const preference = skill.preference;
+      const matchedIntents = preference?.intents.filter((term) => matchesIntentTerm(intentTokens, term)) ?? [];
+      const installed = installedSkillFor(workspace, skill.id);
+      const metadataTokens = tokensFor(`${installed?.name ?? ""} ${installed?.description ?? ""}`);
+      const metadataMatches = [...metadataTokens].filter((token) => intentTokens.has(token));
+      const hasMatch = explicit || matchedIntents.length > 0 || metadataMatches.length > 0;
+      const preferenceScore = matchedIntents.length > 0 ? (preference?.priority ?? 0) : 0;
+      const rawScore = (explicit ? 1_000_000 : 0)
+          + matchedIntents.length * 100
+          + preferenceScore
+          + metadataMatches.length;
+      const score = hasMatch ? Math.max(1, rawScore) : 0;
+      return { skill, guard, explicit, score, matchedIntents, metadataMatches };
+    })
+    .filter((candidate) => candidate.guard.allowed)
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score || left.skill.id.localeCompare(right.skill.id));
+  return { candidates, selected: candidates[0] };
+}
+
+function matchesIntentTerm(intentTokens, term) {
+  const termTokens = tokensFor(term);
+  return termTokens.size > 0 && [...termTokens].every((token) => intentTokens.has(token));
+}
+
 function explicitAllowedSkillRouteCandidate(intent, skillCandidates) {
   const intentKey = phraseKey(intent);
   return skillCandidates.find((candidate) => candidate.allowed && exactSkillIdMention(intentKey, candidate.skill_id));
@@ -31,7 +63,10 @@ function explicitAllowedSkillRouteCandidate(intent, skillCandidates) {
 
 function exactSkillIdMention(intentKey, skillId) {
   const skillKey = phraseKey(skillId);
-  return skillKey.length > 0 && intentKey.includes(skillKey);
+  if (skillKey.length === 0) return false;
+  const intentTokens = intentKey.split(" ");
+  const skillTokens = skillKey.split(" ");
+  return intentTokens.some((_, index) => skillTokens.every((token, offset) => intentTokens[index + offset] === token));
 }
 
 function capabilityRouteCandidates(workspace, workflow) {
@@ -173,7 +208,8 @@ function skillMetadataTerms(workspace, skillId, weight) {
 
 function installedSkillFor(workspace, skillId) {
   const skill = workspace.skills.find((candidate) => candidate.id === skillId);
-  return workspace.installedSkills.find((installed) => installed.id === skillId || installed.path === skill?.path);
+  return workspace.installedSkills.find((installed) => installed.id === skillId || installed.path === skill?.path)
+    ?? workspace.inventory?.skills?.find((installed) => installed.id === skillId);
 }
 
 function phraseMatchScore(intent, capability) {

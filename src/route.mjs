@@ -4,18 +4,23 @@ import {
   guardCommand,
   overlapResolutionForRoute,
   policyMemoryForRoute,
+  policyMemoryForV2Route,
   postUsePolicySuggestionForCapabilityRoute,
+  postUsePolicySuggestionForV2Route,
   recommendationReason,
   routeCandidate,
   selectedRouteSkill,
   usageDisclosure
 } from "./route-advisory.mjs";
-import { confidenceFor, possibleWorkflowSkills, selectRoute } from "./route-selection.mjs";
+import { confidenceFor, possibleWorkflowSkills, selectRoute, selectV2Route } from "./route-selection.mjs";
 
 export function routeSkill(workspace, options) {
   const intent = options.intent.trim();
   if (intent.length === 0) {
-    throw new Error("Usage: skillboard route <intent> --workflow <name>");
+    throw new Error("Usage: skillboard route <intent> [--agent <name>]");
+  }
+  if (workspace.version === 2) {
+    return routeV2Skill(workspace, options, intent);
   }
   const workflow = workspace.workflows.find((candidate) => candidate.name === options.workflow);
   if (workflow === undefined) {
@@ -94,6 +99,61 @@ export function routeSkill(workspace, options) {
     post_use_policy_suggestion: postUsePolicySuggestion,
     possible_skills: possibleWorkflowSkills(workspace, workflow),
     candidates
+  };
+}
+
+function routeV2Skill(workspace, options, intent) {
+  const { candidates, selected } = selectV2Route(workspace, intent, options.agent);
+  if (selected === undefined) {
+    return {
+      ok: true, intent, workflow: null, agent: options.agent ?? null,
+      matched_capability: null, matched_skill: null, match_source: "none", confidence: "none",
+      matched_terms: [], recommendation_reason: "No enabled skill installed for this agent matched this request.",
+      recommended_skill: null, fallback_skills: [], route_candidates: [], overlap_resolution: null,
+      policy_memory: null, guard_command: null, guard: null, usage_disclosure: null,
+      post_use_policy_suggestion: null, possible_skills: [], candidates: []
+    };
+  }
+  const routed = candidates.map((candidate) => ({
+    skill: candidate.skill.id,
+    role: candidate.explicit ? "matched" : "alternative",
+    guard: candidate.guard
+  }));
+  const matchedTerms = [...new Set([...selected.matchedIntents, ...selected.metadataMatches])];
+  const contextName = options.agent === undefined ? "the current agent" : `agent ${options.agent}`;
+  const recommended = routed[0];
+  const overlapResolution = overlapResolutionForRoute({
+    matchedCapability: intent,
+    recommended,
+    routedSkills: routed,
+    workflowName: contextName
+  });
+  const policyMemory = policyMemoryForV2Route({ intent, selected, candidates, workflowName: undefined });
+  const postUsePolicySuggestion = postUsePolicySuggestionForV2Route({
+    intent, selected, candidates, workflowName: undefined, options, policyMemory
+  });
+  return {
+    ok: true, intent, workflow: null, agent: options.agent ?? null,
+    matched_capability: null,
+    matched_skill: selected.skill.id,
+    match_source: selected.explicit
+      ? "explicit-skill"
+      : selected.matchedIntents.length > 0
+        ? "skill-preference"
+        : "skill-metadata",
+    confidence: confidenceFor(selected.score),
+    matched_terms: matchedTerms,
+    recommendation_reason: `Recommended ${selected.skill.id} because it is enabled, installed for this agent, and best matches the request.`,
+    recommended_skill: selected.skill.id,
+    fallback_skills: candidates.slice(1).map((candidate) => candidate.skill.id),
+    route_candidates: routed.map((entry, index) => routeCandidate(entry, index === 0)),
+    overlap_resolution: overlapResolution, policy_memory: policyMemory,
+    guard_command: guardCommand(selected.skill.id, undefined, options),
+    guard: selected.guard,
+    usage_disclosure: usageDisclosure(selected.skill.id, policyMemory),
+    post_use_policy_suggestion: postUsePolicySuggestion,
+    possible_skills: routed.map((entry) => ({ id: entry.skill, allowed: true })),
+    candidates: candidates.map((candidate) => ({ skill_id: candidate.skill.id, score: candidate.score }))
   };
 }
 

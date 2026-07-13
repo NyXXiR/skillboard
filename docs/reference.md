@@ -1,413 +1,165 @@
 # SkillBoard Reference
 
-This is the operator reference for users who already understand the basic
-SkillBoard flow and need exact command, config, and lifecycle details.
+## Command forms
 
-For installation and agent-layer setup commands, start with [install.md](install.md).
-For a guided first workflow, use [user-flow.md](user-flow.md).
-
-## Command Forms
-
-Most examples use the global `skillboard` binary. When running from a clone
-without `npm install -g agent-skillboard`, replace `skillboard ` with
-`node bin/skillboard.mjs ` and run from the repository root.
-
-The npm package is `agent-skillboard`; the executable remains `skillboard`.
-For CI or scripts, the explicit package form avoids binary-name ambiguity:
+Global install:
 
 ```bash
-npm exec --yes --package agent-skillboard -- skillboard --version
-npm exec --yes --package agent-skillboard -- skillboard help brief
+skillboard <command>
 ```
 
-After a global install, postinstall auto-runs agent-layer setup for detected
-supported agent homes. Use `skillboard setup` later when you add another
-supported agent, skipped lifecycle scripts, or need to repair user-level agent
-guidance. This is agent-layer integration; it does not initialize, attach, or
-manage individual projects. To remove only managed agent-layer guidance, run
-`skillboard uninstall --agent-layer` before package removal.
+Source tree: replace `skillboard ` with `node bin/skillboard.mjs `.
 
-Unreleased GitHub builds are available when intentionally testing repository
-state before the next npm release:
+## Core user-level commands
 
-```bash
-npx --yes --package github:NyXXiR/skillboard skillboard --version
-npx --yes --package github:NyXXiR/skillboard skillboard help
-```
-
-From a source clone:
-
-```bash
-git clone https://github.com/NyXXiR/skillboard.git
-cd skillboard
-npm install
-npm test
-node bin/skillboard.mjs --version
-node bin/skillboard.mjs help
-```
-
-## Commands
-
-```bash
+```text
 skillboard setup [--yes] [--agent codex[,claude,opencode,hermes]]
-skillboard import-skill --from <agent> --to <agent> --skill <id-or-dir> [--target-skill <id-or-dir>] [--adapted-file <path>] [--dry-run] [--yes] [--replace] [--json]
-skillboard uninstall [--dir <path>] [--dry-run] [--keep-settings] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs] [--agent-layer] [--agent codex[,claude,opencode,hermes]]
-skillboard inventory refresh [--dir <path>] [--config <path>] [--scan-root <dir>[,<dir>]] [--dry-run] [--json]
-skillboard inventory detect --unit <id> --config <path> [--install-output <path>] [--config-file a,b] [--source <value>] [--kind <kind>] [--scope <scope>] [--dry-run] [--json]
-skillboard sources refresh [--dir <path>] [--config <path>] [--unit <id>[,<id>]] [--cache-dir <dir>] [--dry-run] [--json]
-skillboard doctor [--dir <path>] [--config <path>] [--skills <dir>] [--verify] [--strict] [--json] [--summary]
-skillboard status [--dir <path>] [--config <path>] [--skills <dir>] [--verify] [--strict] [--json] [--summary]
-skillboard brief [--workflow <name>] [--intent <request>] [--dir <path>] [--config <path>] [--skills <dir>] [--include-actions] [--verbose] [--json]
-skillboard apply-action <action-id> [--workflow <name>] [--dir <path>] [--config <path>] [--skills <dir>] [--dry-run] [--yes] [--allow-destructive] [--json]
-skillboard import --profile <id-or-path> --source-root <dir> [--profile-dirs a,b] [--out <path>]
-skillboard import --profile <id-or-path> --source-root <dir> --config <path> --merge [--replace] [--dry-run]
-skillboard scan --config <path> --skills <dir>
-skillboard check --config <path> --skills <dir>
-skillboard list [skills|workflows|harnesses|install-units] --config <path> --skills <dir>
-skillboard explain <skill-id> --config <path> --skills <dir>
-skillboard route <intent> --workflow <name> --config <path> --skills <dir> [--json]
-skillboard can-use <skill-id> --workflow <name> --config <path> --skills <dir>
-skillboard guard use <skill-id> --workflow <name> --config <path> --skills <dir>
-skillboard audit sources --config <path> --skills <dir> [--verify]
-skillboard rollout [audit|plan|apply|rollback|report] [--dir <path>] [--config <path>] [--skills <dir>] [--transaction <id>] [--json]
-skillboard hook install --workflow <name> --config <path> --skills <dir> [--out <path>] [--skillboard-bin <path>] [--dry-run] [--json]
-skillboard lock write --config <path> --skills <dir> [--out <path>] [--replace] [--allow-unverified]
-skillboard review install-unit <unit-id> [--trust-level trusted|reviewed|unreviewed|blocked] --config <path> --skills <dir>
-skillboard add skill <skill-id> --path <relative-skill-path> --config <path> --skills <dir>
-skillboard add workflow <workflow-name> --harness <harness-name> --config <path> --skills <dir> [--skill <id>[,<id>]]
-skillboard add harness <harness-name> --config <path> --skills <dir> [--status <status>] [--command <cmd>[,<cmd>]]
-skillboard variant add <variant-id> --from <base-id> --capability <name> --workflow <name> --config <path> --skills <dir> [--path <relative-skill-path>] [--mode manual-only|router-only|workflow-auto] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]
-skillboard variant fork <variant-id> --from <base-id> --capability <name> --workflow <name> --path <relative-skill-path> --config <path> --skills <dir> [--adapted-for <label>] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]
-skillboard variant status <variant-id> --config <path> --skills <dir> [--json]
-skillboard variant approve <variant-id> --config <path> --skills <dir> [--mode manual-only|router-only|workflow-auto] [--dry-run] [--json]
-skillboard variant reset <variant-id> --to-base|--to-approved --config <path> --skills <dir> [--yes] [--dry-run] [--mode manual-only|router-only|workflow-auto] [--json]
-skillboard activate <skill-id> --workflow <name> --config <path> --skills <dir>
-skillboard block <skill-id> --workflow <name> --config <path> --skills <dir>
-skillboard quarantine <skill-id> --config <path> --skills <dir>
-skillboard prefer <skill-id> --workflow <name> --capability <name> --config <path> --skills <dir>
-skillboard remove skill <skill-id> --config <path> --skills <dir> [--force]
-skillboard dashboard --config <path> --skills <dir> [--out <path>]
-skillboard reconcile --config <path> --skills <dir> [--actual-harnesses a,b] [--out <path>]
-skillboard impact disable <skill-id> --config <path> --skills <dir> [--out <path>] [--json]
+skillboard inventory refresh [--config <path>] [--dry-run] [--json]
+skillboard brief [--agent codex|claude|opencode|hermes] [--intent <request>] [--include-actions] [--json]
+skillboard route <intent> --agent codex|claude|opencode|hermes [--json]
+skillboard can-use <skill-id> --agent codex|claude|opencode|hermes [--json]
+skillboard guard use <skill-id> --agent codex|claude|opencode|hermes [--json]
+skillboard skill enable <skill-id> [--dry-run] [--json]
+skillboard skill disable <skill-id> [--dry-run] [--json]
+skillboard skill share <skill-id> [--dry-run] [--json]
+skillboard skill unshare <skill-id> [--dry-run] [--json]
+skillboard skill preference <skill-id> --intent <term>[,<term>] --priority <integer> [--dry-run] [--json]
+skillboard skill forget <skill-id> [--dry-run] [--json]
+skillboard uninstall --user (--dry-run|--yes) [--json]
+skillboard doctor [--config <path>] [--strict] [--json]
 ```
 
-## Agent Skill Reuse
+Without path overrides, commands read `~/skillboard.config.yaml` and
+`~/.skillboard/inventory.json` from any directory. Setup bootstraps both files
+atomically and never creates project state.
 
-`import-skill` operates above projects. It reads one supported agent's user
-skill root and writes to another supported agent's user skill root:
+Guard requires a valid inventory record, `enabled: true`, and the selected agent
+in `installed_on`. Optional preference ranks candidates but never changes
+availability.
 
-```bash
-skillboard import-skill --from codex --to opencode --skill test-first --json
-skillboard import-skill --from codex --to opencode --skill test-first --yes --json
-```
+Version 2 route, can-use, and guard require `--agent`; generated agent guidance
+passes it automatically. This prevents one agent from selecting another
+agent's local-only skill without adding a user prompt to the normal flow.
 
-Supported agents are `codex`, `claude`, `opencode`, and `hermes`. Roots come
-from `CODEX_HOME`, `AGENTS_HOME`, `CLAUDE_HOME`, `OPENCODE_HOME`, and
-`HERMES_HOME`, or from their default user locations. Codex source scanning also
-checks `~/.agents/skills` and `~/.codex/skills`.
-
-If the source skill contains markers for another agent runtime, the command
-returns `status: "needs-adaptation"` with compatibility reasons and no writes.
-The target agent should ask the user before changing the skill body. After
-approval, it writes an adapted `SKILL.md` and installs it with provenance:
-
-```bash
-skillboard import-skill \
-  --from codex \
-  --to opencode \
-  --skill codex-hook \
-  --target-skill opencode-hook \
-  --adapted-file /tmp/opencode-hook.SKILL.md \
-  --yes \
-  --json
-```
-
-This is separate from `variant` commands. `import-skill` installs a target-agent
-user skill file; `variant` records project-local policy relationships,
-snapshots, and workflow preferences.
-
-## Deprecated Project Policy Mode
-
-`skillboard init` is deprecated project-local policy bootstrap and is not
-needed for normal use. Package install, postinstall, and `skillboard setup`
-connect SkillBoard at the agent layer without initializing, attaching, or
-managing individual projects.
-
-```bash
-skillboard init [--dir <path>] [--scan-root <dir>[,<dir>]] [--no-scan-installed]
-skillboard help init
-```
-
-The command remains available for existing workspaces that intentionally keep
-local `skillboard.config.yaml`, `.skillboard/`, `AGENTS.md`, or `CLAUDE.md`
-policy files. If `init` creates or discovers workflows, use one of the workflow
-names it prints for the first `brief`. If it does not print a workflow, run the
-unscoped `brief` command it prints instead.
-
-## Capability Routing
-
-For the normal AI-mediated flow, prefer `brief --intent`: it returns the current
-availability brief plus a compact route recommendation in `assistant_guidance`.
-
-```bash
-skillboard brief \
-  --intent "write tests before implementation" \
-  --workflow codex-night-workflow \
-  --config skillboard.config.yaml \
-  --skills skills \
-  --json
-```
-
-`route` is a read-only recommendation surface for AI/automation. It maps a
-normal user request to the best matching workflow capability or workflow-bound
-skill metadata, then returns the recommended skill, fallback skills, matched
-terms, recommendation reason, and the guard command that must still pass before
-invocation.
-
-```bash
-skillboard route "write tests before implementation" \
-  --workflow codex-night-workflow \
-  --config skillboard.config.yaml \
-  --skills skills \
-  --json
-```
-
-Routing first honors an exact request for a specific already-allowed workflow
-skill. Otherwise, it uses declared capability names and workflow bindings. If a
-fresh project has workflow skills but no capability catalog yet, it can fall back
-to workflow-bound skill id, path, category, `SKILL.md` name, and `SKILL.md`
-description metadata. It does not inspect or semantically rank `SKILL.md` bodies,
-and it does not invoke the skill. The JSON payload includes `match_source`,
-`matched_terms`, `recommendation_reason`, `route_candidates`, and
-`overlap_resolution` so the AI can explain why it chose or declined a skill
-without inventing rationale. When remembered or configured workflow policy
-selected the routed skill while other allowed skills were also available,
-`policy_memory` tells the AI to disclose that after completion. The same
-`assistant_guidance` object includes
-`assistant_guidance.goal_document`; its `loop` and `simplification_rule` fields
-make the non-blocking routing goal machine-readable for agent integrations.
-Recommended and fallback skills are limited to the selected workflow's active,
-required, or global-auto bindings rather than every global alternative in the
-capability catalog. When nothing matches, the result keeps
-`matched_capability: null` and `recommended_skill: null`, then returns possible
-workflow skills so the AI can ask a clarifying question. When a guard allows the
-recommended skill, the AI should disclose the skill at start and completion
-instead of asking for another approval. That disclosure is an audit trace, not a
-permission prompt. When several allowed skills match, `overlap_resolution`
-explains that SkillBoard kept them available and routed the workflow to one
-selected skill. When remembered or configured policy determines that route,
-`policy_memory` keeps the final disclosure honest about why that skill was used.
-When an allowed fallback is selected because the preferred skill is denied,
-`post_use_policy_suggestion` tells the AI to ask after the task whether to
-remember that fallback as the preferred workflow policy.
-
-## Config Shape
+## Config schema v2
 
 ```yaml
-version: 1
-
-defaults:
-  invocation_policy: deny-by-default
-  allow_model_invocation: false
-  require_explicit_workflow: true
-
+version: 2
 skills:
-  matt.tdd:
-    path: tdd
-    status: active
-    invocation: workflow-auto
-    exposure: exported
-    category: engineering
-    conflicts_with:
-      - meerkat.no-tests-please
-
-  user.workflow-router:
-    path: user/workflow-router
-    status: active
-    invocation: global-auto
-    exposure: global-meta
-    category: meta
-
-capabilities:
-  test-first-implementation:
-    canonical: matt.tdd
-    alternatives:
-      - meerkat.test-first-implementation
-    default_policy: workflow-auto
-
-harnesses:
-  codex:
-    status: primary
-    workflows:
-      - codex-night-workflow
-
-install_units:
-  lazycodex.omo:
-    kind: harness
-    source: npx lazycodex-ai install
-    scope: user-global
-    manifest_path: ~/.codex/plugins/cache/sisyphuslabs/omo/plugin.json
-    cache_path: ~/.codex/plugins/cache/sisyphuslabs/omo
-    provided_components:
-      - skills
-      - commands
-      - mcp-server
-      - hook
-    components:
-      skills:
-        - lazycodex.ulw-plan
-      commands:
-        - $ulw-plan
-        - $start-work
-      hooks:
-        - post-tool-use
-      mcp_servers:
-        - omo-docs
-    modified_config_files:
-      - ~/.codex/config.toml
-      - ~/.local/bin
-    auto_update: false
+  local-helper:
     enabled: true
-    workflow_dependencies:
-      - large-refactor-workflow
-    permission_risk: high
-    rollback: manual
-
-workflows:
-  codex-night-workflow:
-    harness: codex
-    active_skills:
-      - matt.tdd
-    blocked_skills: []
-    required_capabilities:
-      test-first-implementation:
-        preferred: matt.tdd
-        fallback:
-          - meerkat.test-first-implementation
-        policy: workflow-auto
+    shared: false
+    preference:
+      intents: [implementation]
+      priority: 50
+  shared-helper:
+    enabled: true
+    shared: true
+  disabled-helper:
+    enabled: false
+    shared: false
 ```
 
-`conflicts_with` is runtime policy, not documentation-only metadata. A workflow
-cannot keep both sides selectable unless one side is explicitly blocked in that
-workflow. Conflict failures appear in policy errors, guard reasons, brief
-blocking reasons, and impact reports. `impact disable --json` includes:
+- `enabled` and `shared` are required Booleans.
+- `shared: false` means agent-local; `shared: true` enables managed cross-agent
+  copies while preserving the original.
+- `preference` is optional and ranks enabled skills installed for the current
+  agent only.
+- Unknown policy keys are rejected.
+- Skill ids use letters, numbers, `.`, `_`, `:`, and `-`; path-like ids are rejected.
+- A valid newly discovered skill defaults to enabled and agent-local.
 
-- `conflictingSkills`: declared direct or reverse conflicts for the target
-  skill.
-- `activeConflicts`: workflow-scoped conflict pairs currently involving the
-  target skill.
+`skill forget` removes only a policy entry. It requires healthy inventory,
+refuses skills that are still observed or shared, and never deletes skill files.
+This distinguishes permanent owner removal from a temporarily unavailable agent
+root.
 
-## Source Profiles
+## Generated inventory and audits
 
-`skillboard import` reads a source profile and emits a YAML fragment containing
-governed `skills` plus their owning `install_units`.
+`~/.skillboard/inventory.json` records `installed_on`, paths, sources,
+provenance, digests, aliases, install units, and runtime-component observations.
+Only `installed_on` participates in the presence check. Other observations are
+optional audit metadata and never determine availability.
+
+Runtime and action authorization are outside SkillBoard's scope. The active
+agent or harness owns permission checks for hooks, MCP servers, commands,
+network access, external writes, destructive operations, and secrets.
+
+Profile import is trust-neutral. Preview a merge before writing:
 
 ```bash
-skillboard import \
-  --profile github.mattpocock.skills \
-  --source-root /path/to/cloned-or-installed/repo \
-  --out .skillboard/reports/import-fragment.yaml
+skillboard import --profile <id-or-path> --source-root <dir> --config <path> --merge --dry-run
 ```
 
-To preview a direct apply path, pass `--merge --config --dry-run`. Merge is
-non-destructive by default: if a skill or install-unit id already exists, the
-command fails and leaves the config unchanged. Use `--replace` only when you
-intend to overwrite existing entries, and drop `--dry-run` only after reviewing
-the reported change plan.
+Import does not approve a source or authorize runtime components. Missing valid
+skills receive the enabled, agent-local default; existing policy is preserved
+unless `--replace` is explicit.
 
-Built-in profiles are shipped as YAML data under `profiles/`, including:
+## Policy actions
 
-- `github.mattpocock.skills`
-- `github.code-yeongyu.oh-my-openagent`
-- `github.anthropics.skills`
-- `github.wshobson.agents`
-- `github.voltagent.awesome-agent-skills`
-
-Project-specific profiles can live under `.skillboard/profiles/` and be passed
-by path:
+Agents obtain current actions from `brief --include-actions --json`, ask once,
+and apply exactly one current id:
 
 ```bash
-skillboard import --profile .skillboard/profiles/my-source.yaml --source-root /path/to/repo
+skillboard apply-action <action-id> --agent <agent> --yes --json
 ```
 
-## Invocation Modes
+The returned post-apply brief is authoritative. Cached ids are not reused.
+Share and unshare action cards use the same managed-copy transaction as the
+direct commands.
 
-- `manual-only`: user must explicitly ask for it.
-- `router-only`: a router or orchestrator may select it after policy checks.
-- `workflow-auto`: model invocation is allowed only inside listed workflows.
-- `global-auto`: allowed globally; use sparingly and only for `global-meta`
-  control skills.
-- `blocked`: installed but not callable until policy or provenance changes.
-- `deprecated`: kept for history, not for new use.
+## User-level removal
 
-Skill exposure values:
+```bash
+skillboard uninstall --user --dry-run
+skillboard uninstall --user --yes
+```
 
-- `exported`: centrally governed skill that may serve shared workflows or
-  canonical capabilities.
-- `global-meta`: intentionally global control skill, such as a router, impact
-  analyzer, or verification gate.
-- `unit-managed`: child component supplied by a parent install unit or harness
-  bundle.
-- `private`: workflow-internal implementation detail.
+Dry-run reports marker-owned shared copies, managed agent guidance, and the two
+home state paths without mutation. Apply requires `--yes`, rechecks ownership
+markers before removing copies, never follows a symlinked agent skill root, and
+preserves agent-owned and unmanaged skills. It then removes
+`~/skillboard.config.yaml` and `~/.skillboard`. Package removal remains a
+separate `npm uninstall -g agent-skillboard` step.
 
-## Reconciliation Model
+## Version 1 migration reference
 
-SkillBoard compares desired state from config with actual state from discovered
-`SKILL.md` files and detected harnesses.
+Version 1 is readable but immutable during the v0.3 one-release read-only
+window:
 
-- New skills become `quarantined` / `blocked` recommendations.
-- Known capability matches are surfaced, but not auto-enabled.
-- Removed harnesses report affected workflows, missing commands, and migration
-  recommendations.
-- Newly detected harnesses are disabled until workflows explicitly opt in.
-- If actual harness inventory is not provided, reconcile emits a warning instead
-  of silently assuming harness state.
+```bash
+skillboard migrate v2 --config <path> --json
+skillboard migrate v2 --config <path> --yes --json
+skillboard migrate v2 --config <path> --rollback <backup> --json
+```
 
-## Install Units
+Preview changes no bytes. Apply creates an adjacent byte-for-byte backup and
+writes v2 policy plus generated inventory atomically. Rollback restores the
+selected backup. v0.4.0 removes the v1 reader.
 
-SkillBoard should not assume that every runtime change is a standalone skill.
-Modern agent environments increasingly install packaged primitives:
+Legacy fields are interpreted only by migration and never become hidden v2
+authorization. Primary examples are `examples/v2-multi-source.config.yaml` and
+`examples/v2-policy-error.config.yaml`; unprefixed v1 examples remain migration
+fixtures.
 
-- `skill`
-- `plugin`
-- `marketplace`
-- `package-manager-dependency`
-- `harness`
-- `mcp-server`
-- `hook`
-- `agent`
-- `lsp`
+## Advanced operator commands
 
-An install unit records source, scope, manifest/cache paths, provided
-components, modified config files, enablement, workflow dependencies,
-permission risk, trust level, digest/signature pins, and rollback shape.
-LazyCodex-style setups fit this model as user-global harness/plugin bundles
-that provide commands, skills, MCP integrations, hooks, and config.
+The complete CLI help lists import, audit, rollout, hook, lock, variant,
+reconcile, impact, dashboard, and legacy lifecycle commands. These are not the
+normal user loop.
 
-## Variant Commands
+`reconcile` reports missing valid inventory skills as enabled, agent-local
+recommendations. It does not write policy implicitly. `impact disable
+<skill-id>` reports current enabled and sharing consequences. Neither command
+introduces another authorization state.
 
-Use `skillboard variant add claude.a --from a --capability task-review
---workflow claude-workflow --path claude/a ...` to record an explicit,
-user-approved `a -> claude.a` variant.
+`variant status <variant-id>` is read-only content and inventory lifecycle
+inspection. V2 availability changes only through `skill enable`, `skill
+disable`, `skill share`, `skill unshare`, and `skill preference`; `skill forget`
+removes obsolete policy only after the skill is absent.
 
-For a reviewed manual adaptation lifecycle, use `skillboard variant fork
-<variant-id>` to create draft metadata and raw snapshot records, edit the
-variant `SKILL.md` by hand, inspect `skillboard variant status <variant-id>`
-for `variant.status` and computed drift, then promote with `skillboard variant
-approve <variant-id>` or restore with `skillboard variant reset <variant-id>
---to-base|--to-approved`.
+Hook installation remains an advanced legacy-workflow surface:
 
-SkillBoard records the relationship and policy only; it does not convert skill
-bodies, does not rewrite skill bodies, and does not guarantee semantic
-equivalence of skill bodies. See [variant-lifecycle.md](variant-lifecycle.md)
-for the full lifecycle guide.
-
-## Related Runbooks
-
-- [install.md](install.md): install, agent-layer setup, legacy policy mode,
-  doctor, refresh, and uninstall.
-- [user-flow.md](user-flow.md): first-time skill governance workflow.
-- [policy-model.md](policy-model.md): policy states, invocation modes, and install units.
-- [capabilities.md](capabilities.md): capability catalog and workflow resolution.
-- [rollout-runbook.md](rollout-runbook.md): rollout audit, apply, report, and rollback.
-- [versioning.md](versioning.md): release, schema, profile, workflow, and lockfile versioning.
+```bash
+skillboard hook install --workflow <name> --config <path> --skills <dir> --out <path> --dry-run --json
+```

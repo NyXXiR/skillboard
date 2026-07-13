@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -23,8 +23,9 @@ test("importing source cli does not execute the command router", async () => {
   assert.equal(result.stderr, "");
 });
 
-test("post-apply brief is ready when only bridge files are missing", async () => {
+test("apply-action refuses v1 when only bridge files are missing and preserves bytes", async () => {
   await withNoBridgeReviewFixture(async ({ configPath, skillsRoot }) => {
+    const before = await readFile(configPath, "utf8");
     const result = await runSkillboard([
       "apply-action",
       "review-install-unit:medium.pack",
@@ -38,24 +39,12 @@ test("post-apply brief is ready when only bridge files are missing", async () =>
       "--json"
     ]);
 
-    assert.equal(result.code, 0, commandFailure(result));
+    assert.notEqual(result.code, 0);
 
     const payload = JSON.parse(result.stdout);
-    assert.equal(payload.ok, true);
-    assert.equal(payload.mode, "applied");
-    assert.equal(payload.brief.ok, true);
-    assert.equal(payload.brief.health.mode, "passed");
-    assert.equal(payload.brief.health.policy.ok, true);
-    assert.deepEqual(payload.brief.health.policy.errors, []);
-    assert.deepEqual(
-      payload.brief.skills.automatic_allowed.map((skill) => skill.id),
-      ["medium.helper"]
-    );
-    assert.equal(payload.brief.assistant_guidance.status, "ready");
-    assert.equal(
-      payload.brief.actions.some((action) => action.id === "review-install-unit:medium.pack"),
-      false
-    );
+    assert.equal(payload.error.code, "migration-required");
+    assert.equal(payload.error.message, "Version 1 policy is read-only. Run `skillboard migrate v2`.");
+    assert.equal(await readFile(configPath, "utf8"), before);
   });
 });
 

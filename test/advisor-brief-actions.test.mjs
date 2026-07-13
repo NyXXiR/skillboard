@@ -365,6 +365,7 @@ test("assistant guidance shell-quotes guard command hint metacharacters", () => 
     health: {
       config_path: "/tmp/config; touch owned.yaml",
       skills_root: "/tmp/skills $(touch owned)",
+      config: { version: 1 },
       policy: { errors: [] }
     },
     workflow: {
@@ -374,7 +375,7 @@ test("assistant guidance shell-quotes guard command hint metacharacters", () => 
     },
     skills: {
       automatic_allowed: [],
-      manual_allowed: [],
+      manual_allowed: [{ id: "safe" }],
       blocked: []
     },
     review_queue: [],

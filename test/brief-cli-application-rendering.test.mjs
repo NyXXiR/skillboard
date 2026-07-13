@@ -57,20 +57,15 @@ test("brief command renders complete application commands for long paths", async
   });
 });
 
-test("brief command keeps compact raw preview safety flags visible for long paths", async () => {
+test("brief command does not invent setup actions for an initialized empty v2 policy", async () => {
   await withLongTmpdir(async () => {
     await withInitializedEmptyProject(async ({ root }) => {
       const result = await runCli(["brief", "--dir", root]);
 
       assert.equal(result.code, 0);
-      const previewLine = result.stdout
-        .split("\n")
-        .find((line) => line.includes("preview: `skillboard inventory refresh"));
-
-      assert.ok(previewLine, "expected setup preview command");
-      assert.doesNotMatch(previewLine, /\.\.\./);
-      assertCommandLineContainsArg(previewLine, "--dir", root);
-      assert.match(previewLine, /--dry-run/);
+      assert.match(result.stdout, /AI can use now: 0/);
+      assert.match(result.stdout, /## Next safe action\s+[^#]*- none/s);
+      assert.doesNotMatch(result.stdout, /preview: `skillboard inventory refresh/);
     });
   });
 });

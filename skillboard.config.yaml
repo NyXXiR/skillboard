@@ -1,11 +1,2 @@
-version: 1
-defaults:
-  invocation_policy: deny-by-default
-  allow_model_invocation: false
-  require_explicit_workflow: true
-
+version: 2
 skills: {}
-capabilities: {}
-harnesses: {}
-workflows: {}
-install_units: {}

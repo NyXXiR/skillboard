@@ -111,7 +111,7 @@ test("built-in source profiles can derive category and lifecycle from repository
   }
 });
 
-test("cli import can safely merge a profile into config", async () => {
+test("cli import refuses merging into v1 config and preserves bytes", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-import-merge-test-"));
   try {
     const sourceRoot = join(root, "source");
@@ -120,7 +120,7 @@ test("cli import can safely merge a profile into config", async () => {
     await writeFile(configPath, "# keep import comment\nversion: 1\nskills: {}\ninstall_units: {}\n", "utf8");
     const before = await readFile(configPath, "utf8");
 
-    const dryRun = await execFileAsync(process.execPath, [
+    await assert.rejects(execFileAsync(process.execPath, [
       "bin/skillboard.mjs",
       "import",
       "--profile",
@@ -132,17 +132,10 @@ test("cli import can safely merge a profile into config", async () => {
       "--merge",
       "--dry-run",
       "--json"
-    ]);
-    const dryRunPayload = JSON.parse(dryRun.stdout);
-
-    assert.equal(dryRunPayload.dryRun, true);
-    assert.equal(dryRunPayload.changed, true);
-    assert.equal(dryRunPayload.plan.semanticAvailable, true);
-    assert.ok(dryRunPayload.plan.semanticChanges.some((change) => change.path === "/skills/matt.tdd"));
-    assert.deepEqual(dryRunPayload.addedSkills, ["matt.tdd"]);
+    ]), /Version 1 policy is read-only\. Run `skillboard migrate v2`\./);
     assert.equal(await readFile(configPath, "utf8"), before);
 
-    const result = await execFileAsync(process.execPath, [
+    await assert.rejects(execFileAsync(process.execPath, [
       "bin/skillboard.mjs",
       "import",
       "--profile",
@@ -152,20 +145,56 @@ test("cli import can safely merge a profile into config", async () => {
       "--config",
       configPath,
       "--merge"
-    ]);
-    const merged = YAML.parse(await readFile(configPath, "utf8"));
-    const mergedText = await readFile(configPath, "utf8");
-
-    assert.match(result.stdout, /Import merged/);
-    assert.match(mergedText, /# keep import comment/);
-    assert.equal(merged.skills["matt.tdd"].owner_install_unit, "github.mattpocock.skills");
-    assert.deepEqual(merged.install_units["github.mattpocock.skills"].components.skills, ["matt.tdd"]);
+    ]), /Version 1 policy is read-only\. Run `skillboard migrate v2`\./);
+    assert.equal(await readFile(configPath, "utf8"), before);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("cli import merge uses cwd skillboard.config.yaml by default", async () => {
+test("cli import merge records v2 inventory and enables missing skills agent-locally without source gating", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-v2-import-merge-"));
+  try {
+    const sourceRoot = join(root, "source");
+    const profilePath = join(root, "unreviewed-profile.yaml");
+    const configPath = join(root, "skillboard.config.yaml");
+    await writeSkill(join(sourceRoot, "skills", "new", "SKILL.md"), "new", "New imported skill.");
+    await writeFile(profilePath, `id: external.unreviewed
+kind: skill
+namespace: imported
+target_path_prefix: imported
+scope: project
+default_status: quarantined
+default_invocation: blocked
+default_exposure: unit-managed
+default_category: imported
+trust_level: unreviewed
+provided_components: [skills]
+skill_paths: [skills/*/SKILL.md]
+`, "utf8");
+    await writeFile(configPath, "version: 2\nskills:\n  existing:\n    enabled: false\n    shared: false\n", "utf8");
+
+    const result = await execFileAsync(process.execPath, [
+      SKILLBOARD_BIN, "import", "--profile", profilePath, "--source-root", sourceRoot,
+      "--config", configPath, "--merge", "--json"
+    ], { cwd: root });
+
+    const payload = JSON.parse(result.stdout);
+    const config = YAML.parse(await readFile(configPath, "utf8"));
+    const inventory = JSON.parse(await readFile(join(root, ".skillboard", "inventory.json"), "utf8"));
+    assert.deepEqual(config.skills.existing, { enabled: false, shared: false });
+    assert.deepEqual(config.skills["imported.new"], { enabled: true, shared: false });
+    assert.equal("install_units" in config, false);
+    assert.deepEqual(payload.addedSkills, ["imported.new"]);
+    assert.equal(inventory.authoritative_for_availability, false);
+    assert.equal(inventory.skills[0].id, "imported.new");
+    assert.equal(inventory.install_units[0].trust_observation, "unreviewed");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("cli import v1 refusal uses the user-level config and preserves bytes", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-import-default-config-test-"));
   try {
     const sourceRoot = join(root, "source");
@@ -174,7 +203,7 @@ test("cli import merge uses cwd skillboard.config.yaml by default", async () => 
     await writeFile(configPath, "version: 1\nskills: {}\ninstall_units: {}\n", "utf8");
     const before = await readFile(configPath, "utf8");
 
-    const dryRun = await execFileAsync(process.execPath, [
+    await assert.rejects(execFileAsync(process.execPath, [
       SKILLBOARD_BIN,
       "import",
       "--profile",
@@ -184,12 +213,10 @@ test("cli import merge uses cwd skillboard.config.yaml by default", async () => 
       "--merge",
       "--dry-run",
       "--json"
-    ], { cwd: root });
-    const payload = JSON.parse(dryRun.stdout);
-
-    assert.equal(payload.dryRun, true);
-    assert.equal(payload.changed, true);
-    assert.deepEqual(payload.addedSkills, ["matt.tdd"]);
+    ], {
+      cwd: root,
+      env: { ...process.env, HOME: root, USERPROFILE: root }
+    }), /Version 1 policy is read-only\. Run `skillboard migrate v2`\./);
     assert.equal(await readFile(configPath, "utf8"), before);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -246,7 +273,7 @@ install_units: {}
         configPath,
         "--merge"
       ]),
-      /Policy update would create invalid config|workflow-auto/
+      /Version 1 policy is read-only\. Run `skillboard migrate v2`\./
     );
     assert.equal(await readFile(configPath, "utf8"), before);
   } finally {
@@ -270,6 +297,7 @@ install_units: {}
 `,
       "utf8"
     );
+    const before = await readFile(configPath, "utf8");
 
     await assert.rejects(
       execFileAsync(process.execPath, [
@@ -286,7 +314,7 @@ install_units: {}
       /already exist/
     );
 
-    await execFileAsync(process.execPath, [
+    await assert.rejects(execFileAsync(process.execPath, [
       "bin/skillboard.mjs",
       "import",
       "--profile",
@@ -297,10 +325,8 @@ install_units: {}
       configPath,
       "--merge",
       "--replace"
-    ]);
-    const merged = YAML.parse(await readFile(configPath, "utf8"));
-
-    assert.equal(merged.skills["matt.tdd"].path, "matt/tdd");
+    ]), /Version 1 policy is read-only\. Run `skillboard migrate v2`\./);
+    assert.equal(await readFile(configPath, "utf8"), before);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

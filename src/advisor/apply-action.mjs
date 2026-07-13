@@ -5,8 +5,15 @@ import {
   installGuardHook,
   removeSkill
 } from "../control.mjs";
+import { setV2SkillEnabled, setV2SkillPreference } from "../control/v2-skill-crud.mjs";
+import { forgetV2Skill } from "../control/v2-skill-forget.mjs";
+import { setSkillSharing } from "../shared-skill.mjs";
+import { resolveUserStatePaths } from "../user-state-paths.mjs";
 import { reviewInstallUnit } from "../review.mjs";
 import { uninstallProject } from "../uninstall.mjs";
+import { isPreV2ActionId, V1_MUTATION_ERROR } from "../compatibility.mjs";
+import { loadWorkspace } from "../workspace.mjs";
+import { resolveProjectPaths } from "./schema.mjs";
 
 const INSTALL_UNIT_ACTIONS = new Set([
   "block-install-unit",
@@ -27,17 +34,30 @@ export async function applyAdvisorAction(actionId, options) {
     throw new ApplyActionError("missing-action-id", "Usage: skillboard apply-action <action-id>");
   }
 
+  const paths = resolveProjectPaths(options);
+  options = { ...options, root: paths.root, configPath: paths.configPath, skillsRoot: paths.skillsRoot };
+  const workspace = await loadWorkspace({ configPath: options.configPath, skillsRoot: options.skillsRoot });
+  if (workspace.version === 1 && options.yes === true && options.dryRun !== true) {
+    throw new ApplyActionError("migration-required", V1_MUTATION_ERROR);
+  }
+  if (workspace.version === 2 && isPreV2ActionId(actionId)) {
+    throw new ApplyActionError("stale-policy-version", `Pre-v2 action id is stale: ${actionId}. Run skillboard brief --include-actions to get current actions.`);
+  }
   const action = await resolveCurrentAction(actionId, options);
   if (action.blocked_reason !== null) {
     throw new ApplyActionError("blocked-action", action.blocked_reason);
   }
 
   if (previewMode(options)) {
+    const control = action.kind.startsWith("v2:")
+      ? await dispatchAction(action, { ...options, dryRun: true })
+      : null;
     return {
       ok: true,
       mode: "preview",
       changed: false,
-      action
+      action,
+      control
     };
   }
 
@@ -96,6 +116,8 @@ async function resolveCurrentAction(actionId, options) {
 function buildActionBrief(options) {
   return buildSkillBrief({
     includeActions: true,
+    agent: options.agent,
+    intent: options.intent,
     workflow: options.workflow,
     configPath: options.configPath,
     skillsRoot: options.skillsRoot,
@@ -108,6 +130,57 @@ function previewMode(options) {
 }
 
 async function dispatchAction(action, options) {
+  if (action.kind === "v2:enable-skill" || action.kind === "v2:disable-skill") {
+    return await setV2SkillEnabled({
+      skillId: action.applies_to.id,
+      enabled: action.kind === "v2:enable-skill",
+      configPath: options.configPath,
+      skillsRoot: options.skillsRoot,
+      dryRun: options.dryRun === true
+    });
+  }
+  if (action.kind === "v2:share-skill" || action.kind === "v2:unshare-skill") {
+    const state = resolveUserStatePaths({
+      home: options.home,
+      env: options.env ?? process.env,
+      configPath: options.configPath,
+      inventoryPath: options.inventoryPath
+    });
+    return await setSkillSharing({
+      skillId: action.applies_to.id,
+      shared: action.kind === "v2:share-skill",
+      configPath: options.configPath,
+      inventoryPath: state.inventoryPath,
+      home: state.home,
+      env: options.env ?? process.env,
+      dryRun: options.dryRun === true
+    });
+  }
+  if (action.kind === "v2:prefer-skill") {
+    return await setV2SkillPreference({
+      skillId: action.applies_to.id,
+      intents: action.advanced.intents,
+      priority: action.advanced.priority,
+      configPath: options.configPath,
+      skillsRoot: options.skillsRoot,
+      dryRun: options.dryRun === true
+    });
+  }
+  if (action.kind === "v2:forget-skill") {
+    const state = resolveUserStatePaths({
+      home: options.home,
+      env: options.env ?? process.env,
+      configPath: options.configPath,
+      inventoryPath: options.inventoryPath
+    });
+    return await forgetV2Skill({
+      skillId: action.applies_to.id,
+      configPath: options.configPath,
+      inventoryPath: state.inventoryPath,
+      skillsRoot: options.skillsRoot,
+      dryRun: options.dryRun === true
+    });
+  }
   if (INSTALL_UNIT_ACTIONS.has(action.kind)) {
     return await reviewInstallUnit({
       unitId: action.applies_to.id,

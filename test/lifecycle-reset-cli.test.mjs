@@ -66,49 +66,6 @@ test("cli uninstall reset-config remove-reports cleans SkillBoard scaffolding wh
       "---\nname: local-helper\ndescription: Local clean uninstall fixture.\n---\n# Local helper\n",
       "utf8"
     );
-    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "add", "harness", "codex", "--config", join(root, "skillboard.config.yaml"), "--skills", join(root, "skills")]);
-    await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "add",
-      "skill",
-      "user.local-helper",
-      "--path",
-      "local-helper",
-      "--status",
-      "candidate",
-      "--invocation",
-      "manual-only",
-      "--config",
-      join(root, "skillboard.config.yaml"),
-      "--skills",
-      join(root, "skills")
-    ]);
-    await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "add",
-      "workflow",
-      "clean-workflow",
-      "--harness",
-      "codex",
-      "--skill",
-      "user.local-helper",
-      "--config",
-      join(root, "skillboard.config.yaml"),
-      "--skills",
-      join(root, "skills")
-    ]);
-    const canUse = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "can-use",
-      "user.local-helper",
-      "--workflow",
-      "clean-workflow",
-      "--config",
-      join(root, "skillboard.config.yaml"),
-      "--skills",
-      join(root, "skills"),
-      "--json"
-    ]);
     await execFileAsync(process.execPath, [
       "bin/skillboard.mjs",
       "dashboard",
@@ -121,7 +78,6 @@ test("cli uninstall reset-config remove-reports cleans SkillBoard scaffolding wh
     ]);
 
     const dryRun = await execFileAsync(process.execPath, ["bin/skillboard.mjs", "uninstall", "--dir", root, "--reset-config", "--remove-reports", "--dry-run"]);
-    assert.equal(JSON.parse(canUse.stdout).allowed, true);
     assert.match(dryRun.stdout, /Removed: .*`skillboard\.config\.yaml`/);
     assert.equal(dryRun.stdout.includes("`.skillboard`"), true);
     assert.match(await readFile(join(root, ".skillboard", "reports", "skill-map.md"), "utf8"), /SkillBoard/);
@@ -149,53 +105,9 @@ test("cli uninstall purge removes SkillBoard policy footprint while preserving l
       "---\nname: local-helper\ndescription: Local purge uninstall fixture.\n---\n# Local helper\n",
       "utf8"
     );
-    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "add", "harness", "codex", "--config", join(root, "skillboard.config.yaml"), "--skills", join(root, "skills")]);
-    await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "add",
-      "skill",
-      "user.local-helper",
-      "--path",
-      "local-helper",
-      "--status",
-      "candidate",
-      "--invocation",
-      "manual-only",
-      "--config",
-      join(root, "skillboard.config.yaml"),
-      "--skills",
-      join(root, "skills")
-    ]);
-    await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "add",
-      "workflow",
-      "purge-workflow",
-      "--harness",
-      "codex",
-      "--skill",
-      "user.local-helper",
-      "--config",
-      join(root, "skillboard.config.yaml"),
-      "--skills",
-      join(root, "skills")
-    ]);
     await writeFile(join(root, "skillboard.config.yaml"), `${await readFile(join(root, "skillboard.config.yaml"), "utf8")}# remembered policy choice\n`, "utf8");
-    await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "hook",
-      "install",
-      "--workflow",
-      "purge-workflow",
-      "--config",
-      join(root, "skillboard.config.yaml"),
-      "--skills",
-      join(root, "skills"),
-      "--out",
-      join(root, ".skillboard", "hooks", "purge-workflow-guard.sh"),
-      "--skillboard-bin",
-      join(process.cwd(), "bin", "skillboard.mjs")
-    ]);
+    await mkdir(join(root, ".skillboard", "hooks"), { recursive: true });
+    await writeFile(join(root, ".skillboard", "hooks", "purge-workflow-guard.sh"), "#!/bin/sh\n", "utf8");
     await execFileAsync(process.execPath, [
       "bin/skillboard.mjs",
       "dashboard",
@@ -264,52 +176,8 @@ test("cli uninstall remove-hooks can fully reset generated guard hooks without d
       "---\nname: local-helper\ndescription: Local hook cleanup fixture.\n---\n# Local helper\n",
       "utf8"
     );
-    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "add", "harness", "codex", "--config", join(root, "skillboard.config.yaml"), "--skills", join(root, "skills")]);
-    await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "add",
-      "skill",
-      "user.local-helper",
-      "--path",
-      "local-helper",
-      "--status",
-      "candidate",
-      "--invocation",
-      "manual-only",
-      "--config",
-      join(root, "skillboard.config.yaml"),
-      "--skills",
-      join(root, "skills")
-    ]);
-    await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "add",
-      "workflow",
-      "clean-workflow",
-      "--harness",
-      "codex",
-      "--skill",
-      "user.local-helper",
-      "--config",
-      join(root, "skillboard.config.yaml"),
-      "--skills",
-      join(root, "skills")
-    ]);
-    await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "hook",
-      "install",
-      "--workflow",
-      "clean-workflow",
-      "--config",
-      join(root, "skillboard.config.yaml"),
-      "--skills",
-      join(root, "skills"),
-      "--out",
-      join(root, ".skillboard", "hooks", "clean-workflow-guard.sh"),
-      "--skillboard-bin",
-      join(process.cwd(), "bin", "skillboard.mjs")
-    ]);
+    await mkdir(join(root, ".skillboard", "hooks"), { recursive: true });
+    await writeFile(join(root, ".skillboard", "hooks", "clean-workflow-guard.sh"), "#!/bin/sh\n", "utf8");
     await execFileAsync(process.execPath, [
       "bin/skillboard.mjs",
       "dashboard",

@@ -1,9 +1,9 @@
 import { command } from "./action-core.mjs";
 
-const GUARD_WHEN = "before invoking a skill";
+const GUARD_WHEN = "immediately before skill use";
 const GOAL_DOCUMENT = Object.freeze({
   path: "docs/ai-skill-routing-goal.md",
-  purpose: "Preserve SkillBoard as a permissive AI skill routing layer: keep skills broadly available, resolve overlaps deterministically, explain briefly, ask after use when policy learning helps, and remember usage policy without rewriting skill bodies.",
+  purpose: "Preserve SkillBoard v2 as a user-level control plane: enable or disable a skill, opt individual skills into cross-agent sharing, and use optional preference only to rank available overlaps.",
   loop: Object.freeze([
     "observe",
     "route",
@@ -18,7 +18,7 @@ const GOAL_DOCUMENT = Object.freeze({
     "before changing brief output",
     "before changing bridge instructions",
     "before changing policy UX",
-    "before changing workflow UX"
+    "before changing sharing UX"
   ])
 });
 const GUARD_ALLOWED_USE = Object.freeze({
@@ -71,6 +71,9 @@ function guidanceStatus(brief) {
   if (brief.error?.code === "unknown-workflow" || brief.workflow?.unknown === true) {
     return "unknown-workflow";
   }
+  if (brief.health?.config?.version === 2 && brief.workflow?.selected === null && (brief.workflow?.candidates?.length ?? 0) === 0) {
+    return "ready";
+  }
   if (brief.workflow?.needs_selection === true || brief.workflow?.selected === null) {
     return "workflow-selection-needed";
   }
@@ -92,20 +95,20 @@ function hasInvalidConfig(brief) {
 }
 
 function summaryForStatus(status, brief) {
-  const readyCount = (brief.skills?.automatic_allowed?.length ?? 0) + (brief.skills?.manual_allowed?.length ?? 0);
+  const readyCount = availableSkillCount(brief);
   const decisionCount = guidanceDecisionCount(brief);
   const blockedCount = brief.skills?.blocked?.length ?? 0;
   switch (status) {
     case "ready":
-      return `SkillBoard is ready; ${readyCount} skills are available in this workflow.`;
+      return `SkillBoard is ready; ${readyCount} skills are available for the current agent.`;
     case "needs-decision":
-      return `SkillBoard needs ${decisionCount} user ${decisionWord(decisionCount)} before this workflow is fully ready.`;
+      return `SkillBoard needs ${decisionCount} user ${decisionWord(decisionCount)} before the requested policy change is applied.`;
     case "blocked":
       return `SkillBoard found blocking policy issues; ${blockedCount} skills are blocked for safety.`;
     case "not-initialized":
-      return "SkillBoard is not initialized in this project.";
+      return "SkillBoard user state has not been set up yet.";
     case "invalid-config":
-      return "SkillBoard cannot read the project configuration.";
+      return "SkillBoard cannot read the selected user policy configuration.";
     case "workflow-selection-needed":
       return "SkillBoard needs a workflow selection before applying action cards.";
     case "unknown-workflow":
@@ -113,6 +116,10 @@ function summaryForStatus(status, brief) {
     default:
       return "SkillBoard could not determine the current guidance state.";
   }
+}
+
+function availableSkillCount(brief) {
+  return (brief.skills?.automatic_allowed?.length ?? 0) + (brief.skills?.manual_allowed?.length ?? 0);
 }
 
 function guidanceDecisionCount(brief) {
@@ -137,7 +144,9 @@ function recommendedNextStep(status, brief, choices, route = null) {
           ? "Ask a clarifying question; no workflow capability matched this request."
           : `Use ${route.recommended_skill} for this request after the guard check passes${postUsePolicyStep(route)}.`;
       }
-      return "Run the guard check before invoking any selected skill.";
+      return availableSkillCount(brief) === 0
+        ? "No policy change is required; valid installed skills default to enabled and agent-local."
+        : "Run the guard check immediately before using any selected skill.";
     case "needs-decision":
       if (route?.recommended_skill !== null && route?.guard_allowed === true) {
         return route.post_use_policy_suggestion === null
@@ -156,7 +165,7 @@ function recommendedNextStep(status, brief, choices, route = null) {
         : `Review the blocked item before applying: ${firstChoice.label}.`;
     case "not-initialized":
       return firstChoice === undefined
-        ? "Initialize SkillBoard before checking skill availability."
+        ? "Run SkillBoard setup before checking skill availability."
         : `Ask the user whether to approve: ${firstChoice.label}.`;
     case "invalid-config":
       return "Fix the SkillBoard configuration before checking skill availability.";
@@ -237,16 +246,15 @@ function confirmableAction(action) {
 }
 
 function guardCommandHint(brief) {
-  if (hasInvalidConfig(brief)) {
+  if (hasInvalidConfig(brief) || brief.error?.code === "not-initialized" || availableSkillCount(brief) === 0) {
     return null;
   }
-  if (brief.workflow?.selected === null || brief.workflow?.unknown === true || brief.workflow?.needs_selection === true) {
-    return null;
-  }
+  const version = brief.health?.config?.version;
+  if (version === 1 && (brief.workflow?.selected === null || brief.workflow?.unknown === true || brief.workflow?.needs_selection === true)) return null;
   return command([
     "skillboard", "guard", "use", "<skill-id>",
-    "--workflow", brief.workflow.selected,
+    ...(version === 1 ? ["--workflow", brief.workflow.selected] : []),
     "--config", brief.health.config_path,
-    "--skills", brief.health.skills_root
+    ...(brief.health.skills_root === undefined || brief.health.skills_root === null ? [] : ["--skills", brief.health.skills_root])
   ]).display;
 }

@@ -7,6 +7,20 @@ import { test } from "node:test";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const V1_READ_ONLY_ERROR = "Version 1 policy is read-only. Run `skillboard migrate v2`.";
+
+async function assertV1HookInstallRefused(args, configPath) {
+  const before = await readFile(configPath);
+  let error;
+  try {
+    await execFileAsync(process.execPath, ["bin/skillboard.mjs", "hook", "install", ...args]);
+  } catch (caught) {
+    error = caught;
+  }
+  assert.equal(error?.code, 1);
+  assert.equal(error?.stderr, `${V1_READ_ONLY_ERROR}\n`);
+  assert.deepEqual(await readFile(configPath), before);
+}
 
 async function execHookScript(path, args, options = {}) {
   if (process.platform === "win32") {
@@ -19,14 +33,11 @@ function isPosixExecutableBitSupported() {
   return process.platform !== "win32";
 }
 
-test("cli hook install emits an executable guard script", async () => {
+test("cli hook install refuses v1 policy without writing a guard script", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-hook-test-"));
   try {
     const hookPath = join(root, "codex-night-guard.sh");
-    const install = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "hook",
-      "install",
+    await assertV1HookInstallRefused([
       "--workflow",
       "codex-night-workflow",
       "--config",
@@ -37,53 +48,14 @@ test("cli hook install emits an executable guard script", async () => {
       hookPath,
       "--skillboard-bin",
       join(process.cwd(), "bin", "skillboard.mjs")
-    ]);
-    const script = await readFile(hookPath, "utf8");
-    const mode = (await stat(hookPath)).mode;
-    const guard = await execHookScript(hookPath, ["private.tdd-work-continuity"]);
-
-    assert.match(install.stdout, /Installed guard hook/);
-    assert.match(script, /guard use/);
-    if (isPosixExecutableBitSupported()) {
-      assert.equal((mode & 0o111) !== 0, true);
-    }
-    assert.equal(guard.stdout, "allow\n");
-    const guardWithEnvOverrideAttempt = await execHookScript(hookPath, ["private.tdd-work-continuity"], {
-      env: {
-        ...process.env,
-        SKILLBOARD_BIN: process.platform === "win32" ? "cmd /c exit 0" : "/bin/true",
-        SKILLBOARD_CONFIG: join(root, "fake-config.yaml"),
-        SKILLBOARD_SKILLS: join(root, "fake-skills"),
-        SKILLBOARD_WORKFLOW: "fake-workflow"
-      }
-    });
-    assert.equal(guardWithEnvOverrideAttempt.stdout, "allow\n");
-
-    const commandHook = join(root, "codex-night-guard-node.sh");
-    await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "hook",
-      "install",
-      "--workflow",
-      "codex-night-workflow",
-      "--config",
-      "examples/multi-source.config.yaml",
-      "--skills",
-      "examples/multi-source-skills",
-      "--out",
-      commandHook,
-      "--skillboard-bin",
-      `${process.execPath} ${join(process.cwd(), "bin", "skillboard.mjs")}`
-    ]);
-    const commandGuard = await execHookScript(commandHook, ["matt.tdd"]);
-
-    assert.equal(commandGuard.stdout, "allow\n");
+    ], join(process.cwd(), "examples", "multi-source.config.yaml"));
+    await assert.rejects(stat(hookPath), { code: "ENOENT" });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("cli hook install rejects existing paths and sanitizes default workflow filenames", async () => {
+test("cli hook install refuses v1 before path handling and preserves config bytes", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-hook-safety-test-"));
   try {
     const configPath = join(root, "skillboard.config.yaml");
@@ -121,10 +93,7 @@ harnesses:
     } catch (caught) {
       error = caught;
     }
-    const installed = await execFileAsync(process.execPath, [
-      "bin/skillboard.mjs",
-      "hook",
-      "install",
+    await assertV1HookInstallRefused([
       "--workflow",
       "../bad workflow",
       "--config",
@@ -133,11 +102,10 @@ harnesses:
       join(root, "skills"),
       "--skillboard-bin",
       join(process.cwd(), "bin", "skillboard.mjs")
-    ]);
+    ], configPath);
 
     assert.equal(error.code, 1);
     assert.match(error.stderr, /Refusing to overwrite existing hook path/);
-    assert.match(installed.stdout, /\.skillboard[\\/]hooks[\\/]skillboard-guard-bad-workflow\.sh/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

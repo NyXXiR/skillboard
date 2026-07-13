@@ -1,86 +1,83 @@
-import assert from "node:assert/strict";
+import { strict as assert } from "node:assert";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import YAML from "yaml";
 
 const execFileAsync = promisify(execFile);
 const outputLimit = 1024 * 1024 * 10;
-
 const temp = await mkdtemp(join(tmpdir(), "skillboard-ci-smoke-"));
 
 try {
   const packageRoot = process.cwd();
   const projectRoot = join(temp, "project");
   const packRoot = join(temp, "package");
-  const codexHome = join(temp, "codex-home");
-  const repoRoot = join(temp, "source-repo");
+  const installRoot = join(temp, "installed");
+  const home = join(temp, "home");
+  const codexHome = join(home, ".codex");
+  const skillPath = join(codexHome, "skills", "smoke-skill");
+  const env = { HOME: home, USERPROFILE: home, CODEX_HOME: codexHome };
 
   await mkdir(projectRoot, { recursive: true });
   await mkdir(packRoot, { recursive: true });
-  await mkdir(join(codexHome, "skills", "smoke-skill"), { recursive: true });
+  await mkdir(installRoot, { recursive: true });
+  await mkdir(skillPath, { recursive: true });
+  for (const root of [
+    join(home, ".claude", "skills"),
+    join(home, ".config", "opencode", "skills"),
+    join(home, ".hermes", "skills")
+  ]) {
+    await mkdir(root, { recursive: true });
+  }
   await writeFile(
-    join(codexHome, "skills", "smoke-skill", "SKILL.md"),
-    "---\nname: Smoke Skill\ndescription: CI inventory smoke\n---\n",
+    join(skillPath, "SKILL.md"),
+    "---\nname: smoke-skill\ndescription: CI inventory smoke\n---\n",
     "utf8"
   );
 
   await assertPackContents(packageRoot);
-
   const tarball = await packPackage(packRoot);
-  await npm(["exec", "--yes", "--package", tarball, "--", "skillboard", "help"]);
-  await npm(["exec", "--yes", "--package", tarball, "--", "skillboard", "init", "--dir", projectRoot, "--no-scan-installed"]);
-  await assertPackagedIntentBrief(tarball, projectRoot);
+  const packagedCli = await installPackage(tarball, installRoot, env);
+  const run = (args) => node([packagedCli, ...args], { cwd: projectRoot, env });
 
-  await node(["bin/skillboard.mjs", "inventory", "refresh", "--dir", projectRoot, "--dry-run"], {
-    env: { CODEX_HOME: codexHome }
-  });
-  await node(["bin/skillboard.mjs", "inventory", "refresh", "--dir", projectRoot], {
-    env: { CODEX_HOME: codexHome }
-  });
-  await assertFileContains(join(projectRoot, "skillboard.config.yaml"), "smoke-skill");
+  await run(["help"]);
+  await run(["setup", "--yes", "--agent", "codex"]);
+  const brief = JSON.parse((await run([
+    "brief", "--agent", "codex", "--intent", "CI inventory smoke", "--json"
+  ])).stdout.toString());
+  assert.equal(brief.health.config.version, 2);
+  assert.equal(brief.assistant_guidance.route.recommended_skill, "smoke-skill");
 
-  await node(["bin/skillboard.mjs", "doctor", "--dir", projectRoot]);
-  await node(["bin/skillboard.mjs", "status", "--dir", projectRoot, "--json"]);
-  await node(["bin/skillboard.mjs", "check", "--config", join(projectRoot, "skillboard.config.yaml"), "--skills", join(projectRoot, "skills")]);
+  const allowed = JSON.parse((await run([
+    "guard", "use", "smoke-skill", "--agent", "codex", "--json"
+  ])).stdout.toString());
+  assert.equal(allowed.allowed, true);
 
-  await writeFile(
-    join(projectRoot, "install.log"),
-    "Installed commands: $smoke-run\nRegistered hooks: post-tool-use\nConfigured MCP servers: smoke_mcp\nUpdated config: smoke-config.json\n",
-    "utf8"
-  );
-  await writeFile(
-    join(projectRoot, "smoke-config.json"),
-    JSON.stringify({ commands: ["$smoke-config"], mcpServers: { smoke_config_mcp: { command: "node" } } }),
-    "utf8"
-  );
-  await node([
-    "bin/skillboard.mjs",
-    "inventory",
-    "detect",
-    "--config",
-    join(projectRoot, "skillboard.config.yaml"),
-    "--unit",
-    "smoke.runtime",
-    "--source",
-    "npx smoke install",
-    "--install-output",
-    join(projectRoot, "install.log"),
-    "--config-file",
-    join(projectRoot, "smoke-config.json")
-  ]);
-  await assertFileContains(join(projectRoot, "skillboard.config.yaml"), "smoke.runtime");
+  await run(["skill", "disable", "smoke-skill", "--json"]);
+  await assertCommandFails(run([
+    "guard", "use", "smoke-skill", "--agent", "codex", "--json"
+  ]), /disabled/i, 2);
+  await run(["skill", "enable", "smoke-skill", "--json"]);
 
-  await createSourceRepo(repoRoot);
-  await addRemoteSource(join(projectRoot, "skillboard.config.yaml"), repoRoot);
-  await node(["bin/skillboard.mjs", "sources", "refresh", "--dir", projectRoot, "--unit", "smoke.remote"]);
-  await assertFileContains(join(projectRoot, "skillboard.config.yaml"), "source_digest: sha256:");
+  await run(["skill", "share", "smoke-skill", "--json"]);
+  const shared = JSON.parse((await run([
+    "guard", "use", "smoke-skill", "--agent", "hermes", "--json"
+  ])).stdout.toString());
+  assert.equal(shared.allowed, true);
+  await run(["skill", "unshare", "smoke-skill", "--json"]);
+  await assertCommandFails(run([
+    "guard", "use", "smoke-skill", "--agent", "hermes", "--json"
+  ]), /not installed for agent hermes/i, 2);
 
-  await node(["bin/skillboard.mjs", "uninstall", "--dir", projectRoot, "--dry-run"]);
-  await node(["bin/skillboard.mjs", "uninstall", "--dir", projectRoot]);
+  const preview = JSON.parse((await run(["uninstall", "--user", "--dry-run", "--json"])).stdout.toString());
+  assert.equal(preview.dry_run, true);
+  await access(join(home, "skillboard.config.yaml"));
+  await run(["uninstall", "--user", "--yes", "--json"]);
+  await access(join(skillPath, "SKILL.md"));
+  await assertMissing(join(home, "skillboard.config.yaml"));
+  await assertMissing(join(home, ".skillboard"));
+  await assertMissing(join(projectRoot, "skillboard.config.yaml"));
 } finally {
   await rm(temp, { recursive: true, force: true });
 }
@@ -92,98 +89,45 @@ async function assertPackContents(packageRoot) {
 
   for (const required of [
     "bin/skillboard.mjs",
-    "src/doctor.mjs",
-    "src/source-cache.mjs",
-    "src/install-output-detector.mjs",
+    "src/control/v2-skill-forget.mjs",
+    "src/user-uninstall.mjs",
     "docs/install.md"
   ]) {
     assert.ok(paths.includes(required), `missing ${required}`);
   }
-
   for (const blocked of [".omo/", "test/"]) {
     assert.equal(paths.some((path) => path.startsWith(blocked)), false, `packed internal path ${blocked}`);
   }
 }
 
 async function packPackage(destination) {
-  const result = await npm(["pack", "--json", "--pack-destination", destination]);
+  const result = await npm(["pack", process.cwd(), "--json"], { cwd: destination });
   const [pack] = JSON.parse(result.stdout.toString());
-
   return join(destination, pack.filename);
 }
 
-async function createSourceRepo(repoRoot) {
-  await mkdir(repoRoot, { recursive: true });
-  await git(["-C", repoRoot, "init"]);
-  await writeFile(join(repoRoot, "README.md"), "source smoke\n", "utf8");
-  await git(["-C", repoRoot, "add", "README.md"]);
-  await git(["-C", repoRoot, "-c", "user.email=ci@example.test", "-c", "user.name=SkillBoardCI", "commit", "-m", "init"]);
+async function installPackage(tarball, installRoot, env) {
+  await writeFile(join(installRoot, "package.json"), JSON.stringify({ private: true }), "utf8");
+  await npm(["install", "--no-audit", "--no-fund", tarball], { cwd: installRoot, env });
+  return join(installRoot, "node_modules", "agent-skillboard", "bin", "skillboard.mjs");
 }
 
-async function assertPackagedIntentBrief(tarball, projectRoot) {
-  const skillsRoot = join(projectRoot, "skills");
-  const skillPath = join(skillsRoot, "user-test-first");
-  const configPath = join(projectRoot, "skillboard.config.yaml");
-  const baseArgs = ["--config", configPath, "--skills", skillsRoot];
+async function assertCommandFails(promise, pattern, expectedCode) {
+  try {
+    await promise;
+    assert.fail("expected command to fail");
+  } catch (error) {
+    if (typeof error !== "object" || error === null) throw error;
+    assert.equal(Reflect.get(error, "code"), expectedCode);
+    assert.match(`${Reflect.get(error, "stdout") ?? ""}\n${Reflect.get(error, "stderr") ?? ""}`, pattern);
+  }
+}
 
-  await mkdir(skillPath, { recursive: true });
-  await writeFile(
-    join(skillPath, "SKILL.md"),
-    "---\nname: test-first\ndescription: Write tests before implementation.\n---\n# test-first\n",
-    "utf8"
+async function assertMissing(path) {
+  await assert.rejects(
+    access(path),
+    (error) => typeof error === "object" && error !== null && Reflect.get(error, "code") === "ENOENT"
   );
-  await npm(["exec", "--yes", "--package", tarball, "--", "skillboard", "add", "skill", "user.test-first", "--path", "user-test-first", "--category", "testing", ...baseArgs]);
-  await npm(["exec", "--yes", "--package", tarball, "--", "skillboard", "add", "workflow", "daily-workflow", "--harness", "codex", "--skill", "user.test-first", ...baseArgs]);
-
-  const brief = await npm([
-    "exec",
-    "--yes",
-    "--package",
-    tarball,
-    "--",
-    "skillboard",
-    "brief",
-    "--intent",
-    "write tests before implementation",
-    "--workflow",
-    "daily-workflow",
-    ...baseArgs,
-    "--json"
-  ]);
-  const payload = JSON.parse(brief.stdout.toString());
-  assert.equal(payload.assistant_guidance.route.recommended_skill, "user.test-first");
-  assert.equal(payload.assistant_guidance.route.usage_disclosure.confirmation_required, false);
-
-  const guard = await npm(["exec", "--yes", "--package", tarball, "--", "skillboard", "guard", "use", "user.test-first", "--workflow", "daily-workflow", ...baseArgs, "--json"]);
-  assert.equal(JSON.parse(guard.stdout.toString()).allowed, true);
-}
-
-async function addRemoteSource(configPath, repoRoot) {
-  const doc = YAML.parseDocument(await readFile(configPath, "utf8"));
-  const currentUnits = doc.get("install_units", true);
-  const units = YAML.isMap(currentUnits) ? currentUnits : doc.createNode({});
-
-  if (!YAML.isMap(units)) {
-    throw new Error("expected install_units to be a YAML map");
-  }
-  if (!YAML.isMap(currentUnits)) {
-    doc.set("install_units", units);
-  }
-
-  units.set("smoke.remote", doc.createNode({
-    kind: "marketplace",
-    source: `git clone ${pathToFileURL(repoRoot).href}`,
-    scope: "user-global",
-    enabled: true,
-    permission_risk: "low"
-  }));
-  await writeFile(configPath, String(doc), "utf8");
-}
-
-async function assertFileContains(path, expected) {
-  const text = await readFile(path, "utf8");
-
-  assert.ok(text.includes(expected), `expected ${path} to contain ${expected}`);
 }
 
 function node(args, options = {}) {
@@ -197,12 +141,7 @@ function npm(args, options = {}) {
       shell: process.platform === "win32"
     });
   }
-
   return execFileAsync(process.execPath, [process.env.npm_execpath, ...args], mergedOptions(options));
-}
-
-function git(args, options = {}) {
-  return execFileAsync("git", args, mergedOptions(options));
 }
 
 function mergedOptions(options) {

@@ -17,17 +17,17 @@ const NON_ACTIVATABLE_STATUSES = new Set(["blocked", "deprecated", "archived", "
 
 export function buildInitActions(paths) {
   return [makeAction({
-    kind: "init-project",
+    kind: "setup-user",
     targetId: paths.root,
-    label: "Initialize SkillBoard in this project",
-    reason: "SkillBoard is not initialized for this project.",
+    label: "Set up the SkillBoard user control plane",
+    reason: "The user-level SkillBoard policy and generated inventory do not exist yet.",
     risk: "low",
     requiresUserConfirmation: true,
     dryRun: null,
     apply: null,
-    appliesTo: { kind: "project", id: paths.root },
-    blockedReason: "skillboard init does not have a dry-run preview command.",
-    advanced: { root: paths.root }
+    appliesTo: { kind: "user_state", id: paths.root },
+    blockedReason: "Run `skillboard setup --yes` after user confirmation.",
+    advanced: { root: paths.root, command: "skillboard setup --yes" }
   })];
 }
 
@@ -45,6 +45,102 @@ export function buildActionCards(context) {
     actions,
     reviewQueue: linkReviewQueue(context.reviewQueue, actions)
   };
+}
+
+export function buildV2ActionCards({ options, paths, workflow, workspace }) {
+  if (workflow.unknown || workflow.needs_selection) {
+    return [];
+  }
+  const actions = [];
+  const observedSkills = new Set(workspace.inventory.skillIds);
+  for (const skill of workspace.skills) {
+    if (!observedSkills.has(skill.id)) {
+      actions.push(skill.shared
+        ? v2SharingAction(skill, paths, "unshare")
+        : v2ForgetAction(skill, paths));
+      continue;
+    }
+    const kind = skill.enabled ? "v2:disable-skill" : "v2:enable-skill";
+    const operation = skill.enabled ? "disable" : "enable";
+    const policyArgs = ["skillboard", "skill", operation, skill.id, "--config", paths.configPath,
+      ...(paths.skillsRoot === undefined ? [] : ["--skills", paths.skillsRoot])];
+    const dryRun = command([...policyArgs, "--dry-run", "--json"]);
+    actions.push(makeAction({
+      kind,
+      targetId: skill.id,
+      label: `${skill.enabled ? "Disable" : "Enable"} ${skill.id}`,
+      reason: `${skill.enabled ? "Stop" : "Allow"} SkillBoard from selecting this skill.`,
+      risk: "medium",
+      dryRun,
+      apply: command([...policyArgs, "--json"]),
+      appliesTo: { kind: "skill", id: skill.id },
+      blockedReason: null,
+      advanced: { enabled: !skill.enabled, policy_projection_version: 2 }
+    }));
+    actions.push(v2SharingAction(skill, paths, skill.shared ? "unshare" : "share"));
+    const intent = options?.intent?.trim();
+    if (intent !== undefined && intent.length > 0
+      && skill.enabled
+      && !samePreference(skill.preference, intent)) {
+      const intents = [...new Set([...(skill.preference?.intents ?? []), intent])]
+        .sort((left, right) => left.localeCompare(right));
+      const preferenceArgs = ["skillboard", "skill", "preference", skill.id, "--intent", intents.join(","), "--priority", "100", "--config", paths.configPath,
+        ...(paths.skillsRoot === undefined ? [] : ["--skills", paths.skillsRoot])];
+      actions.push(makeAction({
+        kind: "v2:prefer-skill",
+        targetId: `${skill.id}:${encodeURIComponent(intent)}`,
+        label: `Prefer ${skill.id} for ${intent}`,
+        reason: "Rank this enabled skill higher when it is installed for the current agent and the intent matches.",
+        risk: "medium",
+        dryRun: command([...preferenceArgs, "--dry-run", "--json"]),
+        apply: command([...preferenceArgs, "--json"]),
+        appliesTo: { kind: "skill", id: skill.id },
+        blockedReason: null,
+        advanced: { intents, priority: 100, policy_projection_version: 2 }
+      }));
+    }
+  }
+  return withApplicationCommands(actions.sort(sortActions), { options, paths, workflow, workspace });
+}
+
+function v2SharingAction(skill, paths, operation) {
+  const args = ["skillboard", "skill", operation, skill.id, "--config", paths.configPath];
+  const unshare = operation === "unshare";
+  return makeAction({
+    kind: unshare ? "v2:unshare-skill" : "v2:share-skill",
+    targetId: skill.id,
+    label: `${unshare ? "Stop sharing" : "Share"} ${skill.id}`,
+    reason: unshare
+      ? "Stop SkillBoard-managed cross-agent sharing while preserving agent-owned originals."
+      : "Make this skill available through the user shared-skill layer.",
+    risk: "medium",
+    dryRun: command([...args, "--dry-run", "--json"]),
+    apply: command([...args, "--json"]),
+    appliesTo: { kind: "skill", id: skill.id },
+    blockedReason: null,
+    advanced: { shared: !unshare, policy_projection_version: 2 }
+  });
+}
+
+function v2ForgetAction(skill, paths) {
+  const args = ["skillboard", "skill", "forget", skill.id, "--config", paths.configPath,
+    ...(paths.skillsRoot === undefined ? [] : ["--skills", paths.skillsRoot])];
+  return makeAction({
+    kind: "v2:forget-skill",
+    targetId: skill.id,
+    label: `Forget removed skill ${skill.id}`,
+    reason: "Remove stale SkillBoard policy after the owning installer removed this unshared skill.",
+    risk: "medium",
+    dryRun: command([...args, "--dry-run", "--json"]),
+    apply: command([...args, "--json"]),
+    appliesTo: { kind: "skill", id: skill.id },
+    blockedReason: null,
+    advanced: { policy_only: true, policy_projection_version: 2 }
+  });
+}
+
+function samePreference(preference, intent) {
+  return preference?.priority === 100 && preference.intents.includes(intent);
 }
 
 function reviewInstallUnitActions({ paths, workflow, reviewQueue }) {

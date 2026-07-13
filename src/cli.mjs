@@ -1,9 +1,10 @@
 // allow: SIZE_OK - legacy CLI dispatcher split is deferred from the 0.2.7 release gate.
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
+import { buildGeneratedInventory, mergeGeneratedInventory } from "./inventory-json.mjs";
 import {
   activateSkill,
   addHarness,
@@ -19,6 +20,7 @@ import {
   doctorProject,
   explainSkill,
   forkSkillVariant,
+  forgetV2Skill,
   importSource,
   installGuardHook,
   impactDisable,
@@ -33,6 +35,9 @@ import {
   quarantineSkill,
   removeSkill,
   resetSkillVariant,
+  setV2SkillEnabled,
+  setV2SkillPreference,
+  setV2SkillShared,
   reconcileWorkspace,
   refreshAgentInventory,
   refreshSourcePins,
@@ -58,15 +63,22 @@ import { renderSkillBrief } from "./brief-renderer.mjs";
 import { planGuardHookInstall } from "./control.mjs";
 import { writeCheckedConfig } from "./control/config-write.mjs";
 import { runInitCommand, runSetupCommand, runUninstallCommand } from "./lifecycle-cli.mjs";
+import { migrateV2 } from "./migration/v2-transaction.mjs";
+import { atomicWrite, optionalRead, withConfigLock } from "./migration/v2-files.mjs";
+import { assertCurrentProjectionVersion } from "./compatibility.mjs";
 import { renderRouteSectionLines } from "./route-renderer.mjs";
+import { resolveUserStatePaths } from "./user-state-paths.mjs";
+import { setSkillSharing } from "./shared-skill.mjs";
+import { supportedAgentNames } from "./agent-skill-roots.mjs";
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
-const APPLY_ACTION_VALUE_OPTIONS = new Set(["workflow", "dir", "config", "skills", "out", "skillboard-bin"]);
+const APPLY_ACTION_VALUE_OPTIONS = new Set(["agent", "workflow", "intent", "dir", "config", "skills", "out", "skillboard-bin"]);
 const COMMAND_USAGE = new Map([
+  ["skill", ["enable|disable <skill-id> [--dry-run] [--json]", "share|unshare <skill-id> [--dry-run] [--json]", "preference <skill-id> --intent <term>[,<term>] --priority <integer> [--dry-run] [--json]", "forget <skill-id> [--dry-run] [--json]"]],
   ["setup", ["setup [--yes] [--agent codex[,claude,opencode,hermes]]"]],
   ["import-skill", ["import-skill --from <agent> --to <agent> --skill <id-or-dir> [--target-skill <id-or-dir>] [--adapted-file <path>] [--dry-run] [--yes] [--replace] [--json]"]],
-  ["uninstall", ["uninstall [--dir <path>] [--dry-run] [--keep-settings] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs] [--agent-layer] [--agent codex[,claude,opencode,hermes]]"]],
+  ["uninstall", ["uninstall --user (--dry-run|--yes) [--json]", "uninstall [--dir <path>] [--dry-run] [--keep-settings] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs] [--agent-layer] [--agent codex[,claude,opencode,hermes]]"]],
   [
     "inventory",
     [
@@ -77,21 +89,22 @@ const COMMAND_USAGE = new Map([
   ["sources", ["sources refresh [--dir <path>] [--config <path>] [--unit <id>[,<id>]] [--cache-dir <dir>] [--dry-run] [--json]"]],
   ["import", ["import --profile <id-or-path> --source-root <dir> [--profile-dirs a,b] [--out <path>]", "import --profile <id-or-path> --source-root <dir> --config <path> --merge [--replace] [--dry-run]"]],
   ["scan", ["scan --config <path>"]],
+  ["migrate", ["migrate v2 [--config <path>] [--skills <dir>] [--yes] [--rollback <backup>] [--json]"]],
   ["check", ["check --config <path> --skills <dir>"]],
-  ["list", ["list [skills|workflows|harnesses|install-units] --config <path> --skills <dir> [--workflow <name>] [--json]"]],
+  ["list", ["list [skills|workflows|harnesses|install-units] [--config <path>] [--skills <dir>] [--json]"]],
   ["explain", ["explain <skill-id> --config <path> --skills <dir> [--json]"]],
-  ["can-use", ["can-use <skill-id> --workflow <name> --config <path> --skills <dir> [--json]"]],
+  ["can-use", ["can-use <skill-id> --agent codex|claude|opencode|hermes [--json]"]],
   ["audit", ["audit sources --config <path> --skills <dir> [--verify] [--json]"]],
   ["rollout", ["rollout [audit|plan|apply|rollback|report] [--dir <path>] [--config <path>] [--skills <dir>] [--transaction <id>] [--json]"]],
   ["hook", ["hook install --workflow <name> --config <path> --skills <dir> [--out <path>] [--skillboard-bin <path>] [--dry-run] [--json]"]],
   ["lock", ["lock write --config <path> --skills <dir> [--out <path>] [--replace] [--allow-unverified] [--json]"]],
-  ["review", ["review install-unit <unit-id> [--trust-level trusted|reviewed|unreviewed|blocked] --config <path> --skills <dir> [--dry-run] [--json]"]],
-  ["add", ["add skill <skill-id> --path <relative-skill-path> --config <path> --skills <dir> [--status <status>] [--invocation <mode>] [--exposure <exposure>] [--category <name>] [--workflow <name>] [--dry-run] [--json]", "add workflow <workflow-name> --harness <harness-name> --config <path> --skills <dir> [--skill <id>[,<id>]] [--harness-status <status>] [--require-existing-harness] [--dry-run] [--json]", "add harness <harness-name> --config <path> --skills <dir> [--status <status>] [--command <cmd>[,<cmd>]] [--dry-run] [--json]"]],
-  ["variant", ["variant add <variant-id> --from <base-id> --capability <name> --workflow <name> --config <path> --skills <dir> [--path <relative-skill-path>] [--mode manual-only|router-only|workflow-auto] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]", "variant fork <variant-id> --from <base-id> --capability <name> --workflow <name> --path <relative-skill-path> --config <path> --skills <dir> [--adapted-for <label>] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]", "variant status <variant-id> --config <path> --skills <dir> [--json]", "variant approve <variant-id> --config <path> --skills <dir> [--mode manual-only|router-only|workflow-auto] [--dry-run] [--json]", "variant reset <variant-id> --to-base|--to-approved --config <path> --skills <dir> [--yes] [--dry-run] [--mode manual-only|router-only|workflow-auto] [--json]"]],
-  ["activate", ["activate <skill-id> --workflow <name> [--mode manual-only|router-only|workflow-auto] --config <path> --skills <dir> [--dry-run] [--json]"]],
-  ["block", ["block <skill-id> --workflow <name> --config <path> --skills <dir> [--dry-run] [--json]"]],
-  ["quarantine", ["quarantine <skill-id> --config <path> --skills <dir> [--dry-run] [--json]"]],
-  ["prefer", ["prefer <skill-id> --workflow <name> --capability <name> --config <path> --skills <dir> [--dry-run] [--json]"]],
+  ["review", ["review is a v1 compatibility command; run migrate v2 before policy changes"]],
+  ["add", ["add is a v1 compatibility command; run migrate v2, then use skill enable|disable|share|unshare|preference"]],
+  ["variant", ["variant lifecycle is compatibility-only; keep relationships and checkpoints in content or inventory metadata"]],
+  ["activate", ["activate is a v1 compatibility command; run migrate v2, then use skill enable"]],
+  ["block", ["block is a v1 compatibility command; run migrate v2, then use skill disable"]],
+  ["quarantine", ["quarantine is a v1 compatibility command; run migrate v2, then use skill disable"]],
+  ["prefer", ["prefer is a v1 compatibility command; run migrate v2, then use skill preference"]],
   ["remove", ["remove skill <skill-id> --config <path> --skills <dir> [--force] [--dry-run] [--json]"]],
   ["dashboard", ["dashboard --config <path> --skills <dir> [--out <path>]"]],
   ["reconcile", ["reconcile --config <path> --skills <dir> [--actual-harnesses a,b] [--out <path>]"]],
@@ -114,7 +127,7 @@ export async function main(argv, stdout, stderr, stdin = process.stdin) {
 async function run(argv, stdout, stderr, stdin) {
   const command = argv[0] ?? "help";
   const commandArgs = argv.slice(1);
-  const options = parseOptions(commandArgs);
+  const options = parseOptions(commandArgs, command);
   const help = selectedHelpText(command, commandArgs, options);
   if (help !== null) {
     stdout.write(help);
@@ -144,18 +157,23 @@ async function run(argv, stdout, stderr, stdin) {
       return await importProfile(options, stdout);
     case "scan":
       return await scan(options, stdout);
+    case "migrate":
+      return await migrateCommand(argv.slice(1), options, stdout);
     case "check":
       return await check(options, stdout, stderr);
     case "doctor":
     case "status":
       return await doctor(options, stdout);
     case "brief":
+      assertKnownOptions("brief", options, new Set(["agent", "workflow", "intent", "dir", "config", "skills", "include-actions", "verbose", "json"]));
       return await runBriefCommand(options, stdout, {
         configPath: configPath(options),
         skillsRoot: skillsRoot(options)
       });
     case "apply-action":
       return await applyActionCommand(argv.slice(1), options, stdout, stderr);
+    case "skill":
+      return await skillPolicy(argv.slice(1), options, stdout);
     case "list":
       return await list(argv.slice(1), options, stdout);
     case "explain":
@@ -226,6 +244,7 @@ function selectedHelpText(command, args, options) {
 }
 
 async function importProfile(options, stdout) {
+  assertKnownOptions("import", options, new Set(["profile", "source-root", "profile-dirs", "merge", "out", "config", "skills", "replace", "dry-run", "json"]));
   const profileRef = options.get("profile");
   const sourceRoot = options.get("source-root");
   if (profileRef === undefined || sourceRoot === undefined) {
@@ -250,24 +269,61 @@ async function importProfile(options, stdout) {
 
 async function mergeImport(options, imported, stdout) {
   const path = configPath(options);
-  const originalText = await readFile(path, "utf8");
-  const merged = mergeImportFragment(originalText, imported, { replace: options.get("replace") === "true" });
-  const document = YAML.parseDocument(merged.text);
-  if (document.errors.length > 0) {
-    throw new Error(`Invalid YAML config after import merge: ${document.errors.map((error) => error.message).join("; ")}`);
-  }
-  const checked = await writeCheckedConfig(document, originalText, {
-    configPath: path,
-    skillsRoot: skillsRoot(options),
-    dryRun: options.get("dry-run") === "true"
-  }, `Import merged: ${path}`);
-  const result = {
-    ...checked,
-    addedSkills: merged.addedSkills,
-    addedInstallUnits: merged.addedInstallUnits,
-    replacedSkills: merged.replacedSkills,
-    replacedInstallUnits: merged.replacedInstallUnits
-  };
+  const result = await withConfigLock(path, async () => {
+    const originalBytes = await readFile(path);
+    const originalText = originalBytes.toString("utf8");
+    const originalMode = (await stat(path)).mode & 0o777;
+    const merged = mergeImportFragment(originalText, imported, { replace: options.get("replace") === "true" });
+    const document = YAML.parseDocument(merged.text);
+    if (document.errors.length > 0) {
+      throw new Error(`Invalid YAML config after import merge: ${document.errors.map((error) => error.message).join("; ")}`);
+    }
+    const inventoryPath = resolve(dirname(path), ".skillboard", "inventory.json");
+    const previousInventory = document.get("version") === 2 ? await optionalRead(inventoryPath) : null;
+    const previousInventoryMode = previousInventory === null ? null : (await stat(inventoryPath)).mode & 0o777;
+    let inventoryText = null;
+    if (document.get("version") === 2) {
+      const added = await buildGeneratedInventory({
+        skills: imported.skills,
+        installUnits: [imported.installUnit]
+      }, { root: dirname(path), home: process.env.HOME });
+      inventoryText = mergeGeneratedInventory(previousInventory?.toString("utf8") ?? null, added, {
+        replace: options.get("replace") === "true"
+      });
+    }
+    const checked = await writeCheckedConfig(document, originalText, {
+      configPath: path,
+      skillsRoot: skillsRoot(options),
+      dryRun: options.get("dry-run") === "true"
+    }, "Import merged");
+    if (inventoryText !== null && options.get("dry-run") !== "true") {
+      try {
+        await atomicWrite(inventoryPath, Buffer.from(inventoryText));
+        await chmod(inventoryPath, 0o600);
+        if (process.env.SKILLBOARD_IMPORT_FAILPOINT === "after-inventory-write") {
+          throw new Error("Injected import failure after inventory write.");
+        }
+        await loadWorkspace({ configPath: path, skillsRoot: skillsRoot(options) });
+      } catch (error) {
+        await atomicWrite(path, originalBytes);
+        await chmod(path, originalMode);
+        if (previousInventory === null) await rm(inventoryPath, { force: true });
+        else {
+          await atomicWrite(inventoryPath, previousInventory);
+          await chmod(inventoryPath, previousInventoryMode);
+        }
+        throw error;
+      }
+    }
+    return {
+      ...checked,
+      addedSkills: merged.addedSkills,
+      addedInstallUnits: merged.addedInstallUnits,
+      replacedSkills: merged.replacedSkills,
+      replacedInstallUnits: merged.replacedInstallUnits,
+      inventoryPath: inventoryText === null ? null : ".skillboard/inventory.json"
+    };
+  });
   writeOutput(stdout, result, options, () => renderImportMerge(result));
   return 0;
 }
@@ -296,11 +352,19 @@ async function inventory(argv, options, stdout) {
   if (args[0] !== "refresh") {
     throw new Error("Usage: skillboard inventory refresh|detect ...");
   }
+  const allowedOptions = new Set(["dir", "config", "scan-root", "dry-run", "json", "help"]);
+  const unknownOption = [...options.keys()].find((key) => !allowedOptions.has(key));
+  if (unknownOption !== undefined) {
+    throw new Error(`Unknown inventory refresh option: --${unknownOption}`);
+  }
+  const state = statePaths(options);
   const result = await refreshAgentInventory({
-    root: options.get("dir") ?? ".",
-    configPath: options.get("config"),
+    root: options.get("dir") ?? dirname(state.configPath),
+    configPath: state.configPath,
     roots: readCsv(options.get("scan-root")),
-    dryRun: options.get("dry-run") === "true"
+    dryRun: options.get("dry-run") === "true",
+    home: state.home,
+    env: process.env
   });
   writeOutput(stdout, result, options, () => renderInventoryRefresh(result));
   return 0;
@@ -345,6 +409,7 @@ async function scan(options, stdout) {
 }
 
 async function check(options, stdout, stderr) {
+  assertKnownOptions("check", options, new Set(["config", "skills", "json"]));
   const workspace = await loadWorkspace({ configPath: configPath(options), skillsRoot: skillsRoot(options) });
   const result = checkPolicy(workspace);
   const output = [...result.errors, ...result.warnings].join("\n");
@@ -355,10 +420,36 @@ async function check(options, stdout, stderr) {
   return result.ok ? 0 : 1;
 }
 
+async function migrateCommand(argv, options, stdout) {
+  const allowedOptions = new Set(["config", "skills", "yes", "rollback", "json", "help"]);
+  const unknownOption = [...options.keys()].find((key) => !allowedOptions.has(key));
+  if (unknownOption !== undefined) {
+    throw new Error(`Unknown migrate option: --${unknownOption}`);
+  }
+  const args = argv.filter((arg) => !arg.startsWith("--"));
+  if (args[0] !== "v2") {
+    throw new Error("Usage: skillboard migrate v2 [--config <path>] [--skills <dir>] [--yes] [--rollback <backup>] [--json]");
+  }
+  if (options.has("yes") && options.has("rollback")) {
+    throw new Error("Choose either --yes to apply migration or --rollback <backup>, not both.");
+  }
+  const result = await migrateV2({
+    configPath: configPath(options),
+    skillsRoot: skillsRoot(options),
+    apply: options.get("yes") === "true",
+    rollbackPath: options.get("rollback"),
+    failpoint: process.env.SKILLBOARD_MIGRATION_FAILPOINT
+  });
+  writeOutput(stdout, result, options, () => renderMigration(result));
+  return 0;
+}
+
 async function doctor(options, stdout) {
+  assertKnownOptions("doctor", options, new Set(["dir", "config", "skills", "strict", "verify", "summary", "json"]));
+  const state = statePaths(options);
   const result = await doctorProject({
-    root: options.get("dir") ?? ".",
-    configPath: options.get("config"),
+    root: options.get("dir") ?? dirname(state.configPath),
+    configPath: state.configPath,
     skillsRoot: options.get("skills"),
     verifySources: options.get("verify") === "true"
   });
@@ -369,6 +460,9 @@ async function doctor(options, stdout) {
 
 async function applyActionCommand(argv, options, stdout, stderr) {
   try {
+    assertKnownOptions("apply-action", options, new Set([
+      "agent", "workflow", "intent", "dir", "config", "skills", "dry-run", "yes", "allow-destructive", "out", "skillboard-bin", "json"
+    ]));
     const actionIds = positionalArgs(argv, APPLY_ACTION_VALUE_OPTIONS);
     if (actionIds.length !== 1) {
       throw new ApplyActionError(
@@ -377,10 +471,16 @@ async function applyActionCommand(argv, options, stdout, stderr) {
       );
     }
     const [actionId] = actionIds;
+    const state = statePaths(options);
     const result = await applyAdvisorAction(actionId, {
       root: commandRoot(options),
+      agent: options.get("agent"),
       workflow: options.get("workflow"),
+      intent: options.get("intent"),
       configPath: configPath(options),
+      inventoryPath: state.inventoryPath,
+      home: state.home,
+      env: process.env,
       skillsRoot: skillsRoot(options),
       dryRun: options.get("dry-run") === "true",
       yes: options.get("yes") === "true",
@@ -401,7 +501,47 @@ async function applyActionCommand(argv, options, stdout, stderr) {
   }
 }
 
+async function skillPolicy(argv, options, stdout) {
+  assertKnownOptions("skill", options, new Set(["config", "skills", "dry-run", "json", "intent", "priority"]));
+  const args = positionalArgs(argv);
+  const operation = args[0];
+  const skillId = args[1];
+  if (skillId === undefined) throw new Error("Usage: skillboard skill enable|disable|share|unshare|preference|forget <skill-id>");
+  const common = { skillId, configPath: configPath(options), skillsRoot: skillsRoot(options), dryRun: options.get("dry-run") === "true" };
+  let result;
+  if (operation === "enable" || operation === "disable") {
+    result = await setV2SkillEnabled({ ...common, enabled: operation === "enable" });
+  } else if (operation === "share" || operation === "unshare") {
+    const state = statePaths(options);
+    result = await setSkillSharing({
+      ...common,
+      shared: operation === "share",
+      configPath: state.configPath,
+      inventoryPath: state.inventoryPath,
+      home: state.home,
+      env: process.env
+    });
+    writeOutput(stdout, result, options, () => `${operation === "share" ? "Shared" : "Unshared"} ${skillId}\n`);
+    return 0;
+  } else if (operation === "preference") {
+    const priority = Number(options.get("priority"));
+    result = await setV2SkillPreference({ ...common, intents: readCsv(options.get("intent")), priority });
+  } else if (operation === "forget") {
+    const state = statePaths(options);
+    result = await forgetV2Skill({
+      ...common,
+      configPath: state.configPath,
+      inventoryPath: state.inventoryPath
+    });
+  } else {
+    throw new Error(`Unknown skill policy operation: ${operation}`);
+  }
+  writeControlResult(stdout, result, options);
+  return 0;
+}
+
 async function list(argv, options, stdout) {
+  assertKnownOptions("list", options, new Set(["workflow", "config", "skills", "json"]));
   const kind = positionalArgs(argv)[0] ?? "skills";
   const workspace = await loadWorkspace({ configPath: configPath(options), skillsRoot: skillsRoot(options) });
   let result;
@@ -421,6 +561,7 @@ async function list(argv, options, stdout) {
 }
 
 async function explain(argv, options, stdout) {
+  assertKnownOptions("explain", options, new Set(["config", "skills", "json"]));
   const skillId = positionalArgs(argv)[0];
   if (skillId === undefined) {
     throw new Error("Usage: skillboard explain <skill-id>");
@@ -432,17 +573,23 @@ async function explain(argv, options, stdout) {
 }
 
 async function route(argv, options, stdout) {
+  assertKnownOptions("route", options, new Set(["agent", "workflow", "config", "skills", "json"]));
   const intent = positionalArgs(argv).join(" ").trim();
   const workflow = options.get("workflow");
-  if (intent.length === 0 || workflow === undefined) {
-    throw new Error("Usage: skillboard route <intent> --workflow <name>");
+  if (intent.length === 0) {
+    throw new Error("Usage: skillboard route <intent> [--agent <name>]");
   }
   const config = configPath(options);
   const skills = skillsRoot(options);
   const workspace = await loadWorkspace({ configPath: config, skillsRoot: skills });
+  assertV2AgentOption(workspace, options, "skillboard route <intent> --agent <name>");
+  if (workspace.version === 1 && workflow === undefined) {
+    throw new Error("Usage: skillboard route <intent> --workflow <name>");
+  }
   const result = routeSkill(workspace, {
     intent,
     workflow,
+    agent: options.get("agent"),
     configPath: config,
     skillsRoot: skills
   });
@@ -451,26 +598,44 @@ async function route(argv, options, stdout) {
 }
 
 async function canUse(argv, options, stdout) {
+  assertKnownOptions("can-use", options, new Set(["agent", "workflow", "config", "skills", "json"]));
   const skillId = positionalArgs(argv)[0];
   const workflow = options.get("workflow");
-  if (skillId === undefined || workflow === undefined) {
-    throw new Error("Usage: skillboard can-use <skill-id> --workflow <name>");
+  if (skillId === undefined) {
+    throw new Error("Usage: skillboard can-use <skill-id> [--agent <name>]");
   }
   const workspace = await loadWorkspace({ configPath: configPath(options), skillsRoot: skillsRoot(options) });
-  const result = canUseSkill(workspace, skillId, workflow);
+  assertV2AgentOption(workspace, options, "skillboard can-use <skill-id> --agent <name>");
+  if (workspace.version === 1 && workflow === undefined) {
+    throw new Error("Usage: skillboard can-use <skill-id> --workflow <name>");
+  }
+  const result = canUseSkill(workspace, skillId, workflow, options.get("agent"));
   writeOutput(stdout, result, options, () => renderCanUse(result));
   return result.allowed ? 0 : 2;
 }
 
 async function guard(argv, options, stdout) {
+  assertKnownOptions("guard", options, new Set(["agent", "workflow", "config", "skills", "json", "hook-projection-version"]));
   const args = positionalArgs(argv);
   const skillId = args[0] === "use" ? args[1] : args[0];
   const workflow = options.get("workflow");
-  if (skillId === undefined || workflow === undefined) {
-    throw new Error("Usage: skillboard guard use <skill-id> --workflow <name>");
+  if (skillId === undefined) {
+    throw new Error("Usage: skillboard guard use <skill-id> [--agent <name>]");
   }
   const workspace = await loadWorkspace({ configPath: configPath(options), skillsRoot: skillsRoot(options) });
-  const result = canUseSkill(workspace, skillId, workflow);
+  const hookProjection = options.get("hook-projection-version") ?? process.env.SKILLBOARD_POLICY_PROJECTION_VERSION;
+  if (args[0] !== "use" && hookProjection === undefined) {
+    throw new Error("This pre-v2 policy projection is stale; regenerate the guard hook from version 2 policy.");
+  }
+  if (process.env.SKILLBOARD_SKILL_ID !== undefined && hookProjection === undefined) {
+    throw new Error("This pre-v2 policy projection is stale; regenerate the guard hook from version 2 policy.");
+  }
+  assertCurrentProjectionVersion(hookProjection, workspace.version);
+  assertV2AgentOption(workspace, options, "skillboard guard use <skill-id> --agent <name>");
+  if (workspace.version === 1 && workflow === undefined) {
+    throw new Error("Usage: skillboard guard use <skill-id> --workflow <name>");
+  }
+  const result = canUseSkill(workspace, skillId, workflow, options.get("agent"));
   if (options.get("json") === "true") {
     stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } else {
@@ -480,6 +645,7 @@ async function guard(argv, options, stdout) {
 }
 
 async function audit(argv, options, stdout) {
+  assertKnownOptions("audit", options, new Set(["verify", "config", "skills", "json"]));
   const args = positionalArgs(argv);
   if ((args[0] ?? "sources") !== "sources") {
     throw new Error("Usage: skillboard audit sources --config <path> --skills <dir> [--json]");
@@ -520,6 +686,7 @@ async function rollout(argv, options, stdout) {
 }
 
 async function hook(argv, options, stdout) {
+  assertKnownOptions("hook", options, new Set(["workflow", "out", "skillboard-bin", "config", "skills", "dry-run", "json"]));
   const args = positionalArgs(argv);
   if (args[0] !== "install") {
     throw new Error("Usage: skillboard hook install --workflow <name> [--out <path>] [--skillboard-bin <path>] [--dry-run]");
@@ -704,6 +871,10 @@ async function addHarnessCommand(args, options, stdout) {
 
 async function variant(argv, options, stdout) {
   try {
+    assertKnownOptions("variant", options, new Set([
+      "from", "capability", "workflow", "path", "mode", "category", "owner-install-unit",
+      "adapted-for", "config", "skills", "to-base", "to-approved", "yes", "dry-run", "json"
+    ]));
     return await runVariant(argv, options, stdout);
   } catch (error) {
     const payload = variantErrorPayload(error);
@@ -718,6 +889,9 @@ async function variant(argv, options, stdout) {
 async function runVariant(argv, options, stdout) {
   const args = positionalArgs(argv);
   const subcommand = args[0];
+  if (options.get("config") !== undefined && ["add", "fork", "status", "approve", "reset"].includes(subcommand)) {
+    await assertVariantPolicyBoundary(configPath(options), subcommand);
+  }
   if (subcommand === "add") {
     return await variantAddCommand(args, options, stdout);
   }
@@ -734,6 +908,20 @@ async function runVariant(argv, options, stdout) {
     return await variantResetCommand(args, options, stdout);
   }
   throw new VariantCliError("unknown_variant_subcommand", `Unknown variant subcommand: ${subcommand ?? "<missing>"}`, 2);
+}
+
+async function assertVariantPolicyBoundary(path, subcommand) {
+  const document = YAML.parseDocument(await readFile(path, "utf8"));
+  if (document.errors.length > 0) {
+    throw new Error(`Invalid YAML config: ${document.errors.map((error) => error.message).join("; ")}`);
+  }
+  if (document.get("version") === 2 && subcommand !== "status") {
+    throw new VariantCliError(
+      "compatibility_error",
+      "Variant policy mutation is unavailable for version 2; use skill enable, disable, share, unshare, or preference. Read-only variant status remains available.",
+      1
+    );
+  }
 }
 
 async function variantAddCommand(args, options, stdout) {
@@ -983,6 +1171,7 @@ async function remove(argv, options, stdout) {
 }
 
 async function dashboard(options, stdout) {
+  assertKnownOptions("dashboard", options, new Set(["config", "skills", "out", "json"]));
   const workspace = await loadWorkspace({ configPath: configPath(options), skillsRoot: skillsRoot(options) });
   const markdown = renderDashboard(workspace);
   const out = options.get("out");
@@ -997,6 +1186,7 @@ async function dashboard(options, stdout) {
 }
 
 async function reconcile(options, stdout) {
+  assertKnownOptions("reconcile", options, new Set(["config", "skills", "actual-harnesses", "out", "json"]));
   const workspace = await loadWorkspace({ configPath: configPath(options), skillsRoot: skillsRoot(options) });
   const plan = reconcileWorkspace(workspace, { actualHarnesses: readCsv(options.get("actual-harnesses")) });
   const markdown = renderReconcilePlan(plan);
@@ -1012,6 +1202,7 @@ async function reconcile(options, stdout) {
 }
 
 async function impact(argv, options, stdout) {
+  assertKnownOptions("impact", options, new Set(["config", "skills", "out", "json"]));
   if (argv[0] !== "disable" || argv[1] === undefined) {
     throw new Error("Usage: skillboard impact disable <skill-id>");
   }
@@ -1058,23 +1249,47 @@ function formatActiveConflicts(entries) {
 }
 
 function configPath(options) {
-  return options.get("config") ?? "skillboard.config.yaml";
+  return statePaths(options).configPath;
 }
 
 function skillsRoot(options) {
-  return options.get("skills") ?? "skills";
+  return options.get("skills");
 }
 
 function commandRoot(options) {
-  const dir = options.get("dir");
-  if (dir !== undefined) {
-    return dir;
-  }
-  const config = options.get("config");
-  return config !== undefined && isAbsolute(config) ? dirname(config) : ".";
+  return options.get("dir") ?? dirname(configPath(options));
 }
 
-function parseOptions(args) {
+function statePaths(options) {
+  const dir = options.get("dir");
+  return resolveUserStatePaths({
+    env: process.env,
+    cwd: process.cwd(),
+    configPath: options.get("config") ?? (dir === undefined ? undefined : resolve(dir, "skillboard.config.yaml"))
+  });
+}
+
+function assertV2AgentOption(workspace, options, usage) {
+  if (workspace.version !== 2) return;
+  const agent = options.get("agent");
+  if (agent === undefined) {
+    throw new Error(`Version 2 availability requires --agent. Usage: ${usage}`);
+  }
+  if (!supportedAgentNames().includes(agent)) {
+    throw new Error(`Unsupported agent: ${agent}. Expected one of: ${supportedAgentNames().join(", ")}.`);
+  }
+}
+
+const VALUE_OPTIONS = new Set([
+  "actual-harnesses", "adapted-file", "adapted-for", "agent", "cache-dir", "capability", "category",
+  "command", "config", "config-file", "dir", "exposure", "from", "harness", "harness-status",
+  "hook-projection-version", "install-output", "intent", "invocation", "kind", "mode", "out",
+  "owner-install-unit", "path", "priority", "profile", "profile-dirs", "rollback", "rollouts-dir",
+  "scan-root", "scope", "skill", "skillboard-bin", "skills", "source", "source-root", "status",
+  "target-skill", "to", "transaction", "trust-level", "unit", "workflow"
+]);
+
+function parseOptions(args, command) {
   const options = new Map();
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -1084,6 +1299,7 @@ function parseOptions(args) {
     const key = arg.slice(2);
     const value = args[index + 1];
     if (value === undefined || value.startsWith("--")) {
+      if (VALUE_OPTIONS.has(key)) throw new Error(`Missing value for ${command} option: --${key}`);
       options.set(key, "true");
       continue;
     }
@@ -1091,6 +1307,14 @@ function parseOptions(args) {
     index += 1;
   }
   return options;
+}
+
+function assertKnownOptions(command, options, allowed) {
+  for (const option of options.keys()) {
+    if (!allowed.has(option)) {
+      throw new Error(`Unknown ${command} option: --${option}`);
+    }
+  }
 }
 
 function formatList(values) {
@@ -1124,8 +1348,9 @@ function renderImportMerge(result) {
 }
 
 function renderInventoryRefresh(result) {
-  return [
+  const lines = [
     `${result.dryRun ? "Dry run: " : ""}Inventory refreshed: ${result.configPath}`,
+    ...(result.bootstrappedV2 ? ["Bootstrapped minimal SkillBoard v2 policy."] : []),
     renderChangePlan(result.plan).trimEnd(),
     `Scanned skills: ${result.scan.scannedSkills}`,
     `Scanned install units: ${result.scan.scannedInstallUnits}`,
@@ -1138,7 +1363,8 @@ function renderInventoryRefresh(result) {
     `Review notes: ${formatList(result.scan.reviewNotes ?? [])}`,
     `Scan warnings: ${formatList(result.scan.warnings ?? [])}`,
     ""
-  ].join("\n");
+  ];
+  return lines.join("\n");
 }
 
 function renderInstallDetection(result) {
@@ -1303,6 +1529,10 @@ function renderList(kind, values) {
   }
   if (kind === "skills") {
     return `${values.map((skill) => {
+      if (typeof skill.enabled === "boolean") {
+        const inventory = skill.inventory ?? { path: skill.path ?? null, owner_install_unit: null };
+        return `${skill.id}\tenabled=${skill.enabled}\tshared=${skill.shared}\tagents=${(inventory.installed_on ?? []).join(",") || "none"}\tpath=${inventory.path ?? "none"}\towner=${inventory.owner_install_unit ?? "none"}`;
+      }
       const roles = skill.workflowRoles.length === 0 ? "none" : skill.workflowRoles.join(",");
       const owner = skill.ownerInstallUnit ?? "direct";
       return `${skill.id}\t${skill.status}\t${skill.invocation}\t${skill.sourceClass}\towner=${owner}\troles=${roles}`;
@@ -1324,6 +1554,18 @@ function renderList(kind, values) {
 }
 
 function renderExplain(result) {
+  if (typeof result.enabled === "boolean") {
+    const inventory = result.inventory ?? { path: result.path ?? null, owner_install_unit: null };
+    return [
+      `Skill: ${result.id}`,
+      `Enabled: ${result.enabled}`,
+      `Shared: ${result.shared}`,
+      `Installed on: ${(inventory.installed_on ?? []).join(", ") || "none"}`,
+      `Inventory path: ${inventory.path ?? "none"}`,
+      `Inventory owner: ${inventory.owner_install_unit ?? "none"}`,
+      ""
+    ].join("\n");
+  }
   const workflows = result.workflows.length === 0
     ? "none"
     : result.workflows.map((workflow) => `${workflow.workflow}:${workflow.roles.join(",")}`).join(", ");
@@ -1374,6 +1616,24 @@ function renderRoute(result) {
     for (const skill of result.possible_skills.slice(0, 5)) {
       lines.push(`- ${skill.id} (${skill.category ?? "uncategorized"}, allowed=${skill.allowed})`);
     }
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+function renderMigration(result) {
+  const lines = [
+    `SkillBoard v2 migration: ${result.mode}`,
+    `Changed: ${result.changed}`,
+    `Target version: ${result.target_version}`,
+    `Input SHA-256: ${result.input_sha256}`,
+    `Config SHA-256: ${result.config_sha256}`
+  ];
+  if (result.inventory_sha256 !== null) lines.push(`Inventory SHA-256: ${result.inventory_sha256}`);
+  if (result.backup !== null) lines.push(`Backup: ${result.backup}`);
+  if (result.counts !== undefined) {
+    lines.push(`Skills: ${result.counts.skills} (${result.counts.enabled} enabled, ${result.counts.disabled} disabled)`);
+    lines.push(`Warnings: ${result.counts.warnings}; losses: ${result.counts.losses}`);
   }
   lines.push("");
   return lines.join("\n");
@@ -1511,68 +1771,52 @@ function helpText() {
     "  The package postinstall auto-runs agent-layer guidance setup on install and update.",
     "  Under sudo, setup targets SUDO_USER's agent homes while npm still controls the binary prefix.",
     "  Run skillboard setup later after adding another supported agent or when install scripts were skipped.",
-    "  Run skillboard uninstall --agent-layer before package removal when managed agent guidance should disappear.",
+    "  Preview skillboard uninstall --user --dry-run before package removal to clean every managed artifact.",
     "",
-    "AI/automation operations:",
+    "Core AI/automation operations:",
     "  setup [--yes] [--agent codex[,claude,opencode,hermes]]",
     "  import-skill --from <agent> --to <agent> --skill <id-or-dir> [--target-skill <id-or-dir>] [--adapted-file <path>] [--dry-run] [--yes] [--replace] [--json]",
-    "  uninstall [--dir <path>] [--dry-run] [--keep-settings] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs] [--agent-layer] [--agent codex[,claude,opencode,hermes]]",
+    "  uninstall --user (--dry-run|--yes) [--json]",
     "  inventory refresh [--dir <path>] [--config <path>] [--scan-root <dir>[,<dir>]] [--dry-run] [--json]",
-    "  inventory detect --unit <id> --config <path> [--install-output <path>] [--config-file a,b] [--source <value>] [--kind <kind>] [--scope <scope>] [--dry-run] [--json]",
-    "  sources refresh [--dir <path>] [--config <path>] [--unit <id>[,<id>]] [--cache-dir <dir>] [--dry-run] [--json]",
     "  doctor [--dir <path>] [--config <path>] [--skills <dir>] [--verify] [--strict] [--summary] [--json]",
     "  status [--dir <path>] [--config <path>] [--skills <dir>] [--verify] [--strict] [--summary] [--json]",
-    "  brief [--workflow <name>] [--intent <request>] [--dir <path>] [--config <path>] [--skills <dir>] [--include-actions] [--verbose] [--json]",
-    "  apply-action <action-id> [--workflow <name>] [--dir <path>] [--config <path>] [--skills <dir>] [--dry-run] [--yes] [--allow-destructive] [--json]",
-    "  import --profile <id-or-path> --source-root <dir> [--profile-dirs a,b] [--out <path>]",
-    "  import --profile <id-or-path> --source-root <dir> --config <path> --merge [--replace] [--dry-run]",
-    "  scan --config <path>",
+    "  brief [--agent codex|claude|opencode|hermes] [--intent <request>] [--config <path>] [--include-actions] [--verbose] [--json]",
+    "  apply-action <action-id> [--agent codex|claude|opencode|hermes] [--intent <text>] [--config <path>] [--dry-run] [--yes] [--allow-destructive] [--json]",
+    "  skill enable|disable <skill-id> [--dry-run] [--json]",
+    "  skill share|unshare <skill-id> [--dry-run] [--json]",
+    "  skill preference <skill-id> --intent <term>[,<term>] --priority <integer> [--dry-run] [--json]",
+    "  skill forget <skill-id> [--dry-run] [--json]",
+    "  migrate v2 [--config <path>] [--skills <dir>] [--yes] [--rollback <backup>] [--json]",
     "  check --config <path> --skills <dir>",
-    "  list [skills|workflows|harnesses|install-units] --config <path> --skills <dir> [--workflow <name>] [--json]",
-    "  explain <skill-id> --config <path> --skills <dir> [--json]",
-    "  route <intent> --workflow <name> --config <path> --skills <dir> [--json]",
-    "  can-use <skill-id> --workflow <name> --config <path> --skills <dir> [--json]",
-    "  guard use <skill-id> --workflow <name> --config <path> --skills <dir> [--json]",
-    "  audit sources --config <path> --skills <dir> [--verify] [--json]",
-    "  rollout [audit|plan|apply|rollback|report] [--dir <path>] [--config <path>] [--skills <dir>] [--transaction <id>] [--json]",
-    "  hook install --workflow <name> --config <path> --skills <dir> [--out <path>] [--skillboard-bin <path>] [--dry-run] [--json]",
-    "  lock write --config <path> --skills <dir> [--out <path>] [--replace] [--allow-unverified] [--json]",
-    "  review install-unit <unit-id> [--trust-level trusted|reviewed|unreviewed|blocked] --config <path> --skills <dir> [--dry-run] [--json]",
-    "  add skill <skill-id> --path <relative-skill-path> --config <path> --skills <dir> [--status <status>] [--invocation <mode>] [--exposure <exposure>] [--category <name>] [--workflow <name>] [--dry-run] [--json]",
-    "  add workflow <workflow-name> --harness <harness-name> --config <path> --skills <dir> [--skill <id>[,<id>]] [--harness-status <status>] [--require-existing-harness] [--dry-run] [--json]",
-    "  add harness <harness-name> --config <path> --skills <dir> [--status <status>] [--command <cmd>[,<cmd>]] [--dry-run] [--json]",
-    "  variant add <variant-id> --from <base-id> --capability <name> --workflow <name> --config <path> --skills <dir> [--path <relative-skill-path>] [--mode manual-only|router-only|workflow-auto] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]",
-    "  variant fork <variant-id> --from <base-id> --capability <name> --workflow <name> --path <relative-skill-path> --config <path> --skills <dir> [--adapted-for <label>] [--category <name>] [--owner-install-unit <unit-id>] [--dry-run] [--json]",
-    "  variant status <variant-id> --config <path> --skills <dir> [--json]",
-    "  variant approve <variant-id> --config <path> --skills <dir> [--mode manual-only|router-only|workflow-auto] [--dry-run] [--json]",
-    "  variant reset <variant-id> --to-base|--to-approved --config <path> --skills <dir> [--yes] [--dry-run] [--mode manual-only|router-only|workflow-auto] [--json]",
-    "  activate <skill-id> --workflow <name> [--mode manual-only|router-only|workflow-auto] --config <path> --skills <dir> [--dry-run] [--json]",
-    "  block <skill-id> --workflow <name> --config <path> --skills <dir> [--dry-run] [--json]",
-    "  quarantine <skill-id> --config <path> --skills <dir> [--dry-run] [--json]",
-    "  prefer <skill-id> --workflow <name> --capability <name> --config <path> --skills <dir> [--dry-run] [--json]",
-    "  remove skill <skill-id> --config <path> --skills <dir> [--force] [--dry-run] [--json]",
-    "  dashboard --config <path> --skills <dir> [--out <path>]",
-    "  reconcile --config <path> --skills <dir> [--actual-harnesses a,b] [--out <path>]",
-    "  impact disable <skill-id> --config <path> --skills <dir> [--out <path>] [--json]",
+    "  list [skills|workflows|harnesses|install-units] [--config <path>] [--skills <dir>] [--json]",
+    "  explain <skill-id> [--config <path>] [--skills <dir>] [--json]",
+    "  route <intent> --agent codex|claude|opencode|hermes [--config <path>] [--skills <dir>] [--json]",
+    "  can-use <skill-id> --agent codex|claude|opencode|hermes [--config <path>] [--skills <dir>] [--json]",
+    "  guard use <skill-id> --agent codex|claude|opencode|hermes [--config <path>] [--skills <dir>] [--json]",
     "",
-    "Legacy project policy mode:",
+    "Advanced operator commands:",
+    "  Import, audit, rollout, hook, lock, variant, reconcile, impact, dashboard, and v1 lifecycle commands remain available through command-specific help and docs/reference.md.",
+    "  Audit metadata never changes skill availability; runtime/action permission remains with the agent or harness.",
+    "",
+    "Legacy v1 project policy mode:",
     "  init [--dir <path>] [--scan-root <dir>[,<dir>]] [--no-scan-installed]",
     "  Deprecated project-local policy bootstrap; not needed for normal use.",
     "",
-    "AI/automation control loop:",
-    "  Goal: keep skills broadly available while routing overlaps consistently; see docs/ai-skill-routing-goal.md.",
-    "  Development loop: observe → route → work → explain briefly → ask after → remember policy.",
-    "  For an already-allowed skill, disclose the selected skill at start and completion; do not ask for another approval.",
-    "  Translate an ambiguous request or explicit skill decision into the current brief: skillboard brief --json --config <path> --skills <dir> [--workflow <name>] [--intent <request>] [--include-actions].",
-    "  If a policy-changing action is needed, pick one current action id from that brief and ask the user for one confirmation.",
-    "  Apply one current action with skillboard apply-action <action-id> --config <path> --skills <dir> [--workflow <name>] --yes --json.",
-    "  Read the returned post-apply brief, then run skillboard guard use automatically before invocation.",
-    "  apply-action re-resolves current actions; do not use cached/stale ids, multiple actions, or raw action-card shell text as the primary apply path.",
+    "v2 AI/automation control loop:",
+    "  Policy decides only enabled/disabled and per-skill opt-in sharing; see docs/ai-skill-routing-goal.md.",
+    "  Valid installed skills default to enabled and agent-local. Optional preference ranks only and never changes availability.",
+    "  Read brief --intent --agent <agent>, select an enabled installed skill, and run guard use automatically before use.",
+    "  For an allowed skill, work without another approval; ask once only before a persistent policy change.",
+    "  Source/provenance observations are audit metadata, never availability. Runtime/action authorization is outside SkillBoard.",
+    "  Stale v1 policy is read-only: preview with skillboard migrate v2 --config <path> --json, apply with --yes --json, or restore with --rollback <backup> --json.",
     ""
   ].join("\n");
 }
 
 function commandHelpText(command) {
+  if (command === "skill") {
+    return skillHelpText();
+  }
   if (command === "brief") {
     return briefHelpText();
   }
@@ -1607,6 +1851,20 @@ function commandHelpText(command) {
   return usage === undefined ? null : genericCommandHelpText(usage);
 }
 
+function skillHelpText() {
+  return [
+    "Usage: skillboard skill enable|disable <skill-id> [--dry-run] [--json]",
+    "Usage: skillboard skill share|unshare <skill-id> [--dry-run] [--json]",
+    "Usage: skillboard skill preference <skill-id> --intent <term>[,<term>] --priority <integer> [--dry-run] [--json]",
+    "Usage: skillboard skill forget <skill-id> [--dry-run] [--json]",
+    "",
+    "Policy records enablement and explicit per-skill sharing. Skills remain agent-local by default.",
+    "Preference only ranks enabled skills installed for the current agent; it never changes availability.",
+    "Forget removes policy only after an unshared skill is no longer present in generated inventory; it never deletes skill files.",
+    ""
+  ].join("\n");
+}
+
 function genericCommandHelpText(usageLines) {
   return [
     ...usageLines.map((line) => `Usage: skillboard ${line}`),
@@ -1632,8 +1890,7 @@ function initHelpText() {
     "",
     "What changes:",
     "  Writes skillboard.config.yaml, skills/, .skillboard/, AGENTS.md, and CLAUDE.md as needed.",
-    "  Imports trusted user-local skills as on-request skills.",
-    "  Keeps runtime, plugin, system, and external skills behind source review before manual activation.",
+    "  Scans installed skills into generated inventory without source-based authorization.",
     "",
     "Legacy next steps:",
     "  Run skillboard doctor --summary.",
@@ -1655,8 +1912,8 @@ function setupHelpText() {
     "",
     "What changes after confirmation:",
     "  Writes a SkillBoard guidance skill into detected user agent skill roots.",
-    "  Does not write skillboard.config.yaml, .skillboard/, AGENTS.md, or CLAUDE.md in projects.",
-    "  Teaches agents to use installed skills by default and resolve overlap by workflow priority.",
+    "  Creates ~/skillboard.config.yaml and ~/.skillboard/inventory.json; it writes no project files.",
+    "  Teaches agents to use local skills by default and share only user-selected skills.",
     "  Remove this managed guidance later with skillboard uninstall --agent-layer.",
     "",
     "Supported agent homes:",
@@ -1701,14 +1958,17 @@ function importSkillHelpText() {
 
 function uninstallHelpText() {
   return [
+    "Usage: skillboard uninstall --user (--dry-run|--yes) [--json]",
     "Usage: skillboard uninstall [--dir <path>] [--dry-run] [--keep-settings] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs] [--agent-layer] [--agent codex[,claude,opencode,hermes]]",
     "",
     "This help is read-only. It does not load config or change project files.",
     "",
-    "Removes SkillBoard project bridge files, generated lifecycle scaffolding, or managed agent-layer guidance.",
+    "Removes complete user-level SkillBoard state, project bridge files, generated lifecycle scaffolding, or managed agent-layer guidance.",
     "Default project cleanup removes SkillBoard settings and generated project state while preserving local skills and user-authored non-SkillBoard content.",
     "",
     "Options:",
+    "  --user              Remove all marker-owned shared copies, managed guidance, home policy, and generated user state.",
+    "  --yes               Confirm the user-level removal after previewing it.",
     "  --dir <path>        Project root to clean up; defaults to the current directory.",
     "  --dry-run           Preview the cleanup without writing changes.",
     "  --keep-settings     Preserve project SkillBoard settings and bridge guidance during default cleanup.",
@@ -1720,6 +1980,12 @@ function uninstallHelpText() {
     "  --keep-empty-dirs   Preserve empty generated directories.",
     "  --agent-layer       Remove managed user-agent skillboard guidance instead of project files.",
     "  --agent <list>      Target supported agents for --agent-layer cleanup.",
+    "  --json              Print a machine-readable user-level removal plan or result.",
+    "",
+    "User-level cleanup:",
+    "  Run skillboard uninstall --user --dry-run, inspect the complete plan, then apply it with --yes.",
+    "  Removes only marker-owned shared copies and managed guidance; agent-owned and unmanaged skills are preserved.",
+    "  Removes ~/skillboard.config.yaml and ~/.skillboard only after managed copies and guidance are handled.",
     "",
     "Default project cleanup:",
     "  Removes SkillBoard config, bridge blocks, and the entire .skillboard/ project state directory.",
@@ -1740,11 +2006,11 @@ function doctorHelpText() {
   return [
     "Usage: skillboard doctor [--dir <path>] [--config <path>] [--skills <dir>] [--verify] [--strict] [--summary] [--json]",
     "",
-    "Checks legacy local policy workspace health and source-review readiness.",
+    "Checks the user-level policy and generated inventory health.",
     "The status command is an alias for doctor.",
     "",
     "Options:",
-    "  --dir <path>       Workspace root to check; defaults to the current directory.",
+    "  --dir <path>       Advanced legacy workspace root override.",
     "  --config <path>    Use a specific skillboard.config.yaml.",
     "  --skills <dir>     Use a specific skills directory.",
     "  --verify           Verify local source/cache digests when available.",
@@ -1752,24 +2018,23 @@ function doctorHelpText() {
     "  --summary          Print a short human summary.",
     "  --json             Print an agent-readable payload.",
     "",
-    "Use this for existing workspaces that intentionally keep local SkillBoard policy files.",
-    "It is read-only and is not part of agent-layer setup.",
+    "Without path overrides, this checks ~/skillboard.config.yaml and ~/.skillboard/inventory.json from any directory.",
+    "It is read-only.",
     ""
   ].join("\n");
 }
 
 function briefHelpText() {
   return [
-    "Usage: skillboard brief [--workflow <name>] [--intent <request>] [--dir <path>] [--config <path>] [--skills <dir>] [--include-actions] [--verbose] [--json]",
+    "Usage: skillboard brief [--agent codex|claude|opencode|hermes] [--intent <request>] [--config <path>] [--skills <dir>] [--include-actions] [--verbose] [--json]",
     "",
-    "Reads the current SkillBoard brief without changing project files.",
+    "Reads the current user-level SkillBoard brief without changing files.",
     "Use it when a user asks what skills the AI can use, a request has ambiguous skill overlap, or a policy change needs approval.",
     "",
     "Options:",
-    "  --workflow <name>     Evaluate one workflow.",
+    "  --agent <name>        Evaluate actual installation for the current agent; required for v2 availability and routing.",
     "  --intent <request>    Add a natural-language request so SkillBoard can suggest a skill.",
-    "  --dir <path>          Use a project root; defaults to the current directory.",
-    "  --config <path>       Use a specific skillboard.config.yaml.",
+    "  --config <path>       Advanced policy override; defaults to ~/skillboard.config.yaml.",
     "  --skills <dir>        Use a specific skills directory.",
     "  --include-actions     Include current action ids in JSON output.",
     "  --verbose             Show full lists instead of compact previews.",
@@ -1777,7 +2042,7 @@ function briefHelpText() {
     "",
     "AI use:",
     "  Read this before answering availability questions.",
-    "  Run skillboard guard use <skill-id> --workflow <name> before invoking a skill.",
+    "  Run skillboard guard use <skill-id> --agent <agent> before invoking a skill.",
     "  If guard allows use, disclose the skill at the start and completion; do not ask for another approval.",
     "  If a policy change is needed, ask the user to approve one current action id from this brief.",
     ""
@@ -1786,14 +2051,14 @@ function briefHelpText() {
 
 function routeHelpText() {
   return [
-    "Usage: skillboard route <intent> --workflow <name> [--config <path>] [--skills <dir>] [--json]",
+    "Usage: skillboard route <intent> --agent codex|claude|opencode|hermes [--config <path>] [--skills <dir>] [--json]",
     "",
     "Suggests the routed skill for a user request when several allowed skills may overlap.",
     "Use it when the AI needs a skill recommendation without changing policy.",
     "",
     "Options:",
     "  <intent>           Natural-language request, such as \"write tests first\".",
-    "  --workflow <name>  Workflow to route within.",
+    "  --agent <name>     Route among skills installed for this agent.",
     "  --config <path>    Use a specific skillboard.config.yaml.",
     "  --skills <dir>     Use a specific skills directory.",
     "  --json             Print an agent-readable payload.",
@@ -1809,14 +2074,14 @@ function routeHelpText() {
 
 function canUseHelpText() {
   return [
-    "Usage: skillboard can-use <skill-id> --workflow <name> [--config <path>] [--skills <dir>] [--json]",
+    "Usage: skillboard can-use <skill-id> --agent codex|claude|opencode|hermes [--config <path>] [--skills <dir>] [--json]",
     "",
-    "Checks whether one skill is currently usable in a workflow without changing policy.",
+    "Checks whether one skill is enabled and installed for the selected agent without changing policy.",
     "Use it when the AI needs an availability answer for a named skill.",
     "",
     "Options:",
     "  <skill-id>         Skill id to check.",
-    "  --workflow <name>  Workflow that would use the skill.",
+    "  --agent <name>     Agent that would use the skill.",
     "  --config <path>    Use a specific skillboard.config.yaml.",
     "  --skills <dir>     Use a specific skills directory.",
     "  --json             Print an agent-readable payload.",
@@ -1831,7 +2096,7 @@ function canUseHelpText() {
 
 function guardHelpText() {
   return [
-    "Usage: skillboard guard use <skill-id> --workflow <name> [--config <path>] [--skills <dir>] [--json]",
+    "Usage: skillboard guard use <skill-id> --agent codex|claude|opencode|hermes [--config <path>] [--skills <dir>] [--json]",
     "",
     "Checks whether one skill may be used right now.",
     "Run this immediately before the AI invokes a skill.",
@@ -1839,7 +2104,7 @@ function guardHelpText() {
     "Options:",
     "  use                Guard a skill invocation.",
     "  <skill-id>         Skill id to check.",
-    "  --workflow <name>  Workflow that will use the skill.",
+    "  --agent <name>     Agent that will use the skill.",
     "  --config <path>    Use a specific skillboard.config.yaml.",
     "  --skills <dir>     Use a specific skills directory.",
     "  --json             Print an agent-readable payload.",
@@ -1853,15 +2118,16 @@ function guardHelpText() {
 
 function applyActionHelpText() {
   return [
-    "Usage: skillboard apply-action <action-id> [--workflow <name>] [--dir <path>] [--config <path>] [--skills <dir>] [--dry-run] [--yes] [--allow-destructive] [--json]",
+    "Usage: skillboard apply-action <action-id> [--agent codex|claude|opencode|hermes] [--intent <text>] [--config <path>] [--skills <dir>] [--dry-run] [--yes] [--allow-destructive] [--json]",
     "",
     "Applies one current action id from the latest brief.",
     "Use it only after the user confirms a policy-changing action.",
     "",
     "Options:",
     "  <action-id>             One action id from the current brief.",
-    "  --workflow <name>       Workflow for workflow-scoped actions.",
-    "  --dir <path>            Project root; defaults to the current directory.",
+    "  --agent <name>           Preserve the brief's current-agent context in preview and post-apply output.",
+    "  --intent <text>         Intent bound to a current preference action.",
+    "  --dir <path>            Advanced legacy workspace root override.",
     "  --config <path>         Use a specific skillboard.config.yaml.",
     "  --skills <dir>          Use a specific skills directory.",
     "  --dry-run               Preview the action without writing changes.",

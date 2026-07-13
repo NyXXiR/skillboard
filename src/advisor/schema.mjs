@@ -1,4 +1,4 @@
-import { isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { uninstallProject } from "../uninstall.mjs";
 import { buildAssistantGuidance } from "./guidance.mjs";
 import { sortedStrings } from "./sort.mjs";
@@ -18,6 +18,7 @@ export function buildBrief(data) {
     ok: data.ok,
     schema_version: SCHEMA_VERSION
   };
+  if (data.compatibility !== undefined && data.compatibility !== null) brief.compatibility = data.compatibility;
   if (data.error !== undefined) {
     brief.error = data.error;
   }
@@ -35,11 +36,12 @@ export function buildBrief(data) {
 }
 
 export function resolveProjectPaths(options) {
-  const root = resolve(options.root ?? ".");
+  const configPath = resolve(options.configPath ?? "skillboard.config.yaml");
+  const root = resolve(options.root ?? dirname(configPath));
   return {
     root,
-    configPath: resolveUnderRoot(root, options.configPath ?? "skillboard.config.yaml"),
-    skillsRoot: resolveUnderRoot(root, options.skillsRoot ?? "skills")
+    configPath: resolveUnderRoot(root, configPath),
+    skillsRoot: options.skillsRoot === undefined ? undefined : resolveUnderRoot(root, options.skillsRoot)
   };
 }
 
@@ -66,14 +68,14 @@ export async function buildCleanup(root) {
 }
 
 export function healthFromDoctor(doctor, paths) {
-  return {
+  const health = {
     mode: doctor.mode,
     review_required: doctor.reviewRequired,
     strict_ok: doctor.strictOk,
     initialized: doctor.initialized,
     root: paths.root,
     config_path: paths.configPath,
-    skills_root: paths.skillsRoot,
+    skills_root: paths.skillsRoot ?? null,
     config: {
       exists: doctor.config.exists,
       valid: doctor.config.valid,
@@ -86,6 +88,15 @@ export function healthFromDoctor(doctor, paths) {
       warnings: sortedStrings(doctor.policy.warnings)
     }
   };
+  if (doctor.inventory.required) {
+    health.inventory = {
+      required: true,
+      ok: doctor.inventory.ok,
+      path: doctor.inventory.path,
+      errors: sortedStrings(doctor.inventory.errors)
+    };
+  }
+  return health;
 }
 
 export function emptyWorkflowState() {

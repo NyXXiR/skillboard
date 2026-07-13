@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -165,36 +165,15 @@ test("route suggests ask-after preference for ambiguous allowed workflow skills"
       }
     });
 
-    await preferSkill({
+    const configBytes = await readFile(configPath, "utf8");
+    await assert.rejects(preferSkill({
       skillId: before.post_use_policy_suggestion.suggested_policy.skill,
       workflow: before.post_use_policy_suggestion.suggested_policy.workflow,
       capability: before.post_use_policy_suggestion.suggested_policy.capability,
       configPath,
       skillsRoot
-    });
-
-    const afterWorkspace = await loadWorkspace({ configPath, skillsRoot });
-    const after = routeSkill(afterWorkspace, {
-      intent: "write tests before implementation",
-      workflow: "daily-workflow",
-      configPath,
-      skillsRoot
-    });
-
-    assert.equal(after.recommended_skill, "user.tdd");
-    assert.deepEqual(after.policy_memory, {
-      status: "applied",
-      mode: "remembered-or-configured-preference",
-      selected_skill: "user.tdd",
-      available_alternatives: ["private.tdd-work-continuity"],
-      summary: "Remembered or configured policy selected user.tdd for test-first-implementation in daily-workflow; other allowed skills were also available: private.tdd-work-continuity.",
-      finish_disclosure: "I used user.tdd for this request because SkillBoard has a remembered or configured preference for it; other allowed skills were also available: private.tdd-work-continuity."
-    });
-    assert.equal(
-      after.usage_disclosure.finish_message,
-      "I used user.tdd for this request because SkillBoard has a remembered or configured preference for it; other allowed skills were also available: private.tdd-work-continuity."
-    );
-    assert.equal(after.post_use_policy_suggestion, null);
+    }), /Version 1 policy is read-only\. Run `skillboard migrate v2`\./);
+    assert.equal(await readFile(configPath, "utf8"), configBytes);
   });
 });
 
@@ -346,48 +325,15 @@ test("post-use policy suggestion can be remembered for the next route", async ()
       ])
     );
 
-    const result = await preferSkill({
+    const configBytes = await readFile(configPath, "utf8");
+    await assert.rejects(preferSkill({
       skillId: suggestion.suggested_policy.skill,
       workflow: suggestion.suggested_policy.workflow,
       capability: suggestion.suggested_policy.capability,
       configPath,
       skillsRoot
-    });
-
-    assert.equal(result.changed, true);
-    assert.equal(result.dryRun, false);
-    assert.match(result.message, /Preferred user\.tdd/);
-
-    const afterWorkspace = await loadWorkspace({ configPath, skillsRoot });
-    const after = routeSkill(afterWorkspace, {
-      intent: "write tests before implementation",
-      workflow: "daily-workflow",
-      configPath,
-      skillsRoot
-    });
-
-    assert.equal(after.recommended_skill, "user.tdd");
-    assert.equal(after.policy_memory, null);
-    assert.deepEqual(after.route_candidates.map((candidate) => ({
-      skill: candidate.skill,
-      role: candidate.role,
-      selected: candidate.selected,
-      guard_allowed: candidate.guard_allowed
-    })), [
-      {
-        skill: "user.tdd",
-        role: "preferred",
-        selected: true,
-        guard_allowed: true
-      },
-      {
-        skill: "vendor.test-first",
-        role: "fallback",
-        selected: false,
-        guard_allowed: false
-      }
-    ]);
-    assert.equal(after.post_use_policy_suggestion, null);
+    }), /Version 1 policy is read-only\. Run `skillboard migrate v2`\./);
+    assert.equal(await readFile(configPath, "utf8"), configBytes);
   });
 });
 

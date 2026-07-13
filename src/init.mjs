@@ -24,6 +24,14 @@ export async function initProject(options) {
     await writeFile(configPath, defaultConfig(), "utf8");
     created.push("skillboard.config.yaml");
   }
+  if (configCreated && options.scanInstalled === false) {
+    await refreshAgentInventory({
+      root,
+      configPath,
+      inventory: { skills: [], installUnits: [], scannedSkills: 0, warnings: [] }
+    });
+    created.push(".skillboard/inventory.json");
+  }
   const profileReadmePath = join(profileRoot, "README.md");
   if (!(await exists(profileReadmePath))) {
     await writeFile(profileReadmePath, profileReadme(), "utf8");
@@ -107,6 +115,14 @@ async function mergeInstalledAgentSkills(configPath, options) {
 async function summarizeSafety(configPath) {
   const config = YAML.parse(await readFile(configPath, "utf8")) ?? {};
   const skills = config.skills && typeof config.skills === "object" ? Object.values(config.skills) : [];
+  if (config.version === 2) {
+    return {
+      enabled: skills.filter((skill) => skill?.enabled === true).length,
+      disabled: skills.filter((skill) => skill?.enabled === false).length,
+      shared: skills.filter((skill) => skill?.enabled === true && skill.shared === true).length,
+      local: skills.filter((skill) => skill?.enabled === true && skill.shared !== true).length
+    };
+  }
   let automatic = 0;
   let manualOnly = 0;
   let routerOnly = 0;
@@ -132,5 +148,5 @@ async function summarizeSafety(configPath) {
       routerOnly += 1;
     }
   }
-  return { automatic, manualOnly, routerOnly, blocked };
+  return { enabled: automatic + manualOnly + routerOnly, disabled: blocked, global: 0, scoped: automatic + manualOnly + routerOnly };
 }
