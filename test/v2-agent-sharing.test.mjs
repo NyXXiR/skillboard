@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -114,11 +114,12 @@ test("newly observed skills default enabled but remain agent-local", () => {
 });
 
 test("default state paths are user-level and independent of cwd", () => {
-  const first = resolveUserStatePaths({ home: "/home/test-user", cwd: "/tmp/project-a" });
-  const second = resolveUserStatePaths({ home: "/home/test-user", cwd: "/tmp/project-b" });
+  const home = resolve("fixture-home");
+  const first = resolveUserStatePaths({ home, cwd: resolve("project-a") });
+  const second = resolveUserStatePaths({ home, cwd: resolve("project-b") });
   assert.deepEqual(first, second);
-  assert.equal(first.configPath, join("/home/test-user", "skillboard.config.yaml"));
-  assert.equal(first.inventoryPath, join("/home/test-user", ".skillboard", "inventory.json"));
+  assert.equal(first.configPath, join(home, "skillboard.config.yaml"));
+  assert.equal(first.inventoryPath, join(home, ".skillboard", "inventory.json"));
 });
 
 test("setup creates one home control plane and normal commands never initialize projects", async () => {
