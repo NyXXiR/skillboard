@@ -13,7 +13,7 @@ Source tree: replace `skillboard ` with `node bin/skillboard.mjs `.
 ## Core user-level commands
 
 ```text
-skillboard setup [--yes] [--agent codex[,claude,opencode,hermes]]
+skillboard setup [--yes] [--agent codex[,claude,opencode,hermes]] [--skill-root <path>]
 skillboard inventory refresh [--config <path>] [--dry-run] [--json]
 skillboard brief [--agent codex|claude|opencode|hermes] [--intent <request>] [--include-actions] [--json]
 skillboard route <intent> --agent codex|claude|opencode|hermes [--json]
@@ -32,6 +32,14 @@ skillboard doctor [--config <path>] [--strict] [--json]
 Without path overrides, commands read `~/skillboard.config.yaml` and
 `~/.skillboard/inventory.json` from any directory. Setup bootstraps both files
 atomically and never creates project state.
+
+Setup is the convergent install/update command. It refreshes managed guidance,
+policy, and inventory; discovers late standard roots and Hermes profiles; and
+creates missing compatible copies for policy entries already marked
+`shared: true`. `--skill-root` requires exactly one `--agent`, accepts only a
+non-symlinked path inside the invoking user's home, and persists the mapping in
+`~/.skillboard/agent-roots.json`. That registry is operational discovery state,
+not authorization or policy. One root cannot be registered to two agents.
 
 Guard requires a valid inventory record, `enabled: true`, and the selected agent
 in `installed_on`. Optional preference ranks candidates but never changes

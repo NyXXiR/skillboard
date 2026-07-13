@@ -2,8 +2,8 @@ import { constants as fsConstants } from "node:fs";
 import { copyFile, lstat, mkdir, readFile, readdir, readlink, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { analyzeAgentCompatibility, agentSkillRoot, findSourceSkillInRoots } from "./agent-skill-import.mjs";
-import { detectedAgentSkillRoots, supportedAgentNames } from "./agent-skill-roots.mjs";
+import { analyzeAgentCompatibility, findSourceSkillInRoots } from "./agent-skill-import.mjs";
+import { agentSkillRootCandidates, detectedAgentSkillRoots, supportedAgentNames } from "./agent-skill-roots.mjs";
 import { setV2SkillShared } from "./control/v2-skill-crud.mjs";
 import { refreshAgentInventory } from "./inventory-refresh.mjs";
 import { loadWorkspace } from "./workspace.mjs";
@@ -43,10 +43,10 @@ async function shareSkill(options, workspace, policy) {
   }
   const sharedRoot = join(options.home, ".agents", "shared-skills");
   const sharedDir = shareTarget(sharedRoot, options.skillId);
-  const targets = await Promise.all(targetAgents.map(async (agent) => {
-    const root = await agentSkillRoot(agent, options.home, options.env);
-    return { agent, root, path: shareTarget(root, options.skillId) };
-  }));
+  const targets = uniqueTargets((await Promise.all(targetAgents.map(async (agent) => {
+    const roots = await detectedAgentSkillRoots(agent, options.home, options.env, { includeFallback: true });
+    return roots.map((root) => ({ agent, root: root.skillRoot, path: shareTarget(root.skillRoot, options.skillId) }));
+  }))).flat());
   await assertShareTargetAvailable(sharedRoot, sharedDir, options.home, options.skillId);
   for (const target of targets) {
     await assertShareTargetAvailable(target.root, target.path, options.home, options.skillId);
@@ -88,9 +88,10 @@ async function shareSkill(options, workspace, policy) {
 async function unshareSkill(options, policy) {
   const managed = [];
   for (const agent of supportedAgentNames()) {
-    const root = await agentSkillRoot(agent, options.home, options.env);
-    const path = shareTarget(root, options.skillId);
-    if (await managedShare(path, options.skillId)) managed.push(path);
+    for (const root of await agentSkillRootCandidates(agent, options.home, options.env)) {
+      const path = shareTarget(root.skillRoot, options.skillId);
+      if (await managedShare(path, options.skillId)) managed.push(path);
+    }
   }
   const sharedDir = shareTarget(join(options.home, ".agents", "shared-skills"), options.skillId);
   if (await managedShare(sharedDir, options.skillId)) managed.push(sharedDir);
@@ -146,7 +147,7 @@ function refreshedInventoryAgents(workspace, options) {
   return agents(workspace.inventory.skills.find((skill) => skill.id === options.skillId)?.installed_on);
 }
 
-async function copyManaged(source, target, metadata, options) {
+export async function copyManaged(source, target, metadata, options = {}) {
   if (await exists(target)) {
     if (!await managedShare(target, metadata.skill)) {
       throw new Error(`Share target already exists and is not managed by SkillBoard: ${target}`);
@@ -192,12 +193,29 @@ async function copyDirectory(source, target) {
   }
 }
 
-async function managedShare(path, skillId) {
-  const value = await readFile(join(path, MARKER), "utf8").then(JSON.parse, () => null);
-  return value?.version === 1 && value.skill === skillId;
+export async function managedShareMetadata(path, skillId) {
+  const directory = await pathStats(path);
+  if (directory === null || directory.isSymbolicLink() || !directory.isDirectory()) return null;
+  const markerPath = join(path, MARKER);
+  const markerStats = await pathStats(markerPath);
+  if (markerStats === null || markerStats.isSymbolicLink() || !markerStats.isFile()) return null;
+  const value = await readFile(markerPath, "utf8").then(parseJsonOrNull, () => null);
+  return value?.version === 1 && value.managed_by === "skillboard" && value.skill === skillId ? value : null;
 }
 
-function marker(skill, sourceAgent, mode, targetAgent = null) {
+function parseJsonOrNull(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+export async function managedShare(path, skillId) {
+  return await managedShareMetadata(path, skillId) !== null;
+}
+
+export function marker(skill, sourceAgent, mode, targetAgent = null) {
   return { version: 1, managed_by: "skillboard", mode, skill, source_agent: sourceAgent, target_agent: targetAgent };
 }
 
@@ -235,7 +253,7 @@ async function exists(path) {
   return lstat(path).then(() => true, () => false);
 }
 
-function shareTarget(root, skillId) {
+export function shareTarget(root, skillId) {
   const value = String(skillId).replace(/\\/g, "/");
   if (value.trim() === "" || value.includes("\0") || value.startsWith("/") || /^[A-Za-z]:\//.test(value)) {
     throw new Error("skill id must identify a relative skill directory");
@@ -249,7 +267,7 @@ function shareTarget(root, skillId) {
   return target;
 }
 
-async function assertShareTargetAvailable(root, target, home, skillId) {
+export async function assertShareTargetAvailable(root, target, home, skillId) {
   const resolvedRoot = resolve(root);
   const resolvedHome = resolve(home);
   const boundary = resolvedRoot === resolvedHome || isInside(resolvedRoot, resolvedHome)
@@ -272,6 +290,12 @@ async function assertShareTargetAvailable(root, target, home, skillId) {
   if (!stats.isDirectory() || !await managedShare(target, skillId)) {
     throw new Error(`Share target already exists and is not managed by SkillBoard: ${target}`);
   }
+}
+
+function uniqueTargets(targets) {
+  const byPath = new Map();
+  for (const target of targets) byPath.set(resolve(target.path), target);
+  return [...byPath.values()].sort((left, right) => left.path.localeCompare(right.path));
 }
 
 function directoryComponents(boundary, targetDir) {

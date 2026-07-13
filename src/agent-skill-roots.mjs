@@ -1,6 +1,7 @@
-import { access, readdir } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { loadRegisteredAgentRoots } from "./agent-root-registry.mjs";
 
 const SUPPORTED_AGENTS = Object.freeze(["codex", "claude", "opencode", "hermes"]);
 
@@ -9,11 +10,12 @@ export function supportedAgentNames() {
 }
 
 export async function detectedAgentSkillRoots(agent, home = homedir(), env = process.env, options = {}) {
-  const candidates = await agentSkillRootCandidates(agent, home, env);
+  const candidates = await activeAgentSkillRootCandidates(agent, home, env, options);
   const detected = [];
   for (const candidate of candidates) {
     if (
       candidate.explicit
+      || candidate.registered
       || await exists(candidate.skillRoot)
       || candidate.detectWhenExists !== undefined && await exists(candidate.detectWhenExists)
     ) {
@@ -27,7 +29,7 @@ export async function detectedAgentSkillRoots(agent, home = homedir(), env = pro
 }
 
 export async function setupAgentSkillTargets(agent, home = homedir(), env = process.env, options = {}) {
-  const roots = await detectedAgentSkillRoots(agent, home, env, { includeFallback: options.includeFallback === true });
+  const roots = await detectedAgentSkillRoots(agent, home, env, options);
   return roots.map((root) => ({
     agent,
     home: resolve(home),
@@ -42,38 +44,61 @@ export async function preferredAgentSkillRoot(agent, home = homedir(), env = pro
   return root.skillRoot;
 }
 
-export async function agentSkillRootCandidates(agent, home = homedir(), env = process.env) {
+export async function activeAgentSkillRootCandidates(agent, home = homedir(), env = process.env, options = {}) {
+  const candidates = await agentSkillRootCandidates(agent, home, env, options);
+  const hasRegistered = candidates.some((entry) => entry.registered);
+  const hasExplicit = candidates.some((entry) => entry.explicit);
+  if (!hasRegistered && !hasExplicit) return candidates;
+  const active = await Promise.all(candidates.map(async (entry) => ({
+    entry,
+    keep: entry.registered
+      || entry.explicit
+      || entry.profile
+      || entry.sharedCodex
+      || await hasAgentOwnedSkillContent(entry.skillRoot)
+  })));
+  return active.filter(({ keep }) => keep).map(({ entry }) => entry);
+}
+
+export async function agentSkillRootCandidates(agent, home = homedir(), env = process.env, options = {}) {
   const normalized = normalizeAgent(agent);
   const xdgConfig = env.XDG_CONFIG_HOME ?? join(home, ".config");
+  const registered = (options.registeredRoots ?? await loadRegisteredAgentRoots(home))
+    .filter((entry) => entry.agent === normalized)
+    .map((entry) => candidate(entry.path, "registered custom skill root", false, false, undefined, { registered: true }));
   if (normalized === "codex") {
     const agentsHome = join(home, ".agents");
     return uniqueCandidates([
+      ...registered,
       env.CODEX_HOME === undefined ? null : candidate(join(env.CODEX_HOME, "skills"), "CODEX_HOME/skills", true, false),
       env.AGENTS_HOME === undefined ? null : candidate(join(env.AGENTS_HOME, "skills"), "AGENTS_HOME/skills", true, false),
-      candidate(join(agentsHome, "skills"), "~/.agents/skills", false, false, agentsHome),
-      candidate(join(home, ".codex", "skills"), "~/.codex/skills", false, true)
+      candidate(join(agentsHome, "skills"), "~/.agents/skills", false, false, agentsHome, { sharedCodex: true }),
+      candidate(join(home, ".codex", "skills"), "~/.codex/skills", false, true, join(home, ".codex"))
     ]);
   }
   if (normalized === "claude") {
     return uniqueCandidates([
+      ...registered,
       env.CLAUDE_HOME === undefined ? null : candidate(join(env.CLAUDE_HOME, "skills"), "CLAUDE_HOME/skills", true, false),
-      candidate(join(home, ".claude", "skills"), "~/.claude/skills", false, true),
+      candidate(join(home, ".claude", "skills"), "~/.claude/skills", false, true, join(home, ".claude")),
       candidate(join(xdgConfig, "claude", "skills"), "XDG claude skills", false, false),
       candidate(join(home, ".config", "claude", "skills"), "~/.config/claude/skills", false, false)
     ]);
   }
   if (normalized === "opencode") {
     return uniqueCandidates([
+      ...registered,
       env.OPENCODE_HOME === undefined ? null : candidate(join(env.OPENCODE_HOME, "skills"), "OPENCODE_HOME/skills", true, false),
-      candidate(join(xdgConfig, "opencode", "skills"), "XDG opencode skills", false, xdgConfig !== join(home, ".config")),
-      candidate(join(home, ".config", "opencode", "skills"), "~/.config/opencode/skills", false, true),
+      candidate(join(xdgConfig, "opencode", "skills"), "XDG opencode skills", false, xdgConfig !== join(home, ".config"), join(xdgConfig, "opencode")),
+      candidate(join(home, ".config", "opencode", "skills"), "~/.config/opencode/skills", false, true, join(home, ".config", "opencode")),
       candidate(join(home, ".opencode", "skills"), "~/.opencode/skills", false, false)
     ]);
   }
   const hermesHome = env.HERMES_HOME ?? join(home, ".hermes");
   return uniqueCandidates([
+    ...registered,
     env.HERMES_HOME === undefined ? null : candidate(join(env.HERMES_HOME, "skills"), "HERMES_HOME/skills", true, false),
-    candidate(join(home, ".hermes", "skills"), "~/.hermes/skills", false, true),
+    candidate(join(home, ".hermes", "skills"), "~/.hermes/skills", false, true, join(home, ".hermes")),
     ...(await hermesProfileCandidates(hermesHome))
   ]);
 }
@@ -85,8 +110,8 @@ function normalizeAgent(agent) {
   return agent;
 }
 
-function candidate(skillRoot, source, explicit, fallback, detectWhenExists) {
-  return { skillRoot, source, explicit, fallback, detectWhenExists };
+function candidate(skillRoot, source, explicit, fallback, detectWhenExists, metadata = {}) {
+  return { skillRoot, source, explicit, fallback, detectWhenExists, ...metadata };
 }
 
 function fallbackCandidate(candidates) {
@@ -112,9 +137,41 @@ async function hermesProfileCandidates(hermesHome) {
   const entries = await readdir(profilesRoot, { withFileTypes: true }).catch(() => []);
   return entries
     .filter((entry) => entry.isDirectory())
-    .map((entry) => candidate(join(profilesRoot, entry.name, "skills"), `Hermes profile ${entry.name}`, false, false));
+    .map((entry) => candidate(
+      join(profilesRoot, entry.name, "skills"),
+      `Hermes profile ${entry.name}`,
+      false,
+      false,
+      join(profilesRoot, entry.name),
+      { profile: true }
+    ));
 }
 
 async function exists(path) {
   return access(path).then(() => true, () => false);
+}
+
+async function hasAgentOwnedSkillContent(skillRoot) {
+  const entries = await readdir(skillRoot, { withFileTypes: true }).catch((error) => {
+    if (error?.code === "ENOENT" || error?.code === "ENOTDIR") return [];
+    throw error;
+  });
+  for (const entry of entries) {
+    if (entry.name === "skillboard" || entry.name === ".system") continue;
+    if (!entry.isDirectory()) return true;
+    const metadata = await readFile(join(skillRoot, entry.name, ".skillboard-share.json"), "utf8")
+      .then((text) => {
+        try {
+          return JSON.parse(text);
+        } catch {
+          return null;
+        }
+      }, (error) => {
+        if (error?.code === "ENOENT") return null;
+        throw error;
+      });
+    if (metadata?.version === 1 && metadata.managed_by === "skillboard") continue;
+    return true;
+  }
+  return false;
 }

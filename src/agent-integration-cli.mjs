@@ -2,17 +2,29 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { installAgentIntegration, uninstallAgentIntegration } from "./agent-integration-files.mjs";
-import { applyOwnership, resolveSetupHome, setupOwnership } from "./agent-integration-home.mjs";
+import { applyOwnership, applyOwnershipTree, resolveSetupHome, setupOwnership } from "./agent-integration-home.mjs";
 import { setupAgentSkillTargets, supportedAgentNames } from "./agent-skill-roots.mjs";
+import {
+  agentRootRegistryPath,
+  loadRegisteredAgentRoots,
+  mergeRegisteredAgentRoots,
+  proposedAgentRoot,
+  writeRegisteredAgentRoots
+} from "./agent-root-registry.mjs";
 import { refreshAgentInventory } from "./inventory-refresh.mjs";
+import { reconcileSharedSkills } from "./shared-skill-reconcile.mjs";
 
 export async function runSetupCommand(options, stdout, runtime = defaultRuntime()) {
+  assertSetupOptions(options);
   if (options.get("dir") !== undefined) {
     throw new Error("skillboard setup is agent-layer setup and does not accept --dir");
   }
   const env = runtime.env ?? process.env;
   const home = await resolveSetupHome(env, runtime);
-  const targets = await agentSetupTargets(options, runtime, home);
+  const existingRoots = await loadRegisteredAgentRoots(home);
+  const proposedRoot = await setupSkillRoot(options, home, runtime.cwd ?? process.cwd());
+  const registeredRoots = mergeRegisteredAgentRoots(existingRoots, proposedRoot);
+  const targets = await agentSetupTargets(options, runtime, home, registeredRoots);
   if (targets.length === 0) {
     stdout.write("No supported agent user skill roots were detected.\n");
     stdout.write(`Create a supported agent home or pass --agent ${supportedAgentNames().join(",")} to choose targets.\n`);
@@ -32,14 +44,34 @@ export async function runSetupCommand(options, stdout, runtime = defaultRuntime(
   const ownership = setupOwnership(env, runtime, home);
   const result = await installAgentIntegration(targets, ownership);
   await mkdir(home, { recursive: true });
-  const inventory = await refreshAgentInventory({ root: home, home, env });
-  await applyOwnership(resolve(home, inventory.configPath), ownership);
-  if (inventory.inventoryPath !== null) await applyOwnership(resolve(home, inventory.inventoryPath), ownership);
+  let inventory = await refreshAgentInventory({ root: home, home, env, registeredRoots });
+  const configPath = resolve(home, inventory.configPath);
+  const inventoryPath = inventory.inventoryPath === null ? null : resolve(home, inventory.inventoryPath);
+  const shared = inventoryPath === null
+    ? { created: [], unchanged: [], preserved: [], blocked: [] }
+    : await reconcileSharedSkills({ home, env, targets, configPath, inventoryPath });
+  if (shared.created.length > 0) {
+    inventory = await refreshAgentInventory({ root: home, home, env, registeredRoots });
+  }
+  for (const entry of [...shared.created, ...shared.unchanged]) {
+    await applyOwnershipTree(entry.path, ownership);
+  }
+  if (proposedRoot !== undefined) {
+    await writeRegisteredAgentRoots(home, registeredRoots);
+    await applyOwnership(agentRootRegistryPath(home), ownership);
+  }
+  await applyOwnership(configPath, ownership);
+  if (inventoryPath !== null) await applyOwnership(inventoryPath, ownership);
   stdout.write("SkillBoard agent integration installed.\n");
   writeList(stdout, "Created", result.created);
   writeList(stdout, "Updated", result.updated);
   writeList(stdout, "Unchanged", result.unchanged);
   writeList(stdout, "Preserved", result.preserved);
+  if (proposedRoot !== undefined) stdout.write(`Registered agent roots: ${registeredRoots.length}\n`);
+  if (shared.created.length > 0) stdout.write(`Created shared copies: ${shared.created.length}\n`);
+  if (shared.unchanged.length > 0) stdout.write(`Unchanged shared copies: ${shared.unchanged.length}\n`);
+  writeList(stdout, "Preserved shared copies", shared.preserved.map(formatSharedEntry));
+  writeList(stdout, "Blocked shared copies", shared.blocked.map(formatBlockedEntry));
   stdout.write(`User policy: ${inventory.configPath}\n`);
   stdout.write(`Observed skills: ${inventory.scan.scannedSkills}\n`);
   stdout.write("Next:\n");
@@ -136,7 +168,7 @@ function defaultRuntime() {
   };
 }
 
-async function agentSetupTargets(options, runtime, setupHome) {
+async function agentSetupTargets(options, runtime, setupHome, registeredRoots) {
   const env = runtime.env ?? process.env;
   const home = setupHome ?? await resolveSetupHome(env, runtime);
   const requested = readCsv(options.get("agent"));
@@ -147,9 +179,37 @@ async function agentSetupTargets(options, runtime, setupHome) {
     if (!supported.has(name)) {
       throw new Error(`Unsupported setup agent: ${name}`);
     }
-    targets.push(...await setupAgentSkillTargets(name, home, env, { includeFallback: requested.length > 0 }));
+    targets.push(...await setupAgentSkillTargets(name, home, env, {
+      includeFallback: requested.length > 0,
+      registeredRoots
+    }));
   }
   return targets;
+}
+
+async function setupSkillRoot(options, home, cwd) {
+  const skillRoot = options.get("skill-root");
+  if (skillRoot === undefined) return undefined;
+  const requested = readCsv(options.get("agent"));
+  if (requested.length !== 1) {
+    throw new Error("--skill-root requires exactly one --agent value.");
+  }
+  return await proposedAgentRoot(home, requested[0], skillRoot, cwd);
+}
+
+function assertSetupOptions(options) {
+  const allowed = new Set(["yes", "agent", "skill-root"]);
+  for (const option of options.keys()) {
+    if (!allowed.has(option)) throw new Error(`Unknown setup option: --${option}`);
+  }
+}
+
+function formatSharedEntry(entry) {
+  return `${entry.agent}:${entry.skill}:${entry.path}`;
+}
+
+function formatBlockedEntry(entry) {
+  return `${entry.agent ?? "unknown"}:${entry.skill}:${entry.reason}`;
 }
 
 function commandPrefix(runtime) {

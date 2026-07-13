@@ -76,7 +76,7 @@ const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.u
 const APPLY_ACTION_VALUE_OPTIONS = new Set(["agent", "workflow", "intent", "dir", "config", "skills", "out", "skillboard-bin"]);
 const COMMAND_USAGE = new Map([
   ["skill", ["enable|disable <skill-id> [--dry-run] [--json]", "share|unshare <skill-id> [--dry-run] [--json]", "preference <skill-id> --intent <term>[,<term>] --priority <integer> [--dry-run] [--json]", "forget <skill-id> [--dry-run] [--json]"]],
-  ["setup", ["setup [--yes] [--agent codex[,claude,opencode,hermes]]"]],
+  ["setup", ["setup [--yes] [--agent codex[,claude,opencode,hermes]] [--skill-root <path>]"]],
   ["import-skill", ["import-skill --from <agent> --to <agent> --skill <id-or-dir> [--target-skill <id-or-dir>] [--adapted-file <path>] [--dry-run] [--yes] [--replace] [--json]"]],
   ["uninstall", ["uninstall --user (--dry-run|--yes) [--json]", "uninstall [--dir <path>] [--dry-run] [--keep-settings] [--purge] [--remove-config|--reset-config] [--remove-reports] [--remove-hooks] [--keep-empty-dirs] [--agent-layer] [--agent codex[,claude,opencode,hermes]]"]],
   [
@@ -1285,7 +1285,7 @@ const VALUE_OPTIONS = new Set([
   "command", "config", "config-file", "dir", "exposure", "from", "harness", "harness-status",
   "hook-projection-version", "install-output", "intent", "invocation", "kind", "mode", "out",
   "owner-install-unit", "path", "priority", "profile", "profile-dirs", "rollback", "rollouts-dir",
-  "scan-root", "scope", "skill", "skillboard-bin", "skills", "source", "source-root", "status",
+  "scan-root", "scope", "skill", "skill-root", "skillboard-bin", "skills", "source", "source-root", "status",
   "target-skill", "to", "transaction", "trust-level", "unit", "workflow"
 ]);
 
@@ -1901,7 +1901,7 @@ function initHelpText() {
 
 function setupHelpText() {
   return [
-    "Usage: skillboard setup [--yes] [--agent codex[,claude,opencode,hermes]]",
+    "Usage: skillboard setup [--yes] [--agent codex[,claude,opencode,hermes]] [--skill-root <path>]",
     "",
     "Installs or refreshes SkillBoard at the agent layer, not into a project.",
     "A normal global package install already runs this automatically for detected supported agents.",
@@ -1913,6 +1913,8 @@ function setupHelpText() {
     "What changes after confirmation:",
     "  Writes a SkillBoard guidance skill into detected user agent skill roots.",
     "  Creates ~/skillboard.config.yaml and ~/.skillboard/inventory.json; it writes no project files.",
+    "  Reconciles already-shared skills into agents and profiles added after the original share.",
+    "  --skill-root registers one custom root for the selected --agent and reuses it on future updates.",
     "  Teaches agents to use local skills by default and share only user-selected skills.",
     "  Remove this managed guidance later with skillboard uninstall --agent-layer.",
     "",
@@ -1926,6 +1928,7 @@ function setupHelpText() {
     "  skillboard setup",
     "  skillboard setup --yes",
     "  skillboard setup --agent codex,claude,opencode,hermes --yes",
+    "  skillboard setup --agent hermes --skill-root ~/.hermes/profiles/work/skills --yes",
     ""
   ].join("\n");
 }

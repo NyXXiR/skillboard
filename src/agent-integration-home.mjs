@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { access, chown, lstat, readFile } from "node:fs/promises";
+import { access, chown, lstat, readFile, readdir } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 
@@ -50,6 +50,19 @@ export async function applyOwnership(path, ownership) {
   }
   for (const ownedPath of await ownershipPaths(path, ownership.home)) {
     await ownership.chown(ownedPath, ownership.uid, ownership.gid);
+  }
+}
+
+export async function applyOwnershipTree(path, ownership) {
+  if (ownership === null) return;
+  const stats = await pathStats(path);
+  if (stats === null || stats.isSymbolicLink()) return;
+  await applyOwnership(path, ownership);
+  if (!stats.isDirectory()) return;
+  const entries = await readdir(path, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue;
+    await applyOwnershipTree(resolve(path, entry.name), ownership);
   }
 }
 

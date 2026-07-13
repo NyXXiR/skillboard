@@ -142,6 +142,38 @@ test("user uninstall previews then removes every managed artifact while preservi
   });
 });
 
+test("user uninstall includes registered custom roots and removes their managed copies", async () => {
+  await withHome(async ({ home, env }) => {
+    const customRoot = join(home, "custom-hermes", "skills");
+    const historicalHermesGuidance = join(home, ".hermes", "skills", "skillboard");
+    const customEnv = { ...env };
+    delete customEnv.HERMES_HOME;
+    await installSkill(home, "demo");
+    await run(["setup", "--agent", "codex,claude,opencode,hermes", "--yes"], customEnv);
+    await access(join(historicalHermesGuidance, "SKILL.md"));
+    await run(["setup", "--agent", "hermes", "--skill-root", customRoot, "--yes"], customEnv);
+    await run(["skill", "share", "demo", "--json"], customEnv);
+    await access(join(customRoot, "demo", ".skillboard-share.json"));
+    const malformedMarkerSkill = join(customRoot, "unmanaged");
+    await mkdir(malformedMarkerSkill, { recursive: true });
+    await writeFile(join(malformedMarkerSkill, "SKILL.md"), "---\nname: unmanaged\ndescription: Preserve invalid marker.\n---\n");
+    await writeFile(join(malformedMarkerSkill, ".skillboard-share.json"), "not-json\n");
+
+    const preview = JSON.parse((await run(["uninstall", "--user", "--dry-run", "--json"], customEnv)).stdout);
+    assert.ok(preview.managed_copies.some((copy) => copy.path === join(customRoot, "demo")));
+    assert.ok(preview.guidance.removed.some((path) => path.includes(customRoot)));
+
+    const applied = await run(["uninstall", "--user", "--yes", "--json"], customEnv);
+    assert.equal(applied.code, 0, commandFailure(applied));
+    await access(join(home, ".codex", "skills", "demo", "SKILL.md"));
+    await assert.rejects(access(join(customRoot, "demo")), /ENOENT/);
+    await assert.rejects(access(join(customRoot, "skillboard")), /ENOENT/);
+    await assert.rejects(access(historicalHermesGuidance), /ENOENT/);
+    await access(join(malformedMarkerSkill, "SKILL.md"));
+    await assert.rejects(access(join(home, ".skillboard")), /ENOENT/);
+  });
+});
+
 test("user uninstall never follows a symlinked agent skill root", async () => {
   const outside = await mkdtemp(join(tmpdir(), "skillboard-user-uninstall-outside-"));
   await withHome(async ({ home, env }) => {

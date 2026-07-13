@@ -38,6 +38,13 @@ remove or quarantine copies that the user or another tool installed. With
 managed copies for supported agents, while preserving every agent-owned
 original.
 
+`setup` is a repeatable user-level convergence operation. It observes agents
+and Hermes profiles added after installation, refreshes managed guidance and
+inventory, and materializes missing copies only for skills already marked
+`shared: true`. Custom agent roots are remembered outside policy as operational
+discovery state. They must not introduce project scope, source trust gates, or
+another authorization layer.
+
 ## Development rule
 
 Every route, brief, guard, dashboard, generated bridge, and policy mutation must

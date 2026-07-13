@@ -4,7 +4,6 @@ import { uninstallAgentIntegration } from "./agent-integration-files.mjs";
 import { resolveSetupHome } from "./agent-integration-home.mjs";
 import {
   agentSkillRootCandidates,
-  setupAgentSkillTargets,
   supportedAgentNames
 } from "./agent-skill-roots.mjs";
 
@@ -56,7 +55,15 @@ async function planUserUninstall(home, env) {
 
   const guidanceTargets = [];
   for (const agent of supportedAgentNames()) {
-    guidanceTargets.push(...await setupAgentSkillTargets(agent, home, env));
+    for (const candidate of await agentSkillRootCandidates(agent, home, env)) {
+      guidanceTargets.push({
+        agent,
+        home,
+        skillPath: join(candidate.skillRoot, "skillboard", "SKILL.md"),
+        root: candidate.skillRoot,
+        source: candidate.source
+      });
+    }
   }
   return {
     managedCopies: managedCopies.sort((left, right) => left.path.localeCompare(right.path)),
@@ -88,11 +95,19 @@ async function readManagedMarker(path, skill, agent) {
   const markerPath = join(path, SHARE_MARKER);
   const stats = await pathStats(markerPath);
   if (stats === null || stats.isSymbolicLink() || !stats.isFile()) return null;
-  const value = await readFile(markerPath, "utf8").then(JSON.parse, () => null);
+  const value = await readFile(markerPath, "utf8").then(parseJsonOrNull, () => null);
   if (value?.version !== 1 || value.managed_by !== "skillboard" || value.skill !== skill) return null;
   if (agent === null && value.mode === "shared-source") return value;
   if (agent !== null && value.mode === "agent-copy" && value.target_agent === agent) return value;
   return null;
+}
+
+function parseJsonOrNull(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 async function removeManagedCopy(copy) {

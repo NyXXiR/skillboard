@@ -1,19 +1,22 @@
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { agentSkillRootCandidates } from "./agent-skill-roots.mjs";
+import { activeAgentSkillRootCandidates } from "./agent-skill-roots.mjs";
 
-export async function defaultScanRoots(home, env) {
+export async function defaultScanRoots(home, env, options = {}) {
   const codexHome = env.CODEX_HOME ?? join(home, ".codex");
   const agentRoots = await Promise.all([
-    agentSkillRootCandidates("codex", home, env),
-    agentSkillRootCandidates("claude", home, env),
-    agentSkillRootCandidates("opencode", home, env),
-    agentSkillRootCandidates("hermes", home, env)
+    activeAgentSkillRootCandidates("codex", home, env, options),
+    activeAgentSkillRootCandidates("claude", home, env, options),
+    activeAgentSkillRootCandidates("opencode", home, env, options),
+    activeAgentSkillRootCandidates("hermes", home, env, options)
   ]);
   return [
-    join(codexHome, "skills", ".system"),
-    join(codexHome, "plugins", "cache"),
-    join(home, ".agents", "shared-skills"),
-    ...agentRoots.flat().map((root) => root.skillRoot)
+    { path: join(codexHome, "skills", ".system") },
+    { path: join(codexHome, "plugins", "cache") },
+    { path: join(home, ".agents", "shared-skills") },
+    ...agentRoots.flatMap((roots, index) => roots.map((root) => ({
+      path: root.skillRoot,
+      agent: ["codex", "claude", "opencode", "hermes"][index]
+    })))
   ];
 }
 

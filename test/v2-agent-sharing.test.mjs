@@ -155,6 +155,207 @@ test("setup creates one home control plane and normal commands never initialize 
   }
 });
 
+test("setup registers a late custom agent root and reconciles existing shared skills idempotently", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-v2-late-custom-agent-"));
+  const home = join(root, "home");
+  const codexHome = join(home, ".codex");
+  const customHermesRoot = join(home, "agent-homes", "hermes", "skills");
+  const env = withoutEnvKeys({
+    ...process.env,
+    HOME: home,
+    USERPROFILE: home,
+    CODEX_HOME: codexHome
+  }, ["HERMES_HOME"]);
+  try {
+    await mkdir(join(codexHome, "skills", "demo"), { recursive: true });
+    await writeFile(join(codexHome, "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: Portable testing workflow.\n---\n");
+    await execFileAsync(process.execPath, [CLI, "setup", "--agent", "codex", "--yes"], { env });
+    await execFileAsync(process.execPath, [CLI, "skill", "share", "demo", "--json"], { env });
+
+    const first = await execFileAsync(process.execPath, [
+      CLI, "setup", "--agent", "hermes", "--skill-root", customHermesRoot, "--yes"
+    ], { env });
+    const registry = JSON.parse(await readFile(join(home, ".skillboard", "agent-roots.json"), "utf8"));
+    assert.deepEqual(registry.roots, [{ agent: "hermes", path: "agent-homes/hermes/skills" }]);
+    assert.match(first.stdout, /Registered agent roots: 1/);
+    assert.match(first.stdout, /Created shared copies: 1/);
+    assert.match(await readFile(join(customHermesRoot, "demo", "SKILL.md"), "utf8"), /Portable testing workflow/);
+
+    await rm(join(home, ".hermes", "skills", "demo"), { recursive: true, force: true });
+    const second = await execFileAsync(process.execPath, [CLI, "setup", "--agent", "hermes", "--yes"], { env });
+    assert.match(second.stdout, /Unchanged shared copies: 1/);
+    const guard = JSON.parse((await execFileAsync(process.execPath, [
+      CLI, "guard", "use", "demo", "--agent", "hermes", "--json"
+    ], { env })).stdout);
+    assert.equal(guard.allowed, true);
+
+    await execFileAsync(process.execPath, [CLI, "skill", "unshare", "demo", "--json"], { env });
+    await assert.rejects(readFile(join(customHermesRoot, "demo", "SKILL.md")), /ENOENT/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("registered roots remain additive when a conventional root has agent-owned skills", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-v2-additive-agent-root-"));
+  const home = join(root, "home");
+  const conventionalHermesRoot = join(home, ".hermes", "skills");
+  const customHermesRoot = join(home, "agent-homes", "hermes", "skills");
+  const env = withoutEnvKeys({
+    ...process.env,
+    HOME: home,
+    USERPROFILE: home
+  }, ["HERMES_HOME"]);
+  try {
+    await mkdir(join(conventionalHermesRoot, "hermes-local"), { recursive: true });
+    await writeFile(join(conventionalHermesRoot, "hermes-local", "SKILL.md"), "---\nname: hermes-local\ndescription: Local Hermes workflow.\n---\n");
+    await writeFile(join(conventionalHermesRoot, "hermes-local", ".skillboard-share.json"), "not-json\n");
+
+    await execFileAsync(process.execPath, [
+      CLI, "setup", "--agent", "hermes", "--skill-root", customHermesRoot, "--yes"
+    ], { env });
+
+    const inventory = JSON.parse(await readFile(join(home, ".skillboard", "inventory.json"), "utf8"));
+    assert.deepEqual(inventory.skills.find(({ id }) => id === "hermes-local").installed_on, ["hermes"]);
+    const guard = JSON.parse((await execFileAsync(process.execPath, [
+      CLI, "guard", "use", "hermes-local", "--agent", "hermes", "--json"
+    ], { env })).stdout);
+    assert.equal(guard.allowed, true);
+    assert.match(await readFile(join(customHermesRoot, "skillboard", "SKILL.md"), "utf8"), /agent `hermes`/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup creates a late Hermes profile skill root and reconciles shared skills", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-v2-late-hermes-profile-"));
+  const home = join(root, "home");
+  const codexHome = join(home, ".codex");
+  const profileHome = join(home, ".hermes", "profiles", "work");
+  const profileSkills = join(profileHome, "skills");
+  const env = withoutEnvKeys({
+    ...process.env,
+    HOME: home,
+    USERPROFILE: home,
+    CODEX_HOME: codexHome
+  }, ["HERMES_HOME"]);
+  try {
+    await mkdir(join(codexHome, "skills", "demo"), { recursive: true });
+    await writeFile(join(codexHome, "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: Portable profile workflow.\n---\n");
+    await execFileAsync(process.execPath, [CLI, "setup", "--agent", "codex", "--yes"], { env });
+    await execFileAsync(process.execPath, [CLI, "skill", "share", "demo", "--json"], { env });
+    await mkdir(profileHome, { recursive: true });
+
+    const setup = await execFileAsync(process.execPath, [CLI, "setup", "--agent", "hermes", "--yes"], { env });
+    assert.match(setup.stdout, /Created shared copies: 1/);
+    assert.match(await readFile(join(profileSkills, "skillboard", "SKILL.md"), "utf8"), /agent `hermes`/);
+    assert.match(await readFile(join(profileSkills, "demo", "SKILL.md"), "utf8"), /Portable profile workflow/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup rejects a registered skill root outside the invoking user's home", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-v2-unsafe-agent-root-"));
+  const home = join(root, "home");
+  const outside = join(root, "outside", "skills");
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  try {
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        CLI, "setup", "--agent", "hermes", "--skill-root", outside, "--yes"
+      ], { env }),
+      /registered skill root must remain inside the invoking user's home/i
+    );
+    await assert.rejects(readFile(join(home, ".skillboard", "agent-roots.json")), /ENOENT/);
+    await assert.rejects(readFile(join(outside, "skillboard", "SKILL.md")), /ENOENT/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup rejects a registered skill root that traverses a symbolic link", { skip: process.platform === "win32" }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-v2-symlink-agent-root-"));
+  const home = join(root, "home");
+  const outside = join(root, "outside");
+  const linkedHome = join(home, "linked-agent");
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  try {
+    await mkdir(home, { recursive: true });
+    await mkdir(join(outside, "skills"), { recursive: true });
+    await symlink(outside, linkedHome, "dir");
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        CLI, "setup", "--agent", "hermes", "--skill-root", join(linkedHome, "skills"), "--yes"
+      ], { env }),
+      /registered skill root must not traverse a symbolic link/i
+    );
+    await assert.rejects(readFile(join(home, ".skillboard", "agent-roots.json")), /ENOENT/);
+    await assert.rejects(readFile(join(outside, "skills", "skillboard", "SKILL.md")), /ENOENT/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup rejects one custom skill root being assigned to different agents", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-v2-ambiguous-agent-root-"));
+  const home = join(root, "home");
+  const sharedRoot = join(home, "custom-agent", "skills");
+  const env = { ...process.env, HOME: home, USERPROFILE: home };
+  try {
+    await execFileAsync(process.execPath, [
+      CLI, "setup", "--agent", "hermes", "--skill-root", sharedRoot, "--yes"
+    ], { env });
+    const originalGuidance = await readFile(join(sharedRoot, "skillboard", "SKILL.md"), "utf8");
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        CLI, "setup", "--agent", "claude", "--skill-root", sharedRoot, "--yes"
+      ], { env }),
+      /already registered for agent hermes/i
+    );
+    assert.equal(await readFile(join(sharedRoot, "skillboard", "SKILL.md"), "utf8"), originalGuidance);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup preserves a symlinked shared target instead of trusting its external marker", { skip: process.platform === "win32" }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-v2-reconcile-symlink-target-"));
+  const home = join(root, "home");
+  const codexHome = join(home, ".codex");
+  const customRoot = join(home, "custom-hermes", "skills");
+  const outside = join(root, "outside-demo");
+  const env = withoutEnvKeys({ ...process.env, HOME: home, USERPROFILE: home, CODEX_HOME: codexHome }, ["HERMES_HOME"]);
+  try {
+    await mkdir(join(codexHome, "skills", "demo"), { recursive: true });
+    await writeFile(join(codexHome, "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: Symlink reconcile fixture.\n---\n");
+    await execFileAsync(process.execPath, [CLI, "setup", "--agent", "codex", "--yes"], { env });
+    await execFileAsync(process.execPath, [CLI, "skill", "share", "demo", "--json"], { env });
+    await mkdir(customRoot, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await writeFile(join(outside, "SKILL.md"), "external\n");
+    await writeFile(join(outside, ".skillboard-share.json"), `${JSON.stringify({
+      version: 1,
+      managed_by: "skillboard",
+      mode: "agent-copy",
+      skill: "demo",
+      source_agent: "codex",
+      target_agent: "hermes"
+    })}\n`);
+    await symlink(outside, join(customRoot, "demo"), "dir");
+
+    const setup = await execFileAsync(process.execPath, [
+      CLI, "setup", "--agent", "hermes", "--skill-root", customRoot, "--yes"
+    ], { env });
+    assert.match(setup.stdout, /Preserved shared copies/);
+    assert.doesNotMatch(setup.stdout, /Unchanged shared copies/);
+    assert.equal(await readFile(join(outside, "SKILL.md"), "utf8"), "external\n");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("share and unshare promote one skill across agents while preserving its owner original", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-v2-share-flow-"));
   const home = join(root, "home");
@@ -264,6 +465,41 @@ test("share dry-run reports an unmanaged target collision before confirmation", 
       /already exists and is not managed by SkillBoard/
     );
     assert.match(await readFile(join(home, "skillboard.config.yaml"), "utf8"), /demo:[\s\S]*shared: false/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("share preserves a valid skill already owned by another agent", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-v2-share-existing-agent-skill-"));
+  const home = join(root, "home");
+  const codexHome = join(home, ".codex");
+  const hermesHome = join(home, ".hermes");
+  const env = {
+    ...process.env,
+    HOME: home,
+    USERPROFILE: home,
+    CODEX_HOME: codexHome,
+    CLAUDE_HOME: join(home, ".claude"),
+    HERMES_HOME: hermesHome,
+    OPENCODE_HOME: join(home, ".config", "opencode")
+  };
+  try {
+    await mkdir(join(codexHome, "skills", "demo"), { recursive: true });
+    await mkdir(join(hermesHome, "skills", "demo"), { recursive: true });
+    await writeFile(join(codexHome, "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: Portable primary workflow.\n---\n");
+    const hermesContent = "---\nname: demo\ndescription: Hermes-owned workflow.\n---\n";
+    await writeFile(join(hermesHome, "skills", "demo", "SKILL.md"), hermesContent);
+    await execFileAsync(process.execPath, [CLI, "setup", "--agent", "codex,claude,opencode,hermes", "--yes"], { env });
+
+    const shared = JSON.parse((await execFileAsync(process.execPath, [CLI, "skill", "share", "demo", "--json"], { env })).stdout);
+    assert.equal(shared.shared, true);
+    assert.equal(await readFile(join(hermesHome, "skills", "demo", "SKILL.md"), "utf8"), hermesContent);
+    await assert.rejects(readFile(join(hermesHome, "skills", "demo", ".skillboard-share.json")), /ENOENT/);
+    await readFile(join(env.CLAUDE_HOME, "skills", "demo", ".skillboard-share.json"));
+
+    await execFileAsync(process.execPath, [CLI, "skill", "unshare", "demo", "--json"], { env });
+    assert.equal(await readFile(join(hermesHome, "skills", "demo", "SKILL.md"), "utf8"), hermesContent);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -432,4 +668,10 @@ function inventory(skills) {
     skills,
     install_units: []
   }, null, 2)}\n`;
+}
+
+function withoutEnvKeys(env, keys) {
+  const copy = { ...env };
+  for (const key of keys) delete copy[key];
+  return copy;
 }

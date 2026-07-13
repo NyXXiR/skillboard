@@ -29,7 +29,8 @@ async function refreshLocked(options) {
   const inventory = options.inventory ?? await discoverAgentSkillInventory({
     roots: options.roots,
     home: options.home,
-    env: options.env
+    env: options.env,
+    registeredRoots: options.registeredRoots
   });
   const configVersion = YAML.parse(current)?.version;
   const generatedInventory = configVersion === 2

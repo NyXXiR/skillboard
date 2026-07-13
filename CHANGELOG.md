@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+## 0.3.1 — 2026-07-13
+
+### Added
+
+- Added `skillboard setup --agent <agent> --skill-root <path>` for registering a
+  nonstandard user skill root and reusing it across later setup, package update,
+  share, unshare, and user-uninstall runs.
+
+### Changed
+
+- Made `setup` the idempotent install/update/reconcile entrypoint for agents and
+  Hermes profiles added after SkillBoard installation.
+- Made setup backfill only already-selected `shared: true` skills into newly
+  active compatible roots while preserving agent-local defaults and unmanaged
+  collisions.
+- Kept registered roots in generated operational state rather than expanding
+  the v2 policy beyond `enabled`, `shared`, and optional preference.
+
+### Fixed
+
+- Prevented a stale default-root copy from producing false guard availability
+  after a custom root is registered.
+- Preserved conventional roots that still contain agent-owned skills alongside
+  registered roots, and included historical managed guidance in clean user
+  removal.
+- Restored invoking-user ownership recursively for shared skill copies created
+  or repaired by setup during sudo-driven global installs and updates.
+
+### Security
+
+- Restricted registered roots to non-symlinked directories inside the invoking
+  user's home and rejected assigning one root to different agents.
+- Treated malformed or symlinked share markers as unmanaged evidence so setup
+  and removal preserve user-owned or externally linked content.
+
 ## 0.3.0 — 2026-07-13
 
 ### Changed

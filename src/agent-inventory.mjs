@@ -110,16 +110,16 @@ export async function discoverAgentSkillInventory(options = {}) {
   const env = options.env ?? process.env;
   const home = options.home ?? env.HOME ?? env.USERPROFILE ?? homedir();
   const detectors = options.detectors ?? agentInventoryDetectors;
-  const roots = uniquePaths([
-    ...(await defaultScanRoots(home, env)),
-    ...readCsv(env.SKILLBOARD_INIT_SCAN_ROOTS),
-    ...(options.roots ?? [])
+  const roots = uniqueRootEntries([
+    ...(await defaultScanRoots(home, env, { registeredRoots: options.registeredRoots })),
+    ...readCsv(env.SKILLBOARD_INIT_SCAN_ROOTS).map((path) => ({ path })),
+    ...(options.roots ?? []).map((path) => ({ path }))
   ], home);
   const groups = [];
   const warnings = [];
 
   for (const root of roots) {
-    const discovered = await discoverRoot(root, home, detectors);
+    const discovered = await discoverRoot(root.path, home, detectors, root.agent);
     groups.push(...discovered.groups);
     warnings.push(...discovered.warnings);
   }
@@ -293,13 +293,13 @@ function ensureLocalWorkflow(workflowsMap, target, skills, document) {
   return true;
 }
 
-async function discoverRoot(root, home, detectors) {
+async function discoverRoot(root, home, detectors, agent) {
   const path = resolvePath(root, home);
   if (!(await exists(path))) {
     return { groups: [], warnings: [] };
   }
   const warnings = [];
-  const detector = detectors.find((candidate) => {
+  const matched = detectors.find((candidate) => {
     try {
       return candidate.matches(path);
     } catch (error) {
@@ -307,6 +307,7 @@ async function discoverRoot(root, home, detectors) {
       return false;
     }
   });
+  const detector = agent === undefined ? matched : forcedAgentDetector(agent, matched, detectors);
   if (detector === undefined) {
     return { groups: [], warnings };
   }
@@ -317,6 +318,12 @@ async function discoverRoot(root, home, detectors) {
     warnings.push(`detector ${detector.id ?? "unknown"} failed while scanning ${displayPath(path, home)}: ${errorMessage(error)}`);
     return { groups: [], warnings };
   }
+}
+
+function forcedAgentDetector(agent, matched, detectors) {
+  if (matched?.id === "hermes-profile-skills" && agent === "hermes") return matched;
+  const id = `${agent}-user-skills`;
+  return detectors.find((candidate) => candidate.id === id) ?? matched;
 }
 
 async function discoverSkillDirectory(root, unit, options) {
@@ -898,21 +905,20 @@ function uniqueStrings(values) {
   return [...new Set(values.filter((value) => value.trim().length > 0))];
 }
 
-function uniquePaths(values, home) {
-  const seen = new Set();
-  const result = [];
+function uniqueRootEntries(values, home) {
+  const byPath = new Map();
   for (const value of values) {
-    const trimmed = value.trim();
+    const trimmed = value.path.trim();
     if (trimmed.length === 0) {
       continue;
     }
     const key = resolve(trimmed.startsWith("~/") ? join(home, trimmed.slice(2)) : trimmed);
-    if (!seen.has(key)) {
-      seen.add(key);
-      result.push(trimmed);
+    const existing = byPath.get(key);
+    if (existing === undefined || existing.agent === undefined && value.agent !== undefined) {
+      byPath.set(key, { path: trimmed, ...(value.agent === undefined ? {} : { agent: value.agent }) });
     }
   }
-  return result;
+  return [...byPath.values()];
 }
 
 function errorMessage(error) {

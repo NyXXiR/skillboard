@@ -18,6 +18,19 @@ agents. No project init is needed. If setup was skipped:
 skillboard setup --yes --agent codex
 ```
 
+If an agent is installed later, rerun the same command for that agent. Setup
+discovers standard homes and Hermes profiles, installs guidance, refreshes
+inventory, and backfills only skills the user already selected with
+`shared: true`. For a custom location:
+
+```bash
+skillboard setup --agent hermes --skill-root ~/.hermes/profiles/work/skills --yes
+```
+
+The registered root survives later setup and package-update runs. No project
+init, profile-specific policy layer, or new approval per already-shared skill is
+introduced. Unmanaged collisions are preserved and reported.
+
 ## 2. Observe and route
 
 From any directory, the agent reads:

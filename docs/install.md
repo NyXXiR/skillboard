@@ -12,12 +12,30 @@ Postinstall detects supported agent homes, installs managed guidance, creates
 separate setup command is required after a normal global install or update, and
 no project init is needed.
 
-Run setup later only when lifecycle scripts were skipped or another agent was
-added:
+Run setup later when lifecycle scripts were skipped, another agent or Hermes
+profile was added, or a managed root needs to be repaired:
 
 ```bash
 skillboard setup --agent codex,claude,opencode,hermes --yes
 ```
+
+Setup is idempotent. Each run refreshes managed agent guidance, user policy,
+and observed inventory. If the user already chose `shared: true` for a skill,
+setup creates only the missing compatible managed copies for newly discovered
+agent roots. It preserves unmanaged files and does not share agent-local skills.
+
+Register a nonstandard agent skill directory once with exactly one agent:
+
+```bash
+skillboard setup --agent hermes --skill-root ~/.hermes/profiles/work/skills --yes
+```
+
+The root must remain inside the invoking user's home and must not traverse a
+symbolic link. SkillBoard stores it in `~/.skillboard/agent-roots.json` as
+operational discovery state, not policy, and reuses it during setup and global
+package updates. Conventional roots that contain agent-owned skills remain
+active; obsolete roots containing only SkillBoard-managed artifacts do not
+create false agent presence.
 
 System npm may require `sudo npm install -g agent-skillboard`. SkillBoard uses
 `SUDO_USER` for user-level state and restores managed files to that user.

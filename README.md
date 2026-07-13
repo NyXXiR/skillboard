@@ -9,7 +9,7 @@ Valid installed skills default to enabled and agent-local. Sharing is opt-in per
 skill. Optional preference ranks enabled skills installed for the current agent
 and never changes availability or copies files.
 
-Status: public alpha. Package 0.3.0 writes policy schema v2.
+Status: public alpha. Package 0.3.1 writes policy schema v2.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/NyXXiR/skillboard/main/skillboard.png" alt="SkillBoard architecture diagram" width="100%">
@@ -38,6 +38,22 @@ normal install. If lifecycle scripts were skipped or another agent was added:
 ```bash
 skillboard setup --agent codex,claude,opencode,hermes --yes
 ```
+
+`setup` is safe to rerun. It refreshes managed guidance and inventory, discovers
+late standard agent homes and Hermes profiles, and fills already-selected
+`shared: true` skills into newly active roots. It does not make every skill
+global and never overwrites an unmanaged skill.
+
+For an agent that uses a nonstandard skill directory, register that root once:
+
+```bash
+skillboard setup --agent hermes --skill-root ~/.hermes/profiles/work/skills --yes
+```
+
+The root must be inside the invoking user's home. SkillBoard records it as
+operational discovery state in `~/.skillboard/agent-roots.json`, then reuses it
+on later setup and global package updates. This does not add another policy
+scope; per-skill `shared` remains the only cross-agent sharing decision.
 
 `sudo npm install -g agent-skillboard` is supported when system npm requires
 it. Setup resolves `SUDO_USER` and restores managed home files to that user.

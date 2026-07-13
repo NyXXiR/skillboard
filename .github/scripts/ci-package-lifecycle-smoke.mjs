@@ -17,6 +17,7 @@ try {
   const home = join(temp, "home");
   const codexHome = join(home, ".codex");
   const skillPath = join(codexHome, "skills", "smoke-skill");
+  const customHermesRoot = join(home, "custom-hermes", "skills");
   const env = { HOME: home, USERPROFILE: home, CODEX_HOME: codexHome };
 
   await mkdir(projectRoot, { recursive: true });
@@ -65,6 +66,15 @@ try {
     "guard", "use", "smoke-skill", "--agent", "hermes", "--json"
   ])).stdout.toString());
   assert.equal(shared.allowed, true);
+
+  await run(["setup", "--agent", "hermes", "--skill-root", customHermesRoot, "--yes"]);
+  await access(join(customHermesRoot, "skillboard", "SKILL.md"));
+  await access(join(customHermesRoot, "smoke-skill", ".skillboard-share.json"));
+  await rm(customHermesRoot, { recursive: true, force: true });
+  await run(["setup", "--agent", "hermes", "--yes"]);
+  await access(join(customHermesRoot, "skillboard", "SKILL.md"));
+  await access(join(customHermesRoot, "smoke-skill", ".skillboard-share.json"));
+
   await run(["skill", "unshare", "smoke-skill", "--json"]);
   await assertCommandFails(run([
     "guard", "use", "smoke-skill", "--agent", "hermes", "--json"
@@ -89,6 +99,7 @@ try {
   await access(join(home, "skillboard.config.yaml"));
   await run(["uninstall", "--user", "--yes", "--json"]);
   await access(join(skillPath, "SKILL.md"));
+  await assertMissing(join(customHermesRoot, "skillboard"));
   await assertMissing(join(home, "skillboard.config.yaml"));
   await assertMissing(join(home, ".skillboard"));
   await assertMissing(join(projectRoot, "skillboard.config.yaml"));
@@ -103,7 +114,9 @@ async function assertPackContents(packageRoot) {
 
   for (const required of [
     "bin/skillboard.mjs",
+    "src/agent-root-registry.mjs",
     "src/control/v2-skill-forget.mjs",
+    "src/shared-skill-reconcile.mjs",
     "src/user-uninstall.mjs",
     "docs/install.md"
   ]) {

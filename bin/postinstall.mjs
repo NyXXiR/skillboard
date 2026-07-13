@@ -19,7 +19,7 @@ if (!shouldAutoSetup(process.env)) {
     "Run skillboard setup later after adding another supported agent:",
     "  skillboard setup",
     "",
-    "Setup only writes user agent skill files. It does not create skillboard.config.yaml or .skillboard/.",
+    "Setup writes user-agent guidance, reconciles shared skills, and refreshes the user-level policy and inventory.",
     "skillboard init is deprecated project-local policy bootstrap and is not needed for normal use.",
     ""
   ].join("\n")}`);

@@ -126,7 +126,7 @@ test("npm pack dry-run includes public runtime files and excludes work artifacts
   const [pack] = JSON.parse(result.stdout);
   const paths = pack.files.map((file) => file.path);
 
-  assert.equal(pack.version, "0.3.0");
+  assert.equal(pack.version, "0.3.1");
   assert.ok(paths.includes("bin/skillboard.mjs"));
   assert.ok(paths.includes("bin/postinstall.mjs"));
   assert.ok(paths.includes("src/doctor.mjs"));
@@ -225,6 +225,41 @@ test("postinstall global update refreshes managed guidance and new agent roots",
     assert.equal(agentsSkill, codexSkill);
     assert.equal(await readFile(join(project, "skillboard.config.yaml"), "utf8").catch(() => null), null);
     assert.equal(await readFile(join(project, "AGENTS.md"), "utf8").catch(() => null), null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("postinstall global update restores registered roots and reconciles existing shared skills", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-postinstall-registered-root-"));
+  const home = join(root, "home");
+  const codexHome = join(home, ".codex");
+  const customHermesRoot = join(home, "custom-hermes", "skills");
+  const cli = resolve("bin/skillboard.mjs");
+  const env = withoutKeys({
+    ...process.env,
+    HOME: home,
+    USERPROFILE: home,
+    CODEX_HOME: codexHome
+  }, ["HERMES_HOME"]);
+  try {
+    await mkdir(join(codexHome, "skills", "demo"), { recursive: true });
+    await writeFile(join(codexHome, "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: Shared update workflow.\n---\n");
+    await execFileAsync(process.execPath, [cli, "setup", "--agent", "codex", "--yes"], { env });
+    await execFileAsync(process.execPath, [cli, "skill", "share", "demo", "--json"], { env });
+    await execFileAsync(process.execPath, [
+      cli, "setup", "--agent", "hermes", "--skill-root", customHermesRoot, "--yes"
+    ], { env });
+    await rm(customHermesRoot, { recursive: true, force: true });
+
+    const result = await execFileAsync(process.execPath, ["bin/postinstall.mjs"], {
+      env: { ...env, INIT_CWD: join(root, "project"), npm_config_global: "true" }
+    });
+    assert.match(result.stderr, /Auto-running agent setup/);
+    assert.match(result.stderr, /Created shared copies: [1-9][0-9]*/);
+    assert.match(await readFile(join(customHermesRoot, "skillboard", "SKILL.md"), "utf8"), /agent `hermes`/);
+    assert.match(await readFile(join(customHermesRoot, "demo", "SKILL.md"), "utf8"), /Shared update workflow/);
+    assert.match(await readFile(join(home, "skillboard.config.yaml"), "utf8"), /demo:[\s\S]*shared: true/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -458,6 +493,68 @@ test("setup under sudo chowns unchanged managed guidance to the invoking user", 
       uid: 1234,
       gid: 5678
     });
+    assert.ok(chowns.every((entry) => entry.uid === 1234 && entry.gid === 5678));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup under sudo chowns reconciled shared skill contents to the invoking user", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const root = await mkdtemp(join(tmpdir(), "skillboard-sudo-chown-shared-"));
+  try {
+    const rootHome = join(root, "root-home");
+    const userHome = join(root, "user-home");
+    const codexHome = join(userHome, ".codex");
+    const customRoot = join(userHome, "custom-hermes", "skills");
+    const source = join(codexHome, "skills", "demo");
+    const cli = resolve("bin/skillboard.mjs");
+    const userEnv = { ...process.env, HOME: userHome, USERPROFILE: userHome, CODEX_HOME: codexHome };
+    await mkdir(join(source, "scripts"), { recursive: true });
+    await mkdir(rootHome, { recursive: true });
+    await writeFile(join(source, "SKILL.md"), "---\nname: demo\ndescription: Sudo shared reconcile.\n---\n");
+    await writeFile(join(source, "scripts", "check.sh"), "exit 0\n");
+    await execFileAsync(process.execPath, [cli, "setup", "--agent", "codex", "--yes"], { env: userEnv });
+    await execFileAsync(process.execPath, [cli, "skill", "share", "demo", "--json"], { env: userEnv });
+
+    const chowns = [];
+    const code = await runSetupCommand(new Map([
+      ["yes", "true"],
+      ["agent", "hermes"],
+      ["skill-root", customRoot]
+    ]), { write() {} }, {
+      cwd: root,
+      entrypointPath: "skillboard",
+      env: {
+        HOME: rootHome,
+        CODEX_HOME: codexHome,
+        LOGNAME: "root",
+        SUDO_GID: "5678",
+        SUDO_HOME: userHome,
+        SUDO_UID: "1234",
+        SUDO_USER: "skillboardsudo",
+        USER: "root"
+      },
+      packageSpec: "agent-skillboard",
+      chown(path, uid, gid) {
+        chowns.push({ path, uid, gid });
+        return Promise.resolve();
+      }
+    });
+
+    assert.equal(code, 0);
+    for (const path of [
+      join(customRoot, "demo"),
+      join(customRoot, "demo", "SKILL.md"),
+      join(customRoot, "demo", "scripts"),
+      join(customRoot, "demo", "scripts", "check.sh"),
+      join(customRoot, "demo", ".skillboard-share.json")
+    ]) {
+      assert.ok(chowns.some((entry) => entry.path === path), `missing chown for ${path}`);
+    }
     assert.ok(chowns.every((entry) => entry.uid === 1234 && entry.gid === 5678));
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -1042,6 +1139,12 @@ function execNpm(args, options = {}) {
 function withoutNestedNpmExecConfig(env) {
   const sanitized = { ...env };
   delete sanitized.npm_config_call;
+  return sanitized;
+}
+
+function withoutKeys(env, keys) {
+  const sanitized = { ...env };
+  for (const key of keys) delete sanitized[key];
   return sanitized;
 }
 
