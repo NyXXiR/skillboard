@@ -28,6 +28,7 @@ Install globally:
 
 ```bash
 npm install -g agent-skillboard
+skillboard doctor --summary
 ```
 
 The package postinstall sets up detected agent guidance and creates the
@@ -38,6 +39,22 @@ normal install. If lifecycle scripts were skipped or another agent was added:
 ```bash
 skillboard setup --agent codex,claude,opencode,hermes --yes
 ```
+
+Use the same Node/npm environment for later updates:
+
+```bash
+npm config get prefix
+npm install -g agent-skillboard@latest
+skillboard doctor --summary
+```
+
+Doctor compares the running package with the `skillboard` executable selected
+by `PATH` and reports duplicate global installs without executing those
+candidates. If multiple SkillBoard installations are reported, choose one npm
+prefix, activate the Node environment that owns each stale copy, and run
+`npm uninstall -g agent-skillboard` there. SkillBoard does not automatically
+uninstall another prefix. Restart or refresh agents after an update because
+some agents cache user skills.
 
 `setup` is safe to rerun. It refreshes managed guidance and inventory, discovers
 late standard agent homes and Hermes profiles, and fills already-selected
@@ -140,7 +157,9 @@ skillboard migrate v2 --config <path> --yes --json
 skillboard migrate v2 --config <path> --rollback <backup> --json
 ```
 
-All v1 mutations refuse and point to migration. v0.4.0 removes the v1 reader.
+Setup and package updates keep v1 bytes unchanged and print the preview command.
+SkillBoard does not automatically migrate version 1. All v1 mutations refuse
+and point to migration. v0.4.0 removes the v1 reader.
 
 ## Cleanup
 

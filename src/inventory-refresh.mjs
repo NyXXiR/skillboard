@@ -44,9 +44,12 @@ async function refreshLocked(options) {
   const previousInventoryText = inventoryText === null
     ? null
     : await readFile(inventoryPath, "utf8").catch((error) => error?.code === "ENOENT" ? "" : Promise.reject(error));
-  const merged = configVersion === 2
+  const projected = configVersion === 2
     ? mergeV2InventoryPolicy(current, inventory)
     : mergeAgentSkillInventory(current, inventory);
+  const merged = configVersion === 1 && options.preserveLegacyPolicy === true
+    ? { ...projected, text: current }
+    : projected;
   const plan = textChangePlan(current, merged.text);
   const dryRun = options.dryRun === true;
 

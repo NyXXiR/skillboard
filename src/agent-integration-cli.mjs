@@ -44,7 +44,13 @@ export async function runSetupCommand(options, stdout, runtime = defaultRuntime(
   const ownership = setupOwnership(env, runtime, home);
   const result = await installAgentIntegration(targets, ownership);
   await mkdir(home, { recursive: true });
-  let inventory = await refreshAgentInventory({ root: home, home, env, registeredRoots });
+  let inventory = await refreshAgentInventory({
+    root: home,
+    home,
+    env,
+    registeredRoots,
+    preserveLegacyPolicy: true
+  });
   const configPath = resolve(home, inventory.configPath);
   const inventoryPath = inventory.inventoryPath === null ? null : resolve(home, inventory.inventoryPath);
   const shared = inventoryPath === null
@@ -74,8 +80,13 @@ export async function runSetupCommand(options, stdout, runtime = defaultRuntime(
   writeList(stdout, "Blocked shared copies", shared.blocked.map(formatBlockedEntry));
   stdout.write(`User policy: ${inventory.configPath}\n`);
   stdout.write(`Observed skills: ${inventory.scan.scannedSkills}\n`);
+  if (inventory.inventoryPath === null) {
+    stdout.write("Policy version 1 remains read-only during SkillBoard v0.3.x.\n");
+    stdout.write(`Preview migration: ${commandPrefix(runtime)} migrate v2 --config ${shellQuote(configPath)} --json\n`);
+  }
   stdout.write("Next:\n");
   stdout.write("- Restart or refresh agents that cache user skills.\n");
+  stdout.write("- Run skillboard doctor --summary to check policy and executable paths.\n");
   stdout.write("- User-level policy and inventory were refreshed; no project was initialized.\n");
   stdout.write('- Ask the agent in a workspace: "Review this plan and point out weak assumptions."\n');
   stdout.write("- SkillBoard will step in when skills overlap, routing is ambiguous, or you ask for a skill decision.\n");

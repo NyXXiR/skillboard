@@ -4,6 +4,7 @@ import { auditSources } from "./control.mjs";
 import { hasRuntimeComponents, installUnitSourceClass, isModelSelectableInvocation } from "./domain/source-classes.mjs";
 import { BRIDGE_END, BRIDGE_START } from "./lifecycle-content.mjs";
 import { checkPolicy } from "./policy.mjs";
+import { inspectInstallation } from "./install-health.mjs";
 import { verifySources } from "./source-verification.mjs";
 import { uninstallProject } from "./uninstall.mjs";
 import { loadWorkspace } from "./workspace.mjs";
@@ -13,6 +14,11 @@ export async function doctorProject(options = {}) {
   const configPath = resolveUnderRoot(root, options.configPath ?? "skillboard.config.yaml");
   const skillsRoot = resolveUnderRoot(root, options.skillsRoot ?? "skills");
   const bridges = await bridgeStatuses(root);
+  const installation = options.installation ?? await inspectInstallation({
+    entrypointPath: options.entrypointPath,
+    env: options.env,
+    packageVersion: options.packageVersion
+  });
   const uninstall = await uninstallProject({
     root,
     dryRun: true,
@@ -39,6 +45,7 @@ export async function doctorProject(options = {}) {
       error: configExists ? null : "skillboard.config.yaml was not found"
     },
     bridges,
+    installation,
     workspace: emptyWorkspaceSummary(),
     inventory: { required: false, ok: true, path: null, errors: [] },
     policy: { ok: false, errors: [], warnings: [] },
@@ -120,7 +127,7 @@ function finalizeDoctor(result, recommendations) {
     strictOk,
     reviewRequired,
     mode: ok ? reviewRequired ? "safe-mode" : "passed" : result.initialized ? "failed" : "not-initialized",
-    recommendations: [...new Set(recommendations)],
+    recommendations: [...new Set([...recommendations, ...result.installation.warnings])],
     reviewSummary: reviewSummaryFor(result)
   };
 }

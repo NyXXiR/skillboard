@@ -56,6 +56,31 @@ test("v2 health is ready without legacy bridge files", async () => {
   }
 });
 
+test("installation warnings stay informational in doctor health", async () => {
+  const fixture = await writeV2Fixture(JSON.stringify({
+    format_version: 1, generated: true, authoritative_for_availability: false,
+    skills: [{ id: "demo", path: "demo", owner_install_unit: "local" }]
+  }));
+  const installation = {
+    current: { version: "0.3.1", entrypoint: "/current/skillboard.mjs", realPath: "/current/skillboard.mjs", packageRoot: "/current" },
+    pathSelected: { path: "/stale/skillboard", realPath: "/stale/skillboard.mjs", packageRoot: "/stale", version: "0.2.15", current: false },
+    pathCandidates: [],
+    installations: [],
+    duplicateInstallations: true,
+    shadowed: true,
+    warnings: ["PATH selects a stale SkillBoard installation."]
+  };
+  try {
+    const doctor = await doctorProject({ ...fixture, installation });
+    assert.equal(doctor.ok, true);
+    assert.equal(doctor.strictOk, true);
+    assert.deepEqual(doctor.installation, installation);
+    assert.match(doctor.recommendations.join("\n"), /stale SkillBoard installation/);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("v2 doctor keeps source observations out of authorization recommendations", async () => {
   const fixture = await writeV2Fixture(JSON.stringify({
     format_version: 1,

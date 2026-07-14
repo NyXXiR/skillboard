@@ -33,6 +33,14 @@ Without path overrides, commands read `~/skillboard.config.yaml` and
 `~/.skillboard/inventory.json` from any directory. Setup bootstraps both files
 atomically and never creates project state.
 
+Doctor also reports installation health: the running package version and
+entrypoint, the `skillboard` executable selected by `PATH`, discovered package
+installations, shadowing, and duplicate global installs. These observations are
+informational and do not change policy health. Candidate executables are never
+run during discovery. Use `skillboard doctor --summary` after updates; use
+`npm config get prefix` in each Node environment to identify the owner of a
+stale global copy. SkillBoard does not automatically uninstall another prefix.
+
 Setup is the convergent install/update command. It refreshes managed guidance,
 policy, and inventory; discovers late standard roots and Hermes profiles; and
 creates missing compatible copies for policy entries already marked
@@ -144,6 +152,9 @@ skillboard migrate v2 --config <path> --rollback <backup> --json
 Preview changes no bytes. Apply creates an adjacent byte-for-byte backup and
 writes v2 policy plus generated inventory atomically. Rollback restores the
 selected backup. v0.4.0 removes the v1 reader.
+
+Setup and npm postinstall preserve an existing v1 policy and print only the
+preview form. SkillBoard does not automatically migrate version 1.
 
 Legacy fields are interpreted only by migration and never become hidden v2
 authorization. Primary examples are `examples/v2-multi-source.config.yaml` and

@@ -5,12 +5,35 @@
 ```bash
 npm install -g agent-skillboard
 skillboard --version
+skillboard doctor --summary
 ```
 
 Postinstall detects supported agent homes, installs managed guidance, creates
 `~/skillboard.config.yaml`, and refreshes `~/.skillboard/inventory.json`. No
 separate setup command is required after a normal global install or update, and
 no project init is needed.
+
+## Safe updates and npm prefixes
+
+Run the update with the Node/npm environment whose global prefix should own the
+CLI:
+
+```bash
+npm config get prefix
+npm install -g agent-skillboard@latest
+skillboard doctor --summary
+```
+
+Node version managers and system npm can use different global prefixes. Doctor
+reports the current package, the `skillboard` executable selected by `PATH`, and
+multiple SkillBoard installations. Discovery reads executable links and package
+metadata only; it does not execute PATH candidates.
+
+When doctor reports duplicate global installs, select the prefix you intend to
+keep. Activate the Node environment that owns each stale prefix, confirm it with
+`npm config get prefix`, and run `npm uninstall -g agent-skillboard` there.
+SkillBoard does not automatically uninstall another prefix or request elevated
+permissions for cleanup.
 
 Run setup later when lifecycle scripts were skipped, another agent or Hermes
 profile was added, or a managed root needs to be repaired:
@@ -23,6 +46,8 @@ Setup is idempotent. Each run refreshes managed agent guidance, user policy,
 and observed inventory. If the user already chose `shared: true` for a skill,
 setup creates only the missing compatible managed copies for newly discovered
 agent roots. It preserves unmanaged files and does not share agent-local skills.
+Restart or refresh agents after setup or an npm update because an agent may
+cache its user skill inventory.
 
 Register a nonstandard agent skill directory once with exactly one agent:
 
@@ -80,6 +105,9 @@ skillboard migrate v2 --config <path> --rollback <backup> --json
 ```
 
 Version 1 is read-only during v0.3.x. v0.4.0 removes the v1 reader.
+Setup and postinstall preserve an existing v1 policy byte-for-byte and suggest
+the preview command only. SkillBoard does not automatically migrate version 1;
+apply and rollback remain explicit user actions.
 
 ## Uninstall
 

@@ -451,7 +451,10 @@ async function doctor(options, stdout) {
     root: options.get("dir") ?? dirname(state.configPath),
     configPath: state.configPath,
     skillsRoot: options.get("skills"),
-    verifySources: options.get("verify") === "true"
+    verifySources: options.get("verify") === "true",
+    entrypointPath: process.argv[1],
+    env: process.env,
+    packageVersion: VERSION
   });
   const summary = options.get("summary") === "true";
   writeOutput(stdout, result, options, () => summary ? renderDoctorSummary(result) : renderDoctor(result));
@@ -1684,6 +1687,7 @@ function renderDoctorSummary(result) {
   const status = result.ok ? result.reviewRequired ? "safe mode, review needed" : "passed" : "needs attention";
   const lines = [
     `SkillBoard doctor: ${status}`,
+    renderInstallation(result.installation),
     `Workspace: ${result.workspace.skills.declared} skills, ${result.workspace.workflows} workflows, ${result.workspace.harnesses} harnesses, ${result.workspace.installUnits.total} install units`,
     `Source audit: ${result.sources.ok ? "passed" : "failed"} (${result.sources.errors.length} errors, ${result.sources.warnings.length} warnings, ${result.sources.blockingWarnings.length} blocking)`,
     `Policy: ${result.policy.ok ? "passed" : "failed"} (${result.policy.errors.length} errors, ${result.policy.warnings.length} warnings)`
@@ -1717,6 +1721,7 @@ function renderDoctor(result) {
   const status = result.ok ? result.reviewRequired ? "safe mode, review needed" : "passed" : "needs attention";
   const lines = [
     `SkillBoard doctor: ${status}`,
+    renderInstallation(result.installation),
     `Root: ${result.root}`,
     `Config: ${result.config.exists ? result.config.valid ? `valid v${result.config.version}` : `invalid (${result.config.error})` : "missing"}`,
     `Bridge: ${bridges}`,
@@ -1741,6 +1746,14 @@ function renderDoctor(result) {
   }
   lines.push("");
   return lines.join("\n");
+}
+
+function renderInstallation(installation) {
+  const currentVersion = installation.current.version ?? "unknown";
+  const selected = installation.pathSelected === null
+    ? "PATH selection not found"
+    : `PATH selects ${installation.pathSelected.version ?? "unknown"} at ${installation.pathSelected.path}`;
+  return `Installation: current ${currentVersion} at ${installation.current.entrypoint}; ${selected}; ${installation.installations.length} package installation(s) on PATH`;
 }
 
 function appendNotInitializedAttachGuidance(lines, result) {
@@ -1771,6 +1784,7 @@ function helpText() {
     "  The package postinstall auto-runs agent-layer guidance setup on install and update.",
     "  Under sudo, setup targets SUDO_USER's agent homes while npm still controls the binary prefix.",
     "  Run skillboard setup later after adding another supported agent or when install scripts were skipped.",
+    "  Run skillboard doctor --summary after updates to detect PATH shadowing or duplicate global installs.",
     "  Preview skillboard uninstall --user --dry-run before package removal to clean every managed artifact.",
     "",
     "Core AI/automation operations:",
@@ -2010,6 +2024,8 @@ function doctorHelpText() {
     "Usage: skillboard doctor [--dir <path>] [--config <path>] [--skills <dir>] [--verify] [--strict] [--summary] [--json]",
     "",
     "Checks the user-level policy and generated inventory health.",
+    "Also compares the running package and PATH-selected SkillBoard executable.",
+    "Installation discovery reads links and package metadata; it does not execute PATH candidates.",
     "The status command is an alias for doctor.",
     "",
     "Options:",
@@ -2022,6 +2038,7 @@ function doctorHelpText() {
     "  --json             Print an agent-readable payload.",
     "",
     "Without path overrides, this checks ~/skillboard.config.yaml and ~/.skillboard/inventory.json from any directory.",
+    "Installation warnings are informational and do not change policy health.",
     "It is read-only.",
     ""
   ].join("\n");

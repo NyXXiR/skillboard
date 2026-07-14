@@ -122,6 +122,8 @@ test("primary AI-loop commands expose safe command-local help", async () => {
       }
       if (entry.args[1] === "doctor") {
         assert.match(result.stdout, /Checks the user-level policy and generated inventory health/i);
+        assert.match(result.stdout, /running package and PATH-selected SkillBoard executable/i);
+        assert.match(result.stdout, /does not execute PATH candidates/i);
         assert.doesNotMatch(result.stdout, /after init/i);
         assert.doesNotMatch(result.stdout, /SkillBoard project is ready/i);
       }

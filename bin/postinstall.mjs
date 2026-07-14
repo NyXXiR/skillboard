@@ -43,6 +43,7 @@ try {
   });
   if (exitCode === 0) {
     process.stderr.write("Agent setup complete. Package updates rerun this setup automatically; run skillboard setup later after adding another supported agent. No project init was run.\n");
+    process.stderr.write("Run skillboard doctor --summary to check policy and executable paths after the update.\n");
   } else {
     process.stderr.write("Agent setup did not find supported agent homes. Run skillboard setup after installing or enabling a supported agent.\n");
   }

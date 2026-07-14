@@ -56,6 +56,17 @@ test("install and reference distinguish global and source-tree commands", async 
   assert.match(text, /No separate setup command is required/i);
 });
 
+test("install docs give a non-destructive multi-prefix update recovery path", async () => {
+  const text = await combined(["README.md", "docs/install.md", "docs/reference.md", "docs/versioning.md"]);
+
+  assert.match(text, /skillboard doctor --summary/);
+  assert.match(text, /npm config get prefix/);
+  assert.match(text, /multiple SkillBoard installations|duplicate global installs/i);
+  assert.match(text, /does not automatically uninstall|never automatically uninstalls/i);
+  assert.match(text, /does not automatically migrate|never automatically migrates/i);
+  assert.match(text, /restart or refresh/i);
+});
+
 test("primary examples are v2 and keep old authorization axes out", async () => {
   for (const file of ["examples/v2-multi-source.config.yaml", "examples/v2-policy-error.config.yaml"]) {
     const text = await readFile(file, "utf8");

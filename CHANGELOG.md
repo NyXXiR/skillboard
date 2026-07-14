@@ -2,16 +2,21 @@
 
 ## Unreleased
 
-## 0.3.1 — 2026-07-13
+## 0.3.1 — 2026-07-14
 
 ### Added
 
+- Added read-only installation health to `doctor` and `status`, including the
+  running package, PATH-selected executable, shadowing, and duplicate npm
+  installs without executing candidate programs.
 - Added `skillboard setup --agent <agent> --skill-root <path>` for registering a
   nonstandard user skill root and reusing it across later setup, package update,
   share, unshare, and user-uninstall runs.
 
 ### Changed
 
+- Made setup and global package updates preserve version 1 policy bytes and
+  print only the explicit v2 migration preview command.
 - Made `setup` the idempotent install/update/reconcile entrypoint for agents and
   Hermes profiles added after SkillBoard installation.
 - Made setup backfill only already-selected `shared: true` skills into newly
@@ -22,6 +27,8 @@
 
 ### Fixed
 
+- Added actionable single-prefix recovery guidance so system npm and Node
+  version-manager installations cannot silently drift without a doctor warning.
 - Prevented a stale default-root copy from producing false guard availability
   after a custom root is registered.
 - Preserved conventional roots that still contain agent-owned skills alongside

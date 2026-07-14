@@ -44,6 +44,10 @@ try {
 
   await run(["help"]);
   await run(["setup", "--yes", "--agent", "codex"]);
+  const doctor = JSON.parse((await run(["doctor", "--json"])).stdout.toString());
+  assert.equal(typeof doctor.installation.current.version, "string");
+  assert.equal(Array.isArray(doctor.installation.pathCandidates), true);
+  assert.equal(Array.isArray(doctor.installation.warnings), true);
   const brief = JSON.parse((await run([
     "brief", "--agent", "codex", "--intent", "CI inventory smoke", "--json"
   ])).stdout.toString());
@@ -115,6 +119,7 @@ async function assertPackContents(packageRoot) {
   for (const required of [
     "bin/skillboard.mjs",
     "src/agent-root-registry.mjs",
+    "src/install-health.mjs",
     "src/control/v2-skill-forget.mjs",
     "src/shared-skill-reconcile.mjs",
     "src/user-uninstall.mjs",

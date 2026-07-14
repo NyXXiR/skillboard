@@ -22,6 +22,10 @@ Preview is non-mutating, apply creates an adjacent byte-for-byte backup, and
 rollback restores the selected backup. Old action ids, hooks, and lock
 projections are invalid after migration.
 
+Package install, update, setup, and doctor never automatically migrate a v1
+policy. Setup preserves its bytes and prints the preview command so the policy
+decision stays separate from package maintenance.
+
 ## Versioned v2 contract
 
 Policy availability requires `enabled: true` and generated installation presence
@@ -34,11 +38,20 @@ schema.
 
 1. Run `npm run check`.
 2. Run `npm pack --dry-run --json` and inspect public contents.
-3. Confirm `CHANGELOG.md` includes the package version.
-4. Create a matching `vX.Y.Z` tag.
-5. `.github/workflows/publish.yml` verifies the tag exactly matches
+3. Install the tarball into an isolated prefix and run
+   `skillboard doctor --summary`; verify fresh setup, v1 preservation, and a
+   late-agent shared-skill reconciliation.
+4. Confirm `CHANGELOG.md` includes the package version.
+5. Push `main` and wait for the complete cross-platform check matrix.
+6. Create a matching `vX.Y.Z` tag on that exact green commit.
+7. `.github/workflows/publish.yml` verifies the tag exactly matches
    `package.json`, configures the registry URL in `setup-node`, then runs
    `npm publish` with provenance.
+
+After publish, verify the registry version from a clean install. On development
+machines with system npm plus a Node version manager, use `npm config get
+prefix` and doctor to detect multiple SkillBoard installations; release tooling
+never automatically uninstalls another prefix.
 
 Publishing uses `NPM_TOKEN` through `NODE_AUTH_TOKEN`. Prefer npm trusted
 publishing with OIDC when available. Release automation skips `npm publish`

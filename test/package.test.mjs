@@ -130,6 +130,7 @@ test("npm pack dry-run includes public runtime files and excludes work artifacts
   assert.ok(paths.includes("bin/skillboard.mjs"));
   assert.ok(paths.includes("bin/postinstall.mjs"));
   assert.ok(paths.includes("src/doctor.mjs"));
+  assert.ok(paths.includes("src/install-health.mjs"));
   assert.ok(paths.includes("src/source-cache.mjs"));
   assert.ok(paths.includes("src/install-output-detector.mjs"));
   assert.ok(paths.includes("docs/install.md"));
@@ -260,6 +261,35 @@ test("postinstall global update restores registered roots and reconciles existin
     assert.match(await readFile(join(customHermesRoot, "skillboard", "SKILL.md"), "utf8"), /agent `hermes`/);
     assert.match(await readFile(join(customHermesRoot, "demo", "SKILL.md"), "utf8"), /Shared update workflow/);
     assert.match(await readFile(join(home, "skillboard.config.yaml"), "utf8"), /demo:[\s\S]*shared: true/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("postinstall preserves version 1 policy bytes and suggests migration preview only", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-postinstall-v1-preserve-"));
+  const home = join(root, "home");
+  const configPath = join(home, "skillboard.config.yaml");
+  const config = Buffer.from("version: 1\nskills: {}\nworkflows: {}\nharnesses: {}\ninstall_units: {}\n");
+  try {
+    await mkdir(join(home, ".codex", "skills", "demo"), { recursive: true });
+    await writeFile(join(home, ".codex", "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: Existing v1 skill.\n---\n");
+    await writeFile(configPath, config);
+
+    const result = await execFileAsync(process.execPath, ["bin/postinstall.mjs"], {
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+        CODEX_HOME: join(home, ".codex"),
+        INIT_CWD: join(root, "project"),
+        npm_config_global: "true"
+      }
+    });
+
+    assert.deepEqual(await readFile(configPath), config);
+    assert.ok(result.stderr.includes(`skillboard migrate v2 --config ${configPath} --json`));
+    assert.doesNotMatch(result.stderr, /migrate v2[^\n]*--yes/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
