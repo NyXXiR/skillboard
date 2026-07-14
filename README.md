@@ -9,7 +9,7 @@ Valid installed skills default to enabled and agent-local. Sharing is opt-in per
 skill. Optional preference ranks enabled skills installed for the current agent
 and never changes availability or copies files.
 
-Status: public alpha. Package 0.3.1 writes policy schema v2.
+Status: public alpha. Package 0.3.2 writes policy schema v2.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/NyXXiR/skillboard/main/skillboard.png" alt="SkillBoard architecture diagram" width="100%">
@@ -55,6 +55,14 @@ prefix, activate the Node environment that owns each stale copy, and run
 `npm uninstall -g agent-skillboard` there. SkillBoard does not automatically
 uninstall another prefix. Restart or refresh agents after an update because
 some agents cache user skills.
+
+When an update finds a valid version 1 user policy, setup automatically migrates
+it only when all reported choices are understood. It creates an adjacent exact
+backup, keeps explicit terminal denials disabled, and maps review-only
+quarantine states to enabled and agent-local. Unknown future ambiguity leaves
+the policy unchanged and prints the explicit preview command instead. The same
+review path is used when a v1 policy skill is not currently observed, avoiding
+an unhealthy generated inventory or silently forgetting a denial.
 
 `setup` is safe to rerun. It refreshes managed guidance and inventory, discovers
 late standard agent homes and Hermes profiles, and fills already-selected
@@ -157,9 +165,16 @@ skillboard migrate v2 --config <path> --yes --json
 skillboard migrate v2 --config <path> --rollback <backup> --json
 ```
 
-Setup and package updates keep v1 bytes unchanged and print the preview command.
-SkillBoard does not automatically migrate version 1. All v1 mutations refuse
-and point to migration. v0.4.0 removes the v1 reader.
+Starting in 0.3.2, setup and global package updates automatically migrate a
+valid version 1 user policy when the report contains only understood choices.
+The transaction creates an adjacent exact backup. Explicit terminal denials
+remain disabled; review-only quarantine becomes enabled and agent-local. An
+unknown future ambiguity leaves the policy unchanged and prints the preview
+command. A policy skill that is not currently observed also stays on v1 for an
+explicit decision, because forgetting a disabled entry could enable it if it
+later reappears. The explicit commands remain available for project policies,
+audits, and rollback. Other v1 mutations still refuse and point to migration.
+v0.4.0 removes the v1 reader.
 
 ## Cleanup
 

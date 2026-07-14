@@ -35,6 +35,15 @@ keep. Activate the Node environment that owns each stale prefix, confirm it with
 SkillBoard does not automatically uninstall another prefix or request elevated
 permissions for cleanup.
 
+From 0.3.2, setup and global postinstall automatically migrate a valid version
+1 user policy when every reported migration choice is understood. Migration
+creates an adjacent exact backup, preserves explicit terminal denials as
+disabled, and makes review-only quarantine states enabled and agent-local. An
+unknown future ambiguity leaves the policy unchanged and prints the explicit
+preview command; no migration files are changed. A v1 policy skill that is not
+currently observed uses the same review path so setup neither invents inventory
+nor silently forgets its policy.
+
 Run setup later when lifecycle scripts were skipped, another agent or Hermes
 profile was added, or a managed root needs to be repaired:
 
@@ -104,10 +113,12 @@ skillboard migrate v2 --config <path> --yes --json
 skillboard migrate v2 --config <path> --rollback <backup> --json
 ```
 
-Version 1 is read-only during v0.3.x. v0.4.0 removes the v1 reader.
-Setup and postinstall preserve an existing v1 policy byte-for-byte and suggest
-the preview command only. SkillBoard does not automatically migrate version 1;
-apply and rollback remain explicit user actions.
+Version 1 is read-only during v0.3.x. v0.4.0 removes the v1 reader. Setup and
+global postinstall automatically migrate an understood version 1 user policy
+through the same backup and validation transaction. Unknown future ambiguity
+or a policy skill that is not currently observed leaves it unchanged and prints
+the preview command. Explicit preview, apply, and rollback remain available for
+project policies, audits, and recovery.
 
 ## Uninstall
 

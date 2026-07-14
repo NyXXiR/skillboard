@@ -71,3 +71,10 @@ skillboard migrate v2 --config <path> --rollback <backup> --json
 ```
 
 v0.4.0 removes the v1 reader.
+
+Setup and global postinstall automatically upgrade a valid version 1 user
+policy when its migration report contains only understood choices. The
+transaction keeps an exact adjacent backup. An unknown future ambiguity leaves
+the policy unchanged and requires the explicit preview/apply flow. Policy skills
+that are not currently observed also require review rather than being silently
+forgotten.

@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmod, lstat, mkdir, mkdtemp, readFile, readlink, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
+import YAML from "yaml";
 import { runSetupCommand, runUninstallCommand } from "../src/lifecycle-cli.mjs";
 import { pathTailPattern } from "./helpers/path-pattern.mjs";
 
@@ -126,7 +127,7 @@ test("npm pack dry-run includes public runtime files and excludes work artifacts
   const [pack] = JSON.parse(result.stdout);
   const paths = pack.files.map((file) => file.path);
 
-  assert.equal(pack.version, "0.3.1");
+  assert.equal(pack.version, "0.3.2");
   assert.ok(paths.includes("bin/skillboard.mjs"));
   assert.ok(paths.includes("bin/postinstall.mjs"));
   assert.ok(paths.includes("src/doctor.mjs"));
@@ -263,14 +264,36 @@ test("postinstall global update restores registered roots and reconciles existin
   }
 });
 
-test("postinstall preserves version 1 policy bytes and suggests migration preview only", async () => {
+test("postinstall upgrades safe version 1 policy while preserving explicit denial and backup bytes", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-postinstall-v1-preserve-"));
   const home = join(root, "home");
   const configPath = join(home, "skillboard.config.yaml");
-  const config = Buffer.from("version: 1\nskills: {}\nworkflows: {}\nharnesses: {}\ninstall_units: {}\n");
+  const config = Buffer.from(`version: 1
+skills:
+  review-only:
+    path: review-only
+    status: quarantined
+    invocation: blocked
+    exposure: exported
+    owner_install_unit: codex.user-skills
+  explicitly-denied:
+    path: explicitly-denied
+    status: blocked
+    invocation: blocked
+    exposure: exported
+    owner_install_unit: codex.user-skills
+workflows: {}
+harnesses: {}
+install_units: {}
+`);
   try {
-    await mkdir(join(home, ".codex", "skills", "demo"), { recursive: true });
-    await writeFile(join(home, ".codex", "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: Existing v1 skill.\n---\n");
+    for (const skill of ["review-only", "explicitly-denied"]) {
+      await mkdir(join(home, ".codex", "skills", skill), { recursive: true });
+      await writeFile(
+        join(home, ".codex", "skills", skill, "SKILL.md"),
+        `---\nname: ${skill}\ndescription: Existing v1 skill.\n---\n`
+      );
+    }
     await writeFile(configPath, config);
 
     const result = await execFileAsync(process.execPath, ["bin/postinstall.mjs"], {
@@ -283,16 +306,22 @@ test("postinstall preserves version 1 policy bytes and suggests migration previe
       })
     });
 
-    assert.deepEqual(await readFile(configPath), config);
-    const displayedConfigPath = process.platform === "win32" ? `"${configPath}"` : configPath;
-    assert.ok(result.stderr.includes(`skillboard migrate v2 --config ${displayedConfigPath} --json`));
-    assert.doesNotMatch(result.stderr, /migrate v2[^\n]*--yes/);
+    const policy = YAML.parse(await readFile(configPath, "utf8"));
+    assert.equal(policy.version, 2);
+    assert.deepEqual(policy.skills["review-only"], { enabled: true, shared: false });
+    assert.deepEqual(policy.skills["explicitly-denied"], { enabled: false, shared: false });
+    const backups = (await readdir(home)).filter((name) => /^skillboard\.config\.yaml\.v1-.*\.bak$/.test(name));
+    assert.equal(backups.length, 1);
+    assert.deepEqual(await readFile(join(home, backups[0])), config);
+    assert.match(result.stderr, /User policy upgraded automatically to version 2/i);
+    assert.match(result.stderr, /Backup:/);
+    assert.doesNotMatch(result.stderr, /Preview migration:/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("setup renders a copyable Windows migration preview for a spaced config path", async () => {
+test("setup automatically upgrades a safe Windows policy below a spaced config path", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-setup-windows-preview-"));
   const home = join(root, "home with spaces");
   const configPath = join(home, "skillboard.config.yaml");
@@ -321,7 +350,82 @@ test("setup renders a copyable Windows migration preview for a spaced config pat
     });
 
     assert.equal(code, 0);
-    assert.match(stdout.join(""), new RegExp(`skillboard migrate v2 --config \"${escapeRegex(configPath)}\" --json`));
+    assert.match(await readFile(configPath, "utf8"), /version: 2/);
+    assert.match(stdout.join(""), /User policy upgraded automatically to version 2/i);
+    assert.doesNotMatch(stdout.join(""), /Preview migration:/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup restores exact version 1 bytes when automatic migration fails", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-setup-v1-rollback-"));
+  const home = join(root, "home");
+  const codexHome = join(home, ".codex");
+  const configPath = join(home, "skillboard.config.yaml");
+  const inventoryPath = join(home, ".skillboard", "inventory.json");
+  const config = Buffer.from("version: 1\nskills: {}\nworkflows: {}\nharnesses: {}\ninstall_units: {}\n");
+  try {
+    await mkdir(join(codexHome, "skills"), { recursive: true });
+    await writeFile(configPath, config);
+
+    await assert.rejects(
+      runSetupCommand(new Map([["yes", "true"], ["agent", "codex"]]), { write() {} }, {
+        cwd: root,
+        entrypointPath: "skillboard",
+        env: { HOME: home, CODEX_HOME: codexHome },
+        migrationFailpoint: "after-config-write",
+        packageSpec: "agent-skillboard"
+      }),
+      /injected migration failure/i
+    );
+
+    assert.deepEqual(await readFile(configPath), config);
+    await assert.rejects(readFile(inventoryPath), /ENOENT/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup leaves version 1 unchanged when a policy skill is not currently observed", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-setup-v1-unobserved-"));
+  const home = join(root, "home");
+  const codexHome = join(home, ".codex");
+  const configPath = join(home, "skillboard.config.yaml");
+  const config = Buffer.from(`version: 1
+skills:
+  missing-denial:
+    path: missing-denial
+    status: blocked
+    invocation: blocked
+    exposure: exported
+workflows: {}
+harnesses: {}
+install_units: {}
+`);
+  try {
+    await mkdir(join(codexHome, "skills"), { recursive: true });
+    await writeFile(configPath, config);
+    const stdout = [];
+
+    const code = await runSetupCommand(new Map([["yes", "true"], ["agent", "codex"]]), {
+      write(chunk) {
+        stdout.push(chunk);
+      }
+    }, {
+      cwd: root,
+      entrypointPath: "skillboard",
+      env: { HOME: home, CODEX_HOME: codexHome },
+      packageSpec: "agent-skillboard"
+    });
+
+    assert.equal(code, 0);
+    assert.deepEqual(await readFile(configPath), config);
+    assert.match(stdout.join(""), /not currently observed: `missing-denial`/i);
+    assert.match(stdout.join(""), /Preview migration:/);
+    assert.match(stdout.join(""), /policy was preserved and installed skills were rescanned/i);
+    assert.doesNotMatch(stdout.join(""), /policy and inventory were refreshed/i);
+    assert.equal((await readdir(home)).some((name) => name.endsWith(".bak")), false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -485,6 +589,55 @@ test("setup under sudo chowns managed guidance to the invoking user", async () =
     });
     assert.ok(chowns.some((entry) => entry.path === join(codexHome, "skills", "skillboard")));
     assert.ok(chowns.every((entry) => entry.uid === 1234 && entry.gid === 5678));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup under sudo chowns automatic migration artifacts to the invoking user", async () => {
+  if (process.platform === "win32") return;
+
+  const root = await mkdtemp(join(tmpdir(), "skillboard-sudo-chown-migration-"));
+  try {
+    const rootHome = join(root, "root-home");
+    const userHome = join(root, "user-home");
+    const codexHome = join(userHome, ".codex");
+    const configPath = join(userHome, "skillboard.config.yaml");
+    await mkdir(join(codexHome, "skills"), { recursive: true });
+    await mkdir(rootHome, { recursive: true });
+    await writeFile(configPath, "version: 1\nskills: {}\nworkflows: {}\nharnesses: {}\ninstall_units: {}\n");
+    const chowns = [];
+
+    const code = await runSetupCommand(new Map([["yes", "true"], ["agent", "codex"]]), { write() {} }, {
+      cwd: root,
+      entrypointPath: "skillboard",
+      env: {
+        HOME: rootHome,
+        CODEX_HOME: codexHome,
+        LOGNAME: "root",
+        SUDO_GID: "5678",
+        SUDO_HOME: userHome,
+        SUDO_UID: "1234",
+        SUDO_USER: "skillboardsudo",
+        USER: "root"
+      },
+      packageSpec: "agent-skillboard",
+      chown(path, uid, gid) {
+        chowns.push({ path, uid, gid });
+        return Promise.resolve();
+      }
+    });
+
+    const backup = (await readdir(userHome)).find((name) => /^skillboard\.config\.yaml\.v1-.*\.bak$/.test(name));
+    assert.equal(code, 0);
+    assert.ok(backup);
+    for (const path of [
+      join(userHome, backup),
+      join(userHome, `${backup}.manifest.json`),
+      join(userHome, ".skillboard", "inventory.json")
+    ]) {
+      assert.ok(chowns.some((entry) => entry.path === path), `missing chown for ${path}`);
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -1223,10 +1376,6 @@ function isolatedAgentEnv(overrides) {
     ]),
     ...overrides
   };
-}
-
-function escapeRegex(value) {
-  return value.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
 }
 
 function oldAgentIntegrationSkill(body) {

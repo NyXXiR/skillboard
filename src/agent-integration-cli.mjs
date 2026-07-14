@@ -1,6 +1,7 @@
-import { isAbsolute, relative, resolve } from "node:path";
+import { resolve } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { createInterface } from "node:readline";
+import { commandPrefix, shellQuote } from "./agent-integration-command.mjs";
 import { installAgentIntegration, uninstallAgentIntegration } from "./agent-integration-files.mjs";
 import { applyOwnership, applyOwnershipTree, resolveSetupHome, setupOwnership } from "./agent-integration-home.mjs";
 import { setupAgentSkillTargets, supportedAgentNames } from "./agent-skill-roots.mjs";
@@ -13,6 +14,7 @@ import {
 } from "./agent-root-registry.mjs";
 import { refreshAgentInventory } from "./inventory-refresh.mjs";
 import { reconcileSharedSkills } from "./shared-skill-reconcile.mjs";
+import { upgradeLegacyUserPolicy } from "./setup-policy-migration.mjs";
 
 export async function runSetupCommand(options, stdout, runtime = defaultRuntime()) {
   assertSetupOptions(options);
@@ -52,7 +54,21 @@ export async function runSetupCommand(options, stdout, runtime = defaultRuntime(
     preserveLegacyPolicy: true
   });
   const configPath = resolve(home, inventory.configPath);
-  const inventoryPath = inventory.inventoryPath === null ? null : resolve(home, inventory.inventoryPath);
+  let inventoryPath = inventory.inventoryPath === null ? null : resolve(home, inventory.inventoryPath);
+  const policyUpgrade = await upgradeLegacyUserPolicy({
+    home,
+    configPath,
+    inventoryPath,
+    observedSkillIds: inventory.observedSkillIds,
+    failpoint: runtime.migrationFailpoint
+  });
+  if (policyUpgrade.status === "upgraded") {
+    inventoryPath = policyUpgrade.inventoryPath;
+    await applyOwnership(configPath, ownership);
+    await applyOwnership(inventoryPath, ownership);
+    for (const artifact of policyUpgrade.artifacts) await applyOwnership(artifact, ownership);
+    inventory = await refreshAgentInventory({ root: home, home, env, registeredRoots });
+  }
   const shared = inventoryPath === null
     ? { created: [], unchanged: [], preserved: [], blocked: [] }
     : await reconcileSharedSkills({ home, env, targets, configPath, inventoryPath });
@@ -80,14 +96,24 @@ export async function runSetupCommand(options, stdout, runtime = defaultRuntime(
   writeList(stdout, "Blocked shared copies", shared.blocked.map(formatBlockedEntry));
   stdout.write(`User policy: ${inventory.configPath}\n`);
   stdout.write(`Observed skills: ${inventory.scan.scannedSkills}\n`);
-  if (inventory.inventoryPath === null) {
-    stdout.write("Policy version 1 remains read-only during SkillBoard v0.3.x.\n");
+  if (policyUpgrade.status === "upgraded") {
+    stdout.write("User policy upgraded automatically to version 2.\n");
+    stdout.write(`Backup: ${policyUpgrade.backupPath}\n`);
+  } else if (policyUpgrade.status === "decision-required") {
+    stdout.write("Policy version 1 needs review before migration; no migration files were changed.\n");
+    if (policyUpgrade.unobservedSkillIds.length > 0) {
+      stdout.write(`Policy skills not currently observed: ${formatList(policyUpgrade.unobservedSkillIds)}\n`);
+    }
     stdout.write(`Preview migration: ${commandPrefix(runtime)} migrate v2 --config ${shellQuote(configPath, runtime.platform)} --json\n`);
   }
   stdout.write("Next:\n");
   stdout.write("- Restart or refresh agents that cache user skills.\n");
   stdout.write("- Run skillboard doctor --summary to check policy and executable paths.\n");
-  stdout.write("- User-level policy and inventory were refreshed; no project was initialized.\n");
+  if (policyUpgrade.status === "decision-required") {
+    stdout.write("- User-level policy was preserved and installed skills were rescanned; no project was initialized.\n");
+  } else {
+    stdout.write("- User-level policy and inventory were refreshed; no project was initialized.\n");
+  }
   stdout.write('- Ask the agent in a workspace: "Review this plan and point out weak assumptions."\n');
   stdout.write("- SkillBoard will step in when skills overlap, routing is ambiguous, or you ask for a skill decision.\n");
   return 0;
@@ -221,47 +247,4 @@ function formatSharedEntry(entry) {
 
 function formatBlockedEntry(entry) {
   return `${entry.agent ?? "unknown"}:${entry.skill}:${entry.reason}`;
-}
-
-function commandPrefix(runtime) {
-  const entrypoint = runtime.entrypointPath ?? "";
-  const normalized = entrypoint.replace(/\\/g, "/");
-  if (normalized.includes("/_npx/")) {
-    const packageSpec = runtime.packageSpec ?? "agent-skillboard";
-    return `npx --yes --package ${shellQuote(packageSpec, runtime.platform)} skillboard`;
-  }
-  if (isSourceTreeEntrypoint(entrypoint)) {
-    return `node ${sourceTreeEntrypoint(entrypoint, runtime.cwd ?? process.cwd(), runtime.platform)}`;
-  }
-  return "skillboard";
-}
-
-function isSourceTreeEntrypoint(entrypoint) {
-  if (entrypoint === "") {
-    return false;
-  }
-  const normalized = entrypoint.replace(/\\/g, "/");
-  return (normalized === "bin/skillboard.mjs" || normalized.endsWith("/bin/skillboard.mjs"))
-    && !normalized.includes("/node_modules/")
-    && !normalized.includes("/_npx/")
-    && !normalized.includes("/.npm/");
-}
-
-function sourceTreeEntrypoint(entrypoint, cwd, platform) {
-  const absoluteEntrypoint = isAbsolute(entrypoint) ? entrypoint : resolve(cwd, entrypoint);
-  const relativeEntrypoint = relative(cwd, absoluteEntrypoint).replace(/\\/g, "/");
-  if (!relativeEntrypoint.startsWith("../") && relativeEntrypoint !== ".." && !isAbsolute(relativeEntrypoint)) {
-    return shellQuote(relativeEntrypoint, platform);
-  }
-  return shellQuote(absoluteEntrypoint, platform);
-}
-
-function shellQuote(value, platform = process.platform) {
-  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) {
-    return value;
-  }
-  if (platform === "win32") {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return `'${value.replace(/'/g, "'\\''")}'`;
 }

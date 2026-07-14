@@ -111,4 +111,8 @@ skillboard migrate v2 --config <path> --rollback <backup> --json
 ```
 
 Version 1 remains readable but immutable for the v0.3.x one-release read-only
-window. v0.4.0 removes the v1 reader. No ordinary command migrates implicitly.
+window. Setup and global package updates automatically migrate an understood
+version 1 user policy with an exact adjacent backup. Unknown future ambiguity
+or a policy skill that is not currently observed leaves it unchanged and prints
+the preview command. Project policies and other ordinary commands still require
+explicit migration. v0.4.0 removes the v1 reader.

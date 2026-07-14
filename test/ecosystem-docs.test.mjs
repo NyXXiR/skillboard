@@ -63,7 +63,9 @@ test("install docs give a non-destructive multi-prefix update recovery path", as
   assert.match(text, /npm config get prefix/);
   assert.match(text, /multiple SkillBoard installations|duplicate global installs/i);
   assert.match(text, /does not automatically uninstall|never automatically uninstalls/i);
-  assert.match(text, /does not automatically migrate|never automatically migrates/i);
+  assert.match(text, /automatically (?:upgrad(?:e|es)|migrat(?:e|es))[^.]*version\s+1|version\s+1[^.]*automatically (?:upgraded|migrated)/i);
+  assert.match(text, /unknown|unrecognized/i);
+  assert.match(text, /no (?:migration )?files were changed|leaves?[^.]*unchanged/i);
   assert.match(text, /restart or refresh/i);
 });
 

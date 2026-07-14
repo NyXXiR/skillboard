@@ -85,6 +85,7 @@ async function refreshLocked(options) {
     bootstrappedV2,
     configPath: relativeArtifactPath(root, configPath),
     inventoryPath: generatedInventory === null ? null : relativeArtifactPath(root, inventoryPath),
+    observedSkillIds: inventory.skills.map(({ id }) => id).sort((left, right) => left.localeCompare(right)),
     inventoryChanged,
     changed: plan.changed,
     plan,

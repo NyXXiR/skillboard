@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## 0.3.2 — 2026-07-14
+
+### Changed
+
+- Made global npm updates and `skillboard setup` automatically upgrade a valid
+  version 1 user policy when every migration choice is already understood.
+- Kept the explicit `migrate v2` preview, apply, and rollback commands for
+  project policies, audits, and recovery.
+
+### Fixed
+
+- Removed the hidden manual migration step left after a 0.3.1 update while
+  preserving explicit terminal denials as disabled and review-only quarantine
+  states as enabled, agent-local skills.
+- Kept automatic migration non-mutating for unknown future ambiguity kinds or
+  policy skills that are not currently observed, and restored exact version 1
+  bytes after any transactional failure.
+- Restored invoking-user ownership for migration backups, manifests, and
+  generated inventory during sudo-driven global updates.
+
 ## 0.3.1 — 2026-07-14
 
 ### Added

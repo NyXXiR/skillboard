@@ -153,8 +153,13 @@ Preview changes no bytes. Apply creates an adjacent byte-for-byte backup and
 writes v2 policy plus generated inventory atomically. Rollback restores the
 selected backup. v0.4.0 removes the v1 reader.
 
-Setup and npm postinstall preserve an existing v1 policy and print only the
-preview form. SkillBoard does not automatically migrate version 1.
+Setup and global npm postinstall automatically migrate a valid version 1 user
+policy when all reported choices are understood. They create an adjacent exact
+backup, preserve terminal denials as disabled, and map review-only quarantine
+to enabled and agent-local. An unknown future ambiguity leaves the policy
+unchanged, changes no migration files, and prints the preview form. The same
+review path names policy skills that are not currently observed. Explicit
+commands remain available for project policies, audit, and recovery.
 
 Legacy fields are interpreted only by migration and never become hidden v2
 authorization. Primary examples are `examples/v2-multi-source.config.yaml` and

@@ -45,6 +45,11 @@ inventory, and materializes missing copies only for skills already marked
 discovery state. They must not introduce project scope, source trust gates, or
 another authorization layer.
 
+When setup encounters version 1 user policy, it may converge that policy to v2
+only if every migration ambiguity is a known review-only quarantine mapping.
+It must preserve terminal denials, create an exact recoverable backup, and leave
+unknown future ambiguity unchanged for an explicit decision.
+
 ## Development rule
 
 Every route, brief, guard, dashboard, generated bridge, and policy mutation must

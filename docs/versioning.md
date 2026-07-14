@@ -22,9 +22,13 @@ Preview is non-mutating, apply creates an adjacent byte-for-byte backup, and
 rollback restores the selected backup. Old action ids, hooks, and lock
 projections are invalid after migration.
 
-Package install, update, setup, and doctor never automatically migrate a v1
-policy. Setup preserves its bytes and prints the preview command so the policy
-decision stays separate from package maintenance.
+Starting in 0.3.2, setup and global package updates automatically migrate a
+valid version 1 user policy when all migration choices are understood. They use
+the same exact-backup, atomic-write, validation, and recovery transaction as
+the explicit command. Unknown future ambiguity leaves the policy unchanged and
+prints the preview command. A policy skill that is not currently observed also
+requires review, preserving future denial semantics. Doctor and project-local
+commands remain non-mutating.
 
 ## Versioned v2 contract
 
@@ -39,7 +43,8 @@ schema.
 1. Run `npm run check`.
 2. Run `npm pack --dry-run --json` and inspect public contents.
 3. Install the tarball into an isolated prefix and run
-   `skillboard doctor --summary`; verify fresh setup, v1 preservation, and a
+   `skillboard doctor --summary`; verify fresh setup, safe v1 auto-migration,
+   exact backup preservation, and a
    late-agent shared-skill reconciliation.
 4. Confirm `CHANGELOG.md` includes the package version.
 5. Push `main` and wait for the complete cross-platform check matrix.

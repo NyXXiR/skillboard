@@ -46,6 +46,9 @@ export async function migrateV2(options) {
 
 async function migrateForward(configPath, inventoryPath, options) {
   const inputBytes = await readFile(configPath);
+  if (options.expectedInputSha256 !== undefined && sha256(inputBytes) !== options.expectedInputSha256) {
+    throw new Error("Config changed after migration preview; no files were changed.");
+  }
   const inputText = inputBytes.toString("utf8");
   const { document, parsed } = parseMigrationConfig(inputText);
   const version = parsed.version ?? 1;
@@ -85,6 +88,7 @@ async function migrateForward(configPath, inventoryPath, options) {
       changed: true,
       backup: basename(backup.configBackupPath),
       manifest: basename(backup.manifestPath),
+      inventory_backup: backup.inventoryBackupPath === null ? null : basename(backup.inventoryBackupPath),
       ...report
     };
   } catch (error) {

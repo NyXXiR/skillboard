@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { EXPOSURE_VALUES, INVOCATION_VALUES, STATUS_VALUES } from "../src/domain/constants.mjs";
 import { SKILL_STATE_MATRIX, isValidSkillState } from "../src/domain/skill-state-matrix.mjs";
+import { canAutomaticallyMigrateV2 } from "../src/migration/automatic-v2.mjs";
 import { mapV1ConfigToV2 } from "../src/migration/v1-to-v2.mjs";
 
 test("baseline: the v1 state matrix accepts exactly its declared status and invocation pairs", () => {
@@ -199,6 +200,36 @@ test("groups review-only quarantine provenance uncertainty into one migration de
   assert.equal(result.policy.skills.alpha.enabled, true);
   assert.equal(result.policy.skills.demo.enabled, true);
   assert.equal(result.policy.skills.denied.enabled, false);
+});
+
+test("automatic migration accepts only fully understood review-only ambiguity reports", () => {
+  const safe = {
+    mode: "preview",
+    changed: true,
+    target_version: 2,
+    ambiguities: [{
+      kind: "review_only_quarantine",
+      skill_ids: ["demo"],
+      mapped_enabled: true,
+      requires_grouped_confirmation: true
+    }]
+  };
+
+  assert.equal(canAutomaticallyMigrateV2(safe), true);
+  assert.equal(canAutomaticallyMigrateV2({ ...safe, ambiguities: [] }), true);
+  assert.equal(canAutomaticallyMigrateV2({
+    ...safe,
+    ambiguities: [{ ...safe.ambiguities[0], kind: "future_policy_choice" }]
+  }), false);
+  assert.equal(canAutomaticallyMigrateV2({
+    ...safe,
+    ambiguities: [{ ...safe.ambiguities[0], mapped_enabled: false }]
+  }), false);
+  assert.equal(canAutomaticallyMigrateV2({
+    ...safe,
+    ambiguities: [{ ...safe.ambiguities[0], skill_ids: [] }]
+  }), false);
+  assert.equal(canAutomaticallyMigrateV2({ ...safe, changed: false }), false);
 });
 
 test("inventory observations preserve aliases and extensions without raw policy duplication", () => {

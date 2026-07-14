@@ -97,6 +97,27 @@ test("migrate v2 refuses a concurrent or stale lock without misleading success o
   });
 });
 
+test("migrate v2 refuses apply when config bytes changed after preview", async () => {
+  await withFixture(async ({ root, configPath, inventoryPath }) => {
+    const preview = await migrateV2({ configPath, inventoryPath, apply: false });
+    const changed = `${await readFile(configPath, "utf8")}\n# concurrent edit\n`;
+    await writeFile(configPath, changed, "utf8");
+
+    await assert.rejects(
+      migrateV2({
+        configPath,
+        inventoryPath,
+        apply: true,
+        expectedInputSha256: preview.input_sha256
+      }),
+      /changed after migration preview.*no files were changed/i
+    );
+
+    assert.equal(await readFile(configPath, "utf8"), changed);
+    assert.equal((await readdir(root)).some((name) => name.endsWith(".bak")), false);
+  });
+});
+
 test("migrate v2 rejects a symlink config without replacing the link or changing its target", async () => {
   await withFixture(async ({ root, configPath }) => {
     const targetBefore = await readFile(configPath);

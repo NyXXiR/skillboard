@@ -103,6 +103,7 @@ export function unchangedMigrationResult(inputBytes) {
     ambiguities: [],
     grouped_decision: null,
     backup: null,
-    manifest: null
+    manifest: null,
+    inventory_backup: null
   };
 }

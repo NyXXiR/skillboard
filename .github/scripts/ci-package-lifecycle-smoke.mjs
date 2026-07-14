@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { execFile } from "node:child_process";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -17,6 +17,7 @@ try {
   const home = join(temp, "home");
   const codexHome = join(home, ".codex");
   const skillPath = join(codexHome, "skills", "smoke-skill");
+  const deniedSkillPath = join(codexHome, "skills", "explicitly-denied");
   const customHermesRoot = join(home, "custom-hermes", "skills");
   const env = { HOME: home, USERPROFILE: home, CODEX_HOME: codexHome };
 
@@ -24,6 +25,7 @@ try {
   await mkdir(packRoot, { recursive: true });
   await mkdir(installRoot, { recursive: true });
   await mkdir(skillPath, { recursive: true });
+  await mkdir(deniedSkillPath, { recursive: true });
   for (const root of [
     join(home, ".claude", "skills"),
     join(home, ".config", "opencode", "skills"),
@@ -36,6 +38,11 @@ try {
     "---\nname: smoke-skill\ndescription: CI inventory smoke\n---\n",
     "utf8"
   );
+  await writeFile(
+    join(deniedSkillPath, "SKILL.md"),
+    "---\nname: explicitly-denied\ndescription: CI denied-skill migration smoke\n---\n",
+    "utf8"
+  );
 
   await assertPackContents(packageRoot);
   const tarball = await packPackage(packRoot);
@@ -43,7 +50,10 @@ try {
   const run = (args) => node([packagedCli, ...args], { cwd: projectRoot, env });
 
   await run(["help"]);
+  await writeFile(join(home, "skillboard.config.yaml"), legacySetupFixture(), "utf8");
   await run(["setup", "--yes", "--agent", "codex"]);
+  assert.match(await readFile(join(home, "skillboard.config.yaml"), "utf8"), /version: 2/);
+  assert.equal((await readdir(home)).filter((name) => /^skillboard\.config\.yaml\.v1-.*\.bak$/.test(name)).length, 1);
   const doctor = JSON.parse((await run(["doctor", "--json"])).stdout.toString());
   assert.equal(typeof doctor.installation.current.version, "string");
   assert.equal(Array.isArray(doctor.installation.pathCandidates), true);
@@ -120,6 +130,7 @@ async function assertPackContents(packageRoot) {
     "bin/skillboard.mjs",
     "src/agent-root-registry.mjs",
     "src/install-health.mjs",
+    "src/setup-policy-migration.mjs",
     "src/control/v2-skill-forget.mjs",
     "src/shared-skill-reconcile.mjs",
     "src/user-uninstall.mjs",
@@ -207,5 +218,24 @@ workflows:
     harness: codex
     active_skills: [smoke-skill]
     blocked_skills: []
+`;
+}
+
+function legacySetupFixture() {
+  return `version: 1
+skills:
+  smoke-skill:
+    path: smoke-skill
+    status: quarantined
+    invocation: blocked
+    exposure: exported
+  explicitly-denied:
+    path: explicitly-denied
+    status: blocked
+    invocation: blocked
+    exposure: exported
+workflows: {}
+harnesses: {}
+install_units: {}
 `;
 }

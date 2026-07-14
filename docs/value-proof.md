@@ -15,7 +15,8 @@ node --test test/v2-agent-sharing.test.mjs test/v2-onboarding-behavior.test.mjs 
 - Optional preference changes ranking without changing availability.
 - Source and provenance audits do not change guard results.
 - Commands produce the same result from different working directories.
-- Version 1 is read-only until explicit migration.
+- Version 1 project policy remains read-only until explicit migration; setup
+  automatically migrates an understood user policy with an exact backup.
 
 ## Reproduce the user surface
 
