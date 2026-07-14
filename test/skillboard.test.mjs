@@ -9,15 +9,16 @@ import {
 import { withFixture } from "./fixtures.mjs";
 
 function testAgentEnv(home, overrides = {}) {
-  return {
+  const env = {
     ...process.env,
     HOME: home,
     CODEX_HOME: `${home}/.codex`,
     HERMES_HOME: `${home}/.hermes`,
     CLAUDE_HOME: `${home}/.claude`,
-    SKILLBOARD_INIT_SCAN_ROOTS: "",
-    ...overrides
+    SKILLBOARD_INIT_SCAN_ROOTS: ""
   };
+  for (const key of ["AGENTS_HOME", "OPENCODE_HOME", "XDG_CONFIG_HOME"]) delete env[key];
+  return { ...env, ...overrides };
 }
 
 test("dashboard shows workflow-scoped active and blocked skills", async () => {

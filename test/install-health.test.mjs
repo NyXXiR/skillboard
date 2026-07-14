@@ -104,6 +104,36 @@ test("install health recognizes a Windows npm command shim without running it", 
   }
 });
 
+test("install health canonicalizes a symlinked package parent before matching the current install", async () => {
+  if (process.platform === "win32") return;
+  const root = await mkdtemp(join(tmpdir(), "skillboard-install-health-linked-parent-"));
+  try {
+    const realPrefix = join(root, "real-prefix");
+    const linkedPrefix = join(root, "linked-prefix");
+    const packageRoot = join(linkedPrefix, "node_modules", "agent-skillboard");
+    const entrypoint = join(packageRoot, "bin", "skillboard.mjs");
+    const command = join(linkedPrefix, "skillboard.cmd");
+    await mkdir(join(realPrefix, "node_modules", "agent-skillboard", "bin"), { recursive: true });
+    await symlink(realPrefix, linkedPrefix, "dir");
+    await writeFile(join(packageRoot, "package.json"), JSON.stringify({ name: "agent-skillboard", version: "0.3.1" }), "utf8");
+    await writeFile(entrypoint, "#!/usr/bin/env node\n", "utf8");
+    await writeFile(command, "@ECHO off\r\nnode \"%~dp0\\node_modules\\agent-skillboard\\bin\\skillboard.mjs\" %*\r\n", "utf8");
+
+    const result = await inspectInstallation({
+      entrypointPath: entrypoint,
+      env: { PATH: linkedPrefix },
+      packageVersion: "0.3.1",
+      pathDelimiter: ";",
+      platform: "win32"
+    });
+
+    assert.equal(result.pathSelected?.current, true);
+    assert.equal(result.shadowed, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("install health ignores a looping executable symlink", async () => {
   if (process.platform === "win32") return;
   const root = await mkdtemp(join(tmpdir(), "skillboard-install-health-loop-"));

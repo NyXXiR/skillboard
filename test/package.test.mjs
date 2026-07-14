@@ -152,14 +152,13 @@ test("postinstall auto-runs agent setup for global installs without project file
     const home = join(root, "home");
     const project = join(root, "project");
     const result = await execFileAsync(process.execPath, ["bin/postinstall.mjs"], {
-      env: {
-        ...process.env,
+      env: isolatedAgentEnv({
         HOME: home,
         INIT_CWD: project,
         CODEX_HOME: join(home, ".codex"),
         OPENCODE_HOME: join(home, ".config", "opencode"),
         npm_config_global: "true"
-      }
+      })
     });
     const codexSkill = await readFile(join(home, ".codex", "skills", "skillboard", "SKILL.md"), "utf8");
     const openCodeSkill = await readFile(join(home, ".config", "opencode", "skills", "skillboard", "SKILL.md"), "utf8");
@@ -206,13 +205,12 @@ test("postinstall global update refreshes managed guidance and new agent roots",
     ].join("\n"), "utf8");
 
     const result = await execFileAsync(process.execPath, ["bin/postinstall.mjs"], {
-      env: {
-        ...process.env,
+      env: isolatedAgentEnv({
         HOME: home,
         INIT_CWD: project,
         CODEX_HOME: join(home, ".codex"),
         npm_config_global: "true"
-      }
+      })
     });
     const codexSkill = await readFile(codexSkillPath, "utf8");
     const agentsSkill = await readFile(agentsSkillPath, "utf8");
@@ -237,12 +235,11 @@ test("postinstall global update restores registered roots and reconciles existin
   const codexHome = join(home, ".codex");
   const customHermesRoot = join(home, "custom-hermes", "skills");
   const cli = resolve("bin/skillboard.mjs");
-  const env = withoutKeys({
-    ...process.env,
+  const env = isolatedAgentEnv({
     HOME: home,
     USERPROFILE: home,
     CODEX_HOME: codexHome
-  }, ["HERMES_HOME"]);
+  });
   try {
     await mkdir(join(codexHome, "skills", "demo"), { recursive: true });
     await writeFile(join(codexHome, "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: Shared update workflow.\n---\n");
@@ -277,19 +274,54 @@ test("postinstall preserves version 1 policy bytes and suggests migration previe
     await writeFile(configPath, config);
 
     const result = await execFileAsync(process.execPath, ["bin/postinstall.mjs"], {
-      env: {
-        ...process.env,
+      env: isolatedAgentEnv({
         HOME: home,
         USERPROFILE: home,
         CODEX_HOME: join(home, ".codex"),
         INIT_CWD: join(root, "project"),
         npm_config_global: "true"
-      }
+      })
     });
 
     assert.deepEqual(await readFile(configPath), config);
-    assert.ok(result.stderr.includes(`skillboard migrate v2 --config ${configPath} --json`));
+    const displayedConfigPath = process.platform === "win32" ? `"${configPath}"` : configPath;
+    assert.ok(result.stderr.includes(`skillboard migrate v2 --config ${displayedConfigPath} --json`));
     assert.doesNotMatch(result.stderr, /migrate v2[^\n]*--yes/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("setup renders a copyable Windows migration preview for a spaced config path", async () => {
+  const root = await mkdtemp(join(tmpdir(), "skillboard-setup-windows-preview-"));
+  const home = join(root, "home with spaces");
+  const configPath = join(home, "skillboard.config.yaml");
+  const stdout = [];
+  try {
+    await mkdir(join(home, ".codex"), { recursive: true });
+    await writeFile(configPath, "version: 1\nskills: {}\nworkflows: {}\nharnesses: {}\ninstall_units: {}\n", "utf8");
+
+    const code = await runSetupCommand(new Map([
+      ["yes", "true"],
+      ["agent", "codex"]
+    ]), {
+      write(chunk) {
+        stdout.push(chunk);
+      }
+    }, {
+      cwd: root,
+      entrypointPath: "skillboard",
+      env: {
+        HOME: home,
+        USERPROFILE: home,
+        CODEX_HOME: join(home, ".codex")
+      },
+      packageSpec: "agent-skillboard",
+      platform: "win32"
+    });
+
+    assert.equal(code, 0);
+    assert.match(stdout.join(""), new RegExp(`skillboard migrate v2 --config \"${escapeRegex(configPath)}\" --json`));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -1176,6 +1208,25 @@ function withoutKeys(env, keys) {
   const sanitized = { ...env };
   for (const key of keys) delete sanitized[key];
   return sanitized;
+}
+
+function isolatedAgentEnv(overrides) {
+  return {
+    ...withoutKeys(process.env, [
+      "AGENTS_HOME",
+      "CLAUDE_HOME",
+      "CODEX_HOME",
+      "HERMES_HOME",
+      "OPENCODE_HOME",
+      "SKILLBOARD_SETUP_HOME",
+      "XDG_CONFIG_HOME"
+    ]),
+    ...overrides
+  };
+}
+
+function escapeRegex(value) {
+  return value.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
 }
 
 function oldAgentIntegrationSkill(body) {

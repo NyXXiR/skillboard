@@ -82,7 +82,7 @@ export async function runSetupCommand(options, stdout, runtime = defaultRuntime(
   stdout.write(`Observed skills: ${inventory.scan.scannedSkills}\n`);
   if (inventory.inventoryPath === null) {
     stdout.write("Policy version 1 remains read-only during SkillBoard v0.3.x.\n");
-    stdout.write(`Preview migration: ${commandPrefix(runtime)} migrate v2 --config ${shellQuote(configPath)} --json\n`);
+    stdout.write(`Preview migration: ${commandPrefix(runtime)} migrate v2 --config ${shellQuote(configPath, runtime.platform)} --json\n`);
   }
   stdout.write("Next:\n");
   stdout.write("- Restart or refresh agents that cache user skills.\n");
@@ -228,10 +228,10 @@ function commandPrefix(runtime) {
   const normalized = entrypoint.replace(/\\/g, "/");
   if (normalized.includes("/_npx/")) {
     const packageSpec = runtime.packageSpec ?? "agent-skillboard";
-    return `npx --yes --package ${shellQuote(packageSpec)} skillboard`;
+    return `npx --yes --package ${shellQuote(packageSpec, runtime.platform)} skillboard`;
   }
   if (isSourceTreeEntrypoint(entrypoint)) {
-    return `node ${sourceTreeEntrypoint(entrypoint, runtime.cwd ?? process.cwd())}`;
+    return `node ${sourceTreeEntrypoint(entrypoint, runtime.cwd ?? process.cwd(), runtime.platform)}`;
   }
   return "skillboard";
 }
@@ -247,18 +247,21 @@ function isSourceTreeEntrypoint(entrypoint) {
     && !normalized.includes("/.npm/");
 }
 
-function sourceTreeEntrypoint(entrypoint, cwd) {
+function sourceTreeEntrypoint(entrypoint, cwd, platform) {
   const absoluteEntrypoint = isAbsolute(entrypoint) ? entrypoint : resolve(cwd, entrypoint);
   const relativeEntrypoint = relative(cwd, absoluteEntrypoint).replace(/\\/g, "/");
   if (!relativeEntrypoint.startsWith("../") && relativeEntrypoint !== ".." && !isAbsolute(relativeEntrypoint)) {
-    return shellQuote(relativeEntrypoint);
+    return shellQuote(relativeEntrypoint, platform);
   }
-  return shellQuote(absoluteEntrypoint);
+  return shellQuote(absoluteEntrypoint, platform);
 }
 
-function shellQuote(value) {
+function shellQuote(value, platform = process.platform) {
   if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) {
     return value;
+  }
+  if (platform === "win32") {
+    return `"${value.replace(/"/g, '""')}"`;
   }
   return `'${value.replace(/'/g, "'\\''")}'`;
 }

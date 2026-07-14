@@ -107,7 +107,7 @@ async function readPackage(root) {
   try {
     const parsed = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
     if (parsed?.name !== PACKAGE_NAME || typeof parsed.version !== "string") return null;
-    return { root: resolve(root), version: parsed.version };
+    return { root: await realpath(root), version: parsed.version };
   } catch (error) {
     if (error?.code === "ENOENT" || error instanceof SyntaxError) return null;
     throw error;
