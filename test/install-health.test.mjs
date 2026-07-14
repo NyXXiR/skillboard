@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { test } from "node:test";
@@ -96,7 +96,7 @@ test("install health recognizes a Windows npm command shim without running it", 
     });
 
     assert.equal(result.pathSelected?.path, command);
-    assert.equal(result.pathSelected?.packageRoot, packageRoot);
+    assert.equal(result.pathSelected?.packageRoot, await realpath(packageRoot));
     assert.equal(result.pathSelected?.version, "0.3.1");
     assert.equal(result.pathSelected?.current, true);
   } finally {
