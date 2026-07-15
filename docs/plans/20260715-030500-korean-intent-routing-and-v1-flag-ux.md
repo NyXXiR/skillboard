@@ -1,6 +1,6 @@
 # Korean Intent Routing + v1/v2 Flag UX
 
-- Status: assigned
+- Status: consumed
 - Created: 2026-07-15
 - Author: claude (review session 2026-07-15; implementation delegated)
 - Scope: `src/route-tokens.mjs`, `src/route-selection.mjs` (read), `src/cli.mjs`, tests, `docs/reference.md`
@@ -195,8 +195,8 @@ node bin/skillboard.mjs brief --intent "유튜브 쇼츠 영상 제작" \
 - [x] Implement Unicode/CJK tokenization and pass focused tests.
 - [x] Add failing v1/v2 flag mismatch and help/reference tests.
 - [x] Implement flag guidance, help/reference consistency, and release notes.
-- [ ] Pass diagnostics, full checks, and manual CLI QA.
-- [ ] Mark the plan consumed and write the shared Codex work log.
+- [x] Pass diagnostics, full checks, and manual CLI QA.
+- [x] Mark the plan consumed and write the shared Codex work log.
 
 ### TDD Notes
 
@@ -208,11 +208,16 @@ node bin/skillboard.mjs brief --intent "유튜브 쇼츠 영상 제작" \
   lacked selector guidance, and help/reference exposed only v2 `--agent`.
 - P1 GREEN evidence: 24/24 affected CLI/help/docs tests pass and
   `npm run diagnostics` exits 0.
+- Final verification: `npm run check` passes 523/523 tests. Manual source-tree
+  CLI QA passed Korean recommendation, unrelated Korean no-match, v1/v2
+  mismatch exit 1 guidance, missing-intent usage, and top-level help.
 - ASCII `phraseKey` baseline: `youtube shorts short videos video`.
 - No persisted `phraseKey` consumer exists; all references are runtime route
   comparisons in `src/route-selection.mjs`.
 
 ### Resume State
 
-Run `npm run check`, then exercise Korean brief, both selector mismatch
-directions, and top-level help through `node bin/skillboard.mjs`.
+Implementation is complete. The durable completion log is
+`~/.agents/work-log/codex/2026-07-15-skillboard-korean-intent-routing.md`.
+Release as a 0.3.3 patch when desired; the operator's pending decisions and
+home-policy migration remain intentionally untouched.
