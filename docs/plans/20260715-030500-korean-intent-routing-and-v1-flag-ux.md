@@ -1,6 +1,6 @@
 # Korean Intent Routing + v1/v2 Flag UX
 
-- Status: pending
+- Status: assigned
 - Created: 2026-07-15
 - Author: claude (review session 2026-07-15; implementation delegated)
 - Scope: `src/route-tokens.mjs`, `src/route-selection.mjs` (read), `src/cli.mjs`, tests, `docs/reference.md`
