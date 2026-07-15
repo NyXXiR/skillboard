@@ -13,12 +13,12 @@ import {
   V1_COMPATIBILITY_REMOVAL_VERSION
 } from "../src/compatibility.mjs";
 
-const CURRENT_RELEASE = "0.3.2";
+const CURRENT_RELEASE = "0.3.3";
 const V1_REMOVAL_RELEASE = "v0.4.0";
 const execFileAsync = promisify(execFile);
 const CLI = resolve("bin/skillboard.mjs");
 
-test("release identity is v0.3.2 across package metadata and changelog", async () => {
+test("release identity is v0.3.3 across package metadata and changelog", async () => {
   // Given: the repository release metadata.
   const manifest = JSON.parse(await readFile(resolve("package.json"), "utf8"));
   const lockfile = JSON.parse(await readFile(resolve("package-lock.json"), "utf8"));
@@ -27,9 +27,9 @@ test("release identity is v0.3.2 across package metadata and changelog", async (
   // When: the release identities are compared.
   const identities = [manifest.version, lockfile.version, lockfile.packages[""].version];
 
-  // Then: every publish surface identifies the current v2 release as v0.3.2.
+  // Then: every publish surface identifies the current v2 release as v0.3.3.
   assert.deepEqual(identities, [CURRENT_RELEASE, CURRENT_RELEASE, CURRENT_RELEASE]);
-  assert.match(changelog, /^## 0\.3\.2\b/m);
+  assert.match(changelog, /^## 0\.3\.3\b/m);
 });
 
 test("v1 compatibility ends in package release v0.4.0", () => {

@@ -1,6 +1,6 @@
 {
   "name": "agent-skillboard",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Keep agent skills broadly available while routing overlaps consistently.",
   "keywords": [
     "ai-agent",

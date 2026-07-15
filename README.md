@@ -10,7 +10,7 @@ skill. The model makes semantic skill choices from the request, eligible skill
 descriptions, and raw saved preferences. SkillBoard does not tokenize, score,
 match, or recommend from v2 request text.
 
-Status: public alpha. Package 0.3.2 writes policy schema v2.
+Status: public alpha. Package 0.3.3 writes policy schema v2.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/NyXXiR/skillboard/main/skillboard.png" alt="SkillBoard architecture diagram" width="100%">

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.3 — 2026-07-15
+
 ### Added
 
 - Added deterministic Unicode intent tokenization with whole-run and character
