@@ -41,7 +41,9 @@ test("direct source cli help renders AI-mediated help", async () => {
   assert.match(result.stdout, /opencode/);
   assert.match(result.stdout, /v2 AI\/automation control loop/);
   assert.doesNotMatch(result.stdout, /AI\/automation approval loop/);
-  assert.match(result.stdout, /Optional preference ranks only and never changes availability/i);
+  assert.match(result.stdout, /Optional preference is raw model context and never changes availability/i);
+  assert.match(result.stdout, /model selects from raw eligible skill descriptions and saved preferences, or uses no skill/i);
+  assert.match(result.stdout, /does not tokenize, score, match, or recommend from v2 request text/i);
   assert.match(result.stdout, /work without another approval/i);
   assert.match(result.stdout, /Runtime\/action authorization is outside SkillBoard/i);
   const v2Section = result.stdout.slice(result.stdout.indexOf("v2 AI/automation control loop:"));
@@ -156,9 +158,11 @@ test("topic help exposes the route command without loading project config", asyn
 
   assert.equal(result.code, 0, commandFailure(result));
   assert.match(result.stdout, /^Usage: skillboard route <intent> --agent codex\|claude\|opencode\|hermes/m);
-  assert.match(result.stdout, /Suggests the routed skill for a user request when several allowed skills may overlap/);
+  assert.match(result.stdout, /returns raw eligible skill descriptions and saved preferences without interpreting the request/i);
+  assert.match(result.stdout, /model makes the semantic choice, including explicit requests and preferences/i);
+  assert.match(result.stdout, /Version 1 compatibility routing retains its legacy deterministic tokenizer/i);
   assert.match(result.stdout, /If the guard allows use, disclose the skill at start and completion; do not ask for another approval/i);
-  assert.match(result.stdout, /If policy memory would reduce ambiguity, ask after completion whether to remember the routed skill/i);
+  assert.match(result.stdout, /If a saved preference would help later model selection, ask after completion whether to remember it/i);
   assert.doesNotMatch(result.stdout, /^SkillBoard - permissive AI skill overlap routing$/m);
 });
 

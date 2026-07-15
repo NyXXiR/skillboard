@@ -8,8 +8,10 @@ Its durable policy answers two questions:
 1. Is this skill enabled?
 2. Should this one skill remain agent-local or be shared across agents?
 
-Optional preference ranks enabled skills installed for the current agent and
-never changes availability.
+The active model chooses the best enabled skill installed for the current
+agent, or no skill, from raw descriptions and optional saved preferences.
+SkillBoard does not tokenize, score, or match v2 request text. Preference never
+changes availability.
 
 ## Difference from distribution tools
 

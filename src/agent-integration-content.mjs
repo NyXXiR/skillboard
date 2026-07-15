@@ -25,7 +25,7 @@ Use this skill to let SkillBoard guide skill selection above individual projects
 - For ordinary user requests, work normally; invoke SkillBoard only when skill choice is ambiguous, skills overlap, or the user asks for a SkillBoard or skill decision.
 - If the user explicitly asks for a specific installed skill, honor that request when the guard allows it instead of rerouting away solely because other skills also match.
 - Do not ask for permission merely because you selected a skill.
-- When you use a skill, disclose it briefly at the start and completion. If SkillBoard says remembered or configured policy selected this skill while other allowed skills were available, mention that at completion.
+- When you use a skill, disclose it briefly at the start and completion. If a saved preference influenced the model's choice, mention that briefly at completion.
 
 ## Cross-Agent Skill Reuse
 
@@ -41,11 +41,11 @@ Use this skill to let SkillBoard guide skill selection above individual projects
 
 1. Start from the user's task, not from a pre-task inventory prompt.
 2. Identify candidate skills only when multiple installed skills plausibly match or a manual skill-control request is present.
-3. Prefer the skill whose explicit request, description, and local instructions most directly match the user's task.
-4. Use \`skillboard brief --agent ${agent} --intent <request> --json\` or \`skillboard route <intent> --agent ${agent} --json\` to break ties.
-5. Run \`skillboard guard use <skill-id> --agent ${agent} --json\` immediately before invoking the selected skill.
-6. If the best choice is still ambiguous or the choice would change persistent policy, ask the user which priority to remember.
-7. Continue with the selected skill; do not stop only because other candidate skills exist.
+3. Use \`skillboard brief --agent ${agent} --intent <request> --json\` or \`skillboard route <intent> --agent ${agent} --json\` to read eligible skill descriptions and raw saved preferences. SkillBoard does not interpret v2 request text.
+4. Make the semantic choice yourself from the full request, explicit user direction, descriptions, local instructions, and any saved preferences; use no skill when none fits.
+5. Run \`skillboard guard use <skill-id> --agent ${agent} --json\` immediately before invoking the model-selected skill.
+6. Continue with the selected skill; do not stop only because other candidate skills exist.
+7. If the choice remained ambiguous and remembering it would help, finish the work first, then ask whether to save that intent preference.
 
 ## Removal
 

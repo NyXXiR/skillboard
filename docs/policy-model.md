@@ -24,7 +24,7 @@ compatible copies for other supported agents.
 
 ## Optional routing preference
 
-Preference ranks enabled skills installed for the current agent. It never
+Preference is raw context shown to the model for an eligible skill. It never
 changes availability and never shares files.
 
 ```yaml
@@ -38,8 +38,10 @@ changes availability and never shares files.
       priority: 100
 ```
 
-An explicit user selection wins when the guard allows it. A high priority cannot
-enable a disabled skill or make a skill appear on an agent where it is absent.
+The model interprets explicit user selection and saved preference semantics from
+the full request. SkillBoard does not match the `intents` strings or use
+`priority` as a score in v2. A high priority cannot enable a disabled skill or
+make a skill appear on an agent where it is absent.
 
 ## Generated inventory
 

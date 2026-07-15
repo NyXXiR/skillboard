@@ -3,7 +3,7 @@ import { command } from "./action-core.mjs";
 const GUARD_WHEN = "immediately before skill use";
 const GOAL_DOCUMENT = Object.freeze({
   path: "docs/ai-skill-routing-goal.md",
-  purpose: "Preserve SkillBoard v2 as a user-level control plane: enable or disable a skill, opt individual skills into cross-agent sharing, and use optional preference only to rank available overlaps.",
+  purpose: "Preserve SkillBoard v2 as a user-level control plane: enable or disable a skill, opt individual skills into cross-agent sharing, and expose optional preference as raw context for the active model.",
   loop: Object.freeze([
     "observe",
     "route",
@@ -140,14 +140,22 @@ function recommendedNextStep(status, brief, choices, route = null) {
   switch (status) {
     case "ready":
       if (route !== null) {
+        if (route.model_selection_required === true) {
+          return modelSelectionStep(route);
+        }
         return route.recommended_skill === null
-          ? "Ask a clarifying question; no workflow capability matched this request."
+          ? route.workflow === null
+            ? "No enabled skill is available for this request."
+            : "Ask a clarifying question; no workflow capability matched this request."
           : `Use ${route.recommended_skill} for this request after the guard check passes${postUsePolicyStep(route)}.`;
       }
       return availableSkillCount(brief) === 0
         ? "No policy change is required; valid installed skills default to enabled and agent-local."
         : "Run the guard check immediately before using any selected skill.";
     case "needs-decision":
+      if (route?.model_selection_required === true) {
+        return `${modelSelectionStep(route)} Handle pending review decisions after the task unless a policy-changing action is needed now.`;
+      }
       if (route?.recommended_skill !== null && route?.guard_allowed === true) {
         return route.post_use_policy_suggestion === null
           ? `Use ${route.recommended_skill} for this request after the guard check passes; handle pending review decisions after the task unless a policy-changing action is needed now.`
@@ -180,6 +188,10 @@ function recommendedNextStep(status, brief, choices, route = null) {
   }
 }
 
+function modelSelectionStep(route) {
+  return "Choose the best enabled, installed skill from the request's semantic context, skill descriptions, and raw saved preferences. Run its guard before use, or continue without a skill when none fits.";
+}
+
 function postUsePolicyStep(route) {
   return route.post_use_policy_suggestion === null
     ? ""
@@ -197,6 +209,8 @@ function routeGuidance(route) {
     matched_terms: route.matched_terms,
     recommendation_reason: route.recommendation_reason,
     recommended_skill: route.recommended_skill,
+    selection_mode: route.selection_mode ?? null,
+    model_selection_required: route.model_selection_required ?? false,
     fallback_skills: route.fallback_skills,
     route_candidates: (route.route_candidates ?? []).map((candidate) => ({
       skill: candidate.skill,
@@ -216,6 +230,10 @@ function routeGuidance(route) {
     guard_reasons: route.guard?.reasons ?? [],
     possible_skills: route.possible_skills.map((skill) => ({
       id: skill.id,
+      name: skill.name,
+      description: skill.description,
+      path: skill.path,
+      preference: skill.preference,
       category: skill.category,
       allowed: skill.allowed
     }))

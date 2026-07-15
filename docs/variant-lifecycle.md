@@ -3,7 +3,8 @@
 A variant is a manual content adaptation with snapshot and digest history. The
 lifecycle does not authorize availability. A registered variant is usable only
 according to its ordinary v2 `enabled` entry and generated installation
-presence; optional preference ranks it and never changes availability.
+presence; optional preference is raw model context and never changes
+availability.
 
 ## Current v2 boundary
 

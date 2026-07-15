@@ -124,7 +124,9 @@ test("v2 guard and route ignore legacy workflow arguments", () => {
   assert.equal(guard.allowed, false);
   assert.equal(guard.workflowKnown, true);
   assert.deepEqual(guard.reasons, ["Skill disabled is disabled."]);
-  assert.equal(routeSkill(workspace, { intent: "tests", workflow: "missing", agent: "codex" }).recommended_skill, "scoped");
+  const route = routeSkill(workspace, { intent: "tests", workflow: "missing", agent: "codex" });
+  assert.equal(route.recommended_skill, null);
+  assert.deepEqual(route.possible_skills.map(({ id }) => id), ["scoped"]);
 });
 
 test("v2 list and explain expose policy plus real inventory observations only", () => {
@@ -202,7 +204,7 @@ test("v2 impact reports enabled and observed-agent effects without workflow fiel
   assert.deepEqual(scoped.policyAfter, { enabled: false, shared: false });
 });
 
-test("v2 preference priority applies only when one of its intents matches", () => {
+test("v2 exposes raw preference without interpreting whether its intents match", () => {
   const workspace = v2Workspace({
     installedSkills: [
       { id: "preferred", path: "preferred", name: "Writer", description: "Write documents" },
@@ -217,10 +219,17 @@ test("v2 preference priority applies only when one of its intents matches", () =
       { id: "matched", enabled: true, shared: false, preference: null }
     ]
   });
-  assert.equal(routeSkill(workspace, { intent: "write and run tests", agent: "codex" }).recommended_skill, "matched");
+  const route = routeSkill(workspace, { intent: "write and run tests", agent: "codex" });
+  assert.equal(route.recommended_skill, null);
+  assert.equal(route.model_selection_required, true);
+  assert.deepEqual(route.route_candidates, []);
+  assert.deepEqual(route.possible_skills.map(({ id, preference }) => ({ id, preference })), [
+    { id: "matched", preference: null },
+    { id: "preferred", preference: { intents: ["deploy"], priority: 999 } }
+  ]);
 });
 
-test("v2 preference matching rejects empty normalization and substring collisions", () => {
+test("v2 avoids normalization and substring matching for raw preferences", () => {
   const workspace = v2Workspace({
     installedSkills: [
       { id: "go", path: "go", name: "Database", description: "Manage data" },
@@ -235,7 +244,19 @@ test("v2 preference matching rejects empty normalization and substring collision
       { id: "matched", enabled: true, shared: false, preference: null }
     ]
   });
-  assert.equal(routeSkill(workspace, { intent: "run mongodb tests", agent: "codex" }).recommended_skill, "matched");
+  const requests = ["run mongodb tests", "go를 사용해줘", "unrelated request"];
+  const routes = requests.map((intent) => routeSkill(workspace, { intent, agent: "codex" }));
+  for (const route of routes) {
+    assert.equal(route.recommended_skill, null);
+    assert.equal(route.model_selection_required, true);
+    assert.deepEqual(route.route_candidates, []);
+    assert.deepEqual(route.possible_skills.map(({ id, preference }) => ({ id, preference })), [
+      { id: "go", preference: { intents: ["a"], priority: 999 } },
+      { id: "matched", preference: null }
+    ]);
+  }
+  const [first, ...rest] = routes.map(({ intent: _intent, ...route }) => route);
+  for (const route of rest) assert.deepEqual(route, first);
 });
 
 test("v2 variant status reads historical lifecycle observation without policy mutation", async () => {

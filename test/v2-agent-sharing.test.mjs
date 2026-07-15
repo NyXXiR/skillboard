@@ -146,8 +146,22 @@ test("setup creates one home control plane and normal commands never initialize 
     const second = JSON.parse((await execFileAsync(process.execPath, [
       CLI, "brief", "--agent", "codex", "--intent", "review code and tests", "--json"
     ], { cwd: projectB, env })).stdout);
-    assert.equal(first.assistant_guidance.route.recommended_skill, "demo");
-    assert.equal(second.assistant_guidance.route.recommended_skill, "demo");
+    assert.equal(first.assistant_guidance.route.recommended_skill, null);
+    assert.equal(second.assistant_guidance.route.recommended_skill, null);
+    assert.equal(first.assistant_guidance.route.selection_mode, "model");
+    assert.equal(second.assistant_guidance.route.selection_mode, "model");
+    assert.equal(first.assistant_guidance.route.model_selection_required, true);
+    assert.equal(second.assistant_guidance.route.model_selection_required, true);
+    assert.deepEqual(first.assistant_guidance.route.route_candidates, []);
+    assert.deepEqual(second.assistant_guidance.route.route_candidates, []);
+    for (const brief of [first, second]) {
+      const [possible] = brief.assistant_guidance.route.possible_skills;
+      assert.equal(possible.id, "demo");
+      assert.equal(possible.name, "demo");
+      assert.equal(possible.description, "Review code and tests.");
+      assert.equal(possible.preference, null);
+      assert.equal(possible.allowed, true);
+    }
     await assert.rejects(readFile(join(projectA, "skillboard.config.yaml")), /ENOENT/);
     await assert.rejects(readFile(join(projectB, "skillboard.config.yaml")), /ENOENT/);
   } finally {

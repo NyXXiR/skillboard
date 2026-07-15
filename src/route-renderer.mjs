@@ -30,7 +30,7 @@ export function renderRouteSectionLines(route, options = {}) {
   const lines = [];
   pushRouteMatchLines(lines, route, formatter, options);
   if (route.recommended_skill === null) {
-    pushNoRecommendationLines(lines, route, formatter);
+    pushNoRecommendationLines(lines, route, formatter, options);
     return lines;
   }
   pushRecommendationLines(lines, route, formatter, options);
@@ -50,10 +50,17 @@ function pushRouteMatchLines(lines, route, formatter, options) {
   lines.push(`${formatter.prefix}Matched terms: ${formatter.list(route.matched_terms)}`);
 }
 
-function pushNoRecommendationLines(lines, route, formatter) {
+function pushNoRecommendationLines(lines, route, formatter, options) {
   lines.push(`${formatter.prefix}Recommended skill: none`);
   if (formatter.includeFallbackWhenNoRecommendation) {
     lines.push(`${formatter.prefix}Fallback skills: ${formatter.list(route.fallback_skills)}`);
+  }
+  if (route.model_selection_required === true) {
+    lines.push(`${formatter.prefix}Model selection: required - choose from eligible skill descriptions and raw saved preferences, or use no skill.`);
+    if (typeof options.nextStep === "string" && options.nextStep.length > 0) {
+      lines.push(`${formatter.prefix}Next step: ${safeText(options.nextStep, 360)}`);
+    }
+    return;
   }
   if (formatter.noMatchNextStep !== null) {
     lines.push(`${formatter.prefix}Next step: ${formatter.noMatchNextStep}`);

@@ -1290,7 +1290,7 @@ test("packed package fresh v1 project refuses mutation and preserves bytes", asy
     assert.match(agentsBridge, /brief --intent <request>/i);
     assert.match(agentsBridge, /enabled/);
     assert.match(agentsBridge, /sharing/);
-    assert.match(agentsBridge, /preference ranks enabled skills installed for the current\s+agent/i);
+    assert.match(agentsBridge, /preference is raw context for the model/i);
     assert.match(agentsBridge, /guard use <skill-id>/);
     assert.match(agentsBridge, /Do not ask for another approval when guard allows use/i);
     assert.match(agentsBridge, /skillboard migrate v2/);

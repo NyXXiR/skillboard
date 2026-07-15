@@ -308,7 +308,7 @@ test("brief command intent text renders suggested skill without hiding guard bou
     ]);
 
     assert.equal(result.code, 0);
-    assert.match(result.stdout, /## Suggested skill for this request/);
+    assert.match(result.stdout, /## Skill selection for this request/);
     assert.match(result.stdout, /Intent: write tests before implementation/);
     assert.match(result.stdout, /Match source: capability/);
     assert.match(result.stdout, /Matched capability: test-first-implementation/);

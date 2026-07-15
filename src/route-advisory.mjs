@@ -119,50 +119,6 @@ export function postUsePolicySuggestionForCapabilityRoute({ matchedCapability, r
   });
 }
 
-export function policyMemoryForV2Route({ intent, selected, candidates, workflowName }) {
-  if (selected.explicit || selected.matchedIntents.length === 0 || candidates.length < 2) {
-    return null;
-  }
-  const alternatives = candidates.slice(1).map((candidate) => candidate.skill.id);
-  const alternativeText = alternatives.join(", ");
-  const context = workflowName === undefined ? "for the current agent" : `in legacy workflow ${workflowName}`;
-  return {
-    status: "applied",
-    mode: "remembered-or-configured-preference",
-    selected_skill: selected.skill.id,
-    available_alternatives: alternatives,
-    summary: `Remembered or configured policy selected ${selected.skill.id} for ${intent} ${context}; other allowed skills were also available: ${alternativeText}.`,
-    finish_disclosure: `I used ${selected.skill.id} for this request because SkillBoard has a remembered or configured preference for it; other allowed skills were also available: ${alternativeText}.`
-  };
-}
-
-export function postUsePolicySuggestionForV2Route({ intent, selected, candidates, workflowName, options, policyMemory }) {
-  if (selected.explicit || policyMemory !== null || candidates.length < 2) {
-    return null;
-  }
-  const context = workflowName === undefined ? "" : ` in ${workflowName}`;
-  return {
-    timing: "after_use",
-    mode: "ask_after_use",
-    reason: `SkillBoard found multiple allowed skills for ${intent} and selected ${selected.skill.id}. After completing the task, ask whether to remember ${selected.skill.id} for similar requests${context}.`,
-    question: `Should I remember ${selected.skill.id} as the preferred skill for similar ${intent} requests${context}?`,
-    requires_confirmation: true,
-    suggested_policy: {
-      kind: "prefer-skill",
-      skill: selected.skill.id,
-      workflow: workflowName ?? null,
-      intent,
-      command_hint: command([
-        "skillboard", "skill", "preference", selected.skill.id,
-        "--intent", intent,
-        "--priority", "100",
-        "--config", routeConfigPath(options),
-        ...(options.skillsRoot === undefined ? [] : ["--skills", routeSkillsRoot(options)])
-      ]).display
-    }
-  };
-}
-
 function postUsePolicySuggestionForDeniedPreferredFallback({ matchedCapability, recommended, routedSkills, workflowName, options }) {
   if (recommended === null || recommended.role !== "fallback" || recommended.guard.allowed !== true) {
     return null;

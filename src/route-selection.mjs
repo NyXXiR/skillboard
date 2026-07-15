@@ -3,6 +3,7 @@ import { canonicalRouteToken, phraseKey, tokensFor } from "./route-tokens.mjs";
 
 const HIGH_CONFIDENCE = 4;
 const MEDIUM_CONFIDENCE = 2;
+const CJK_SUFFIX = /^[\p{Script=Hangul}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]+$/u;
 
 export function selectRoute(workspace, workflow, intent) {
   const intentTokens = tokensFor(intent);
@@ -24,38 +25,6 @@ export function selectRoute(workspace, workflow, intent) {
   };
 }
 
-export function selectV2Route(workspace, intent, agentName) {
-  const intentKey = phraseKey(intent);
-  const intentTokens = tokensFor(intent);
-  const candidates = workspace.skills
-    .map((skill) => {
-      const guard = canUseSkill(workspace, skill.id, undefined, agentName);
-      const explicit = exactSkillIdMention(intentKey, skill.id);
-      const preference = skill.preference;
-      const matchedIntents = preference?.intents.filter((term) => matchesIntentTerm(intentTokens, term)) ?? [];
-      const installed = installedSkillFor(workspace, skill.id);
-      const metadataTokens = tokensFor(`${installed?.name ?? ""} ${installed?.description ?? ""}`);
-      const metadataMatches = [...metadataTokens].filter((token) => intentTokens.has(token));
-      const hasMatch = explicit || matchedIntents.length > 0 || metadataMatches.length > 0;
-      const preferenceScore = matchedIntents.length > 0 ? (preference?.priority ?? 0) : 0;
-      const rawScore = (explicit ? 1_000_000 : 0)
-          + matchedIntents.length * 100
-          + preferenceScore
-          + metadataMatches.length;
-      const score = hasMatch ? Math.max(1, rawScore) : 0;
-      return { skill, guard, explicit, score, matchedIntents, metadataMatches };
-    })
-    .filter((candidate) => candidate.guard.allowed)
-    .filter((candidate) => candidate.score > 0)
-    .sort((left, right) => right.score - left.score || left.skill.id.localeCompare(right.skill.id));
-  return { candidates, selected: candidates[0] };
-}
-
-function matchesIntentTerm(intentTokens, term) {
-  const termTokens = tokensFor(term);
-  return termTokens.size > 0 && [...termTokens].every((token) => intentTokens.has(token));
-}
-
 function explicitAllowedSkillRouteCandidate(intent, skillCandidates) {
   const intentKey = phraseKey(intent);
   return skillCandidates.find((candidate) => candidate.allowed && exactSkillIdMention(intentKey, candidate.skill_id));
@@ -66,7 +35,16 @@ function exactSkillIdMention(intentKey, skillId) {
   if (skillKey.length === 0) return false;
   const intentTokens = intentKey.split(" ");
   const skillTokens = skillKey.split(" ");
-  return intentTokens.some((_, index) => skillTokens.every((token, offset) => intentTokens[index + offset] === token));
+  const lastSkillToken = skillTokens.length - 1;
+  return intentTokens.some((_, index) => skillTokens.every((token, offset) => exactSkillTokenMatch(
+    intentTokens[index + offset], token, offset === lastSkillToken
+  )));
+}
+
+function exactSkillTokenMatch(intentToken, skillToken, allowCjkSuffix) {
+  if (intentToken === skillToken) return true;
+  if (!allowCjkSuffix || !intentToken?.startsWith(skillToken)) return false;
+  return CJK_SUFFIX.test(intentToken.slice(skillToken.length));
 }
 
 function capabilityRouteCandidates(workspace, workflow) {

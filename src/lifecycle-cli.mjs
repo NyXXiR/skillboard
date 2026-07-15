@@ -140,7 +140,7 @@ function writeSafetyDefault(stdout, safety) {
   stdout.write("Skill selection default:\n");
   stdout.write("- Valid installed skills default to enabled and agent-local.\n");
   stdout.write("- Users may disable a skill or explicitly share that skill across agents.\n");
-  stdout.write("- Optional preference ranks candidates and never changes availability.\n");
+  stdout.write("- Optional preference is raw model context and never changes availability.\n");
   stdout.write("- Source and provenance are audit metadata, never availability.\n");
   stdout.write(`- ${safety.enabled} enabled skills\n`);
   stdout.write(`- ${safety.disabled} disabled skills\n`);

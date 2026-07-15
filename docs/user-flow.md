@@ -41,8 +41,11 @@ skillboard guard use <skill-id> --agent codex --json
 ```
 
 The guard allows an enabled skill only when generated inventory records it on
-the selected agent. Preference ranks matching candidates and never changes
-availability. Allowed use does not require another confirmation.
+the selected agent. SkillBoard returns raw eligible descriptions and saved
+preferences without tokenizing, scoring, or matching the request. The model
+interprets the full request, explicit direction, and preferences and chooses a
+skill or no skill. Preference never changes availability. Allowed use does not
+require another confirmation.
 
 ## 3. Change one decision
 
@@ -65,9 +68,10 @@ returned post-apply brief. Cached action ids are not reused.
 
 ## 4. Ask after, then remember
 
-When a route was ambiguous, the agent finishes first. It may then ask whether to
-remember an intent preference. Preference affects ordering only; it does not
-share, enable, disable, install, or remove a skill.
+When a model-selected route was ambiguous, the agent finishes first. It may then
+ask whether to remember an intent preference. Preference becomes raw context
+for later model selection; it does not share, enable, disable, install, or
+remove a skill.
 
 ## 5. Audit separately
 

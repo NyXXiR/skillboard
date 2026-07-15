@@ -5,12 +5,21 @@
 ### Added
 
 - Added deterministic Unicode intent tokenization with whole-run and character
-  bigram matching for Hangul and CJK route and brief requests.
+  bigram matching for legacy v1 compatibility routing.
 
 ### Changed
 
+- Removed v2 request tokenization, metadata scoring, ranked hints, and
+  deterministic recommendations. Route and brief now return raw eligible skill
+  descriptions and saved preferences for the active model to interpret.
 - Made route, can-use, and guard errors explain whether the detected policy
   expects v2 `--agent` or v1 `--workflow`, including the v1 migration preview.
+
+### Fixed
+
+- Preserved legacy v1 explicit skill-id selection when an ASCII id is
+  immediately followed by a Hangul or CJK particle, without allowing Latin
+  prefix matches.
 
 ## 0.3.2 — 2026-07-14
 

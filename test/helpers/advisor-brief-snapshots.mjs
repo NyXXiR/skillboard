@@ -124,7 +124,7 @@ export const EXPECTED_INITIALIZED_CONTRACT = {
     goal_document: {
       keys: ["path", "purpose", "loop", "simplification_rule", "when_to_read"],
       path: "docs/ai-skill-routing-goal.md",
-      purpose: "Preserve SkillBoard v2 as a user-level control plane: enable or disable a skill, opt individual skills into cross-agent sharing, and use optional preference only to rank available overlaps.",
+      purpose: "Preserve SkillBoard v2 as a user-level control plane: enable or disable a skill, opt individual skills into cross-agent sharing, and expose optional preference as raw context for the active model.",
       loop: [
         "observe",
         "route",

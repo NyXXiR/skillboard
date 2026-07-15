@@ -84,7 +84,7 @@ function emitIntentRoute(lines, brief) {
   if (route === undefined) {
     return;
   }
-  lines.push("## Suggested skill for this request", "");
+  lines.push("## Skill selection for this request", "");
   lines.push(...renderRouteSectionLines(route, {
     format: "brief",
     nextStep: brief.assistant_guidance?.recommended_next_step

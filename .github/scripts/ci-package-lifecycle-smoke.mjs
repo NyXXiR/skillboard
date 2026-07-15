@@ -59,10 +59,21 @@ try {
   assert.equal(Array.isArray(doctor.installation.pathCandidates), true);
   assert.equal(Array.isArray(doctor.installation.warnings), true);
   const brief = JSON.parse((await run([
-    "brief", "--agent", "codex", "--intent", "CI inventory smoke", "--json"
+    "brief", "--agent", "codex", "--intent", "스모크 스킬을 사용해줘", "--json"
   ])).stdout.toString());
   assert.equal(brief.health.config.version, 2);
-  assert.equal(brief.assistant_guidance.route.recommended_skill, "smoke-skill");
+  assert.equal(brief.assistant_guidance.route.selection_mode, "model");
+  assert.equal(brief.assistant_guidance.route.recommended_skill, null);
+  assert.equal(brief.assistant_guidance.route.model_selection_required, true);
+  assert.equal(brief.assistant_guidance.route.match_source, "none");
+  assert.deepEqual(brief.assistant_guidance.route.matched_terms, []);
+  assert.deepEqual(brief.assistant_guidance.route.route_candidates, []);
+  assert.deepEqual(
+    brief.assistant_guidance.route.possible_skills
+      .filter(({ id }) => id === "smoke-skill")
+      .map(({ id, description, allowed }) => ({ id, description, allowed })),
+    [{ id: "smoke-skill", description: "CI inventory smoke", allowed: true }]
+  );
 
   const allowed = JSON.parse((await run([
     "guard", "use", "smoke-skill", "--agent", "codex", "--json"

@@ -97,31 +97,72 @@ test("v2 guard ignores trust, risk, digest, legacy policy, capabilities, and con
   assert.equal(canUseSkill(noisy, "global", undefined, "codex").allowed, true);
 });
 
-test("v2 route and guard agree, rank preferences without widening agent presence, and honor explicit allowed selection", () => {
+test("v2 never interprets request text and exposes raw model selection context", () => {
   const base = workspace();
-  const daily = routeSkill(base, { intent: "write tests", agent: "codex" });
-  assert.equal(daily.recommended_skill, "scoped");
-  assert.equal(daily.guard.allowed, true);
-  assert.deepEqual(daily.route_candidates.map(({ skill, guard_allowed }) => [skill, guard_allowed]), [
-    ["scoped", true], ["global", true]
-  ]);
-  assert.equal(daily.policy_memory.selected_skill, "scoped");
-  assert.equal(daily.post_use_policy_suggestion, null);
+  const requests = [
+    "write tests",
+    "global을 사용해서 번역해줘",
+    "한국어 라우팅 및 v2 마이그레이션을 검토해줘"
+  ];
 
-  const globalOnly = routeSkill(base, { intent: "write tests", agent: "hermes" });
-  assert.equal(globalOnly.recommended_skill, "other");
-  assert.equal(globalOnly.guard.allowed, true);
+  const routes = requests.map((intent) => routeSkill(base, { intent, agent: "codex" }));
+  for (const route of routes) {
+    assert.equal(route.selection_mode, "model");
+    assert.equal(route.recommended_skill, null);
+    assert.equal(route.model_selection_required, true);
+    assert.equal(route.match_source, "none");
+    assert.deepEqual(route.matched_terms, []);
+    assert.deepEqual(route.route_candidates, []);
+    assert.deepEqual(route.candidates, []);
+    assert.equal(route.guard, null);
+    assert.equal(route.guard_command, null);
+    assert.deepEqual(route.possible_skills, [
+      {
+        id: "global", name: "Global", description: "write tests", path: "global",
+        preference: { intents: ["tests"], priority: 1 }, allowed: true
+      },
+      {
+        id: "scoped", name: "Scoped", description: "write tests", path: "scoped",
+        preference: { intents: ["tests"], priority: 9 }, allowed: true
+      }
+    ]);
+  }
 
-  const explicit = routeSkill(base, { intent: "use global to write tests", agent: "codex" });
-  assert.equal(explicit.recommended_skill, "global");
-  assert.equal(explicit.guard.allowed, true);
-  assert.equal(explicit.match_source, "explicit-skill");
-
-  const noMatch = routeSkill(base, { intent: "translate a document", agent: "codex" });
-  assert.equal(noMatch.recommended_skill, null);
+  const [firstContext, ...otherContexts] = routes.map(({ intent: _intent, ...route }) => route);
+  for (const context of otherContexts) {
+    assert.deepEqual(context, firstContext);
+  }
 });
 
-test("v2 ambiguous allowed route asks after use and can remember an intent preference", () => {
+test("v2 exposes raw preferences without widening current-agent presence", () => {
+  const base = workspace();
+  const daily = routeSkill(base, { intent: "write tests", agent: "codex" });
+  assert.equal(daily.recommended_skill, null);
+  assert.equal(daily.guard, null);
+  assert.deepEqual(daily.possible_skills.map(({ id, preference }) => ({ id, preference })), [
+    { id: "global", preference: { intents: ["tests"], priority: 1 } },
+    { id: "scoped", preference: { intents: ["tests"], priority: 9 } }
+  ]);
+
+  const globalOnly = routeSkill(base, { intent: "write tests", agent: "hermes" });
+  assert.equal(globalOnly.recommended_skill, null);
+  assert.deepEqual(globalOnly.possible_skills.map(({ id }) => id), ["other"]);
+
+  const explicit = routeSkill(base, { intent: "use global to write tests", agent: "codex" });
+  assert.equal(explicit.recommended_skill, null);
+  assert.equal(explicit.match_source, "none");
+
+  const koreanSuffixedExplicit = routeSkill(base, {
+    intent: "global을 사용해서 번역해줘", agent: "codex"
+  });
+  assert.equal(koreanSuffixedExplicit.recommended_skill, null);
+  assert.equal(koreanSuffixedExplicit.match_source, "none");
+  assert.deepEqual(koreanSuffixedExplicit.possible_skills, daily.possible_skills);
+
+  assert.equal(canUseSkill(base, "global", undefined, "codex").allowed, true);
+});
+
+test("v2 model selection context has no pre-ranked candidates or policy memory", () => {
   const base = workspace({
     skills: [
       { id: "global", enabled: true, shared: false, preference: null },
@@ -133,20 +174,85 @@ test("v2 ambiguous allowed route asks after use and can remember an intent prefe
   const route = routeSkill(base, {
     intent: "write tests", agent: "codex", configPath: "custom.yaml", skillsRoot: "custom-skills"
   });
-  assert.equal(route.recommended_skill, "global");
-  assert.equal(route.overlap_resolution.mode, "permissive-routing");
+  assert.equal(route.recommended_skill, null);
+  assert.equal(route.model_selection_required, true);
+  assert.equal(route.overlap_resolution, null);
   assert.equal(route.policy_memory, null);
-  assert.equal(route.post_use_policy_suggestion.timing, "after_use");
-  assert.equal(route.post_use_policy_suggestion.requires_confirmation, true);
-  assert.deepEqual(route.post_use_policy_suggestion.suggested_policy, {
-    kind: "prefer-skill",
-    skill: "global",
-    workflow: null,
-    intent: "write tests",
-    command_hint: "skillboard skill preference global --intent 'write tests' --priority 100 --config custom.yaml --skills custom-skills"
+  assert.equal(route.post_use_policy_suggestion, null);
+  assert.equal(route.usage_disclosure, null);
+  assert.deepEqual(route.route_candidates, []);
+  assert.deepEqual(route.possible_skills.map(({ id }) => id), ["global", "scoped"]);
+});
+
+test("v2 leaves metadata-only semantic selection to the active model", () => {
+  const base = workspace({
+    installedSkills: [
+      {
+        id: "global", name: "Global", path: "global",
+        description: "한국어 트리거 작업 로그와 완료 기록 요청"
+      },
+      {
+        id: "scoped", name: "Scoped", path: "scoped",
+        description: "한국어 트리거 유튜브 쇼츠와 나레이션 요청"
+      }
+    ],
+    inventory: {
+      integrityErrors: [], skillIds: ["global", "scoped"],
+      skills: [observed("global", ["codex"]), observed("scoped", ["codex"])]
+    },
+    skills: [
+      { id: "global", enabled: true, shared: false, preference: null },
+      { id: "scoped", enabled: true, shared: false, preference: null }
+    ]
   });
-  assert.equal(route.usage_disclosure.confirmation_required, false);
-  assert.match(route.post_use_policy_suggestion.question, /Should I remember global/);
+
+  const route = routeSkill(base, {
+    intent: "한국어 라우팅 및 v2 마이그레이션을 검토해줘", agent: "codex"
+  });
+
+  assert.equal(route.recommended_skill, null);
+  assert.equal(route.model_selection_required, true);
+  assert.equal(route.match_source, "none");
+  assert.deepEqual(route.route_candidates, []);
+  assert.deepEqual(route.possible_skills.map(({ id, description }) => ({ id, description })), [
+    { id: "global", description: "한국어 트리거 작업 로그와 완료 기록 요청" },
+    { id: "scoped", description: "한국어 트리거 유튜브 쇼츠와 나레이션 요청" }
+  ]);
+  assert.equal(route.guard, null);
+  assert.equal(route.guard_command, null);
+  assert.equal(route.usage_disclosure, null);
+  assert.equal(route.post_use_policy_suggestion, null);
+  assert.match(route.recommendation_reason, /does not interpret v2 request text/i);
+});
+
+test("v2 leaves explicit-looking text and metadata alternatives to the model", () => {
+  const base = workspace({
+    installedSkills: [
+      { id: "global", name: "Global", description: "routing control", path: "global" },
+      { id: "scoped", name: "Scoped", description: "translate documents", path: "scoped" }
+    ],
+    inventory: {
+      integrityErrors: [], skillIds: ["global", "scoped"],
+      skills: [observed("global", ["codex"]), observed("scoped", ["codex"])]
+    },
+    skills: [
+      { id: "global", enabled: true, shared: false, preference: null },
+      { id: "scoped", enabled: true, shared: false, preference: null }
+    ]
+  });
+
+  const route = routeSkill(base, {
+    intent: "global을 사용해서 문서를 translate 해줘", agent: "codex"
+  });
+
+  assert.equal(route.recommended_skill, null);
+  assert.equal(route.match_source, "none");
+  assert.deepEqual(route.route_candidates, []);
+  assert.deepEqual(route.possible_skills.map(({ id, description }) => ({ id, description })), [
+    { id: "global", description: "routing control" },
+    { id: "scoped", description: "translate documents" }
+  ]);
+  assert.deepEqual(route.fallback_skills, []);
 });
 
 test("v2 workspace loads the generated inventory index used by guard and route", async () => {
@@ -198,13 +304,22 @@ test("v2 CLI accepts user-level policy and denies a skill absent from the select
   try {
     for (const args of [
       ["guard", "use", "global", "--agent", "codex"],
-      ["can-use", "global", "--agent", "codex"],
-      ["route", "use global", "--agent", "codex"]
+      ["can-use", "global", "--agent", "codex"]
     ]) {
       const result = await runCli([...args, "--config", join(root, "skillboard.config.yaml"), "--json"]);
       assert.equal(result.code, 0, result.stderr);
-      assert.equal(JSON.parse(result.stdout).allowed ?? JSON.parse(result.stdout).guard.allowed, true);
+      assert.equal(JSON.parse(result.stdout).allowed, true);
     }
+    const routed = await runCli([
+      "route", "use global", "--agent", "codex",
+      "--config", join(root, "skillboard.config.yaml"), "--json"
+    ]);
+    assert.equal(routed.code, 0, routed.stderr);
+    const route = JSON.parse(routed.stdout);
+    assert.equal(route.selection_mode, "model");
+    assert.equal(route.recommended_skill, null);
+    assert.equal(route.guard, null);
+    assert.deepEqual(route.possible_skills.map(({ id }) => id), ["global"]);
     const denied = await runCli(["guard", "use", "other", "--agent", "codex", "--config", join(root, "skillboard.config.yaml"), "--json"]);
     assert.equal(denied.code, 2);
     assert.doesNotMatch(denied.stderr, /Usage:/);

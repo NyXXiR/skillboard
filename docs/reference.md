@@ -50,8 +50,11 @@ non-symlinked path inside the invoking user's home, and persists the mapping in
 not authorization or policy. One root cannot be registered to two agents.
 
 Guard requires a valid inventory record, `enabled: true`, and the selected agent
-in `installed_on`. Optional preference ranks candidates but never changes
-availability.
+in `installed_on`. For v2 routing, SkillBoard returns the request plus raw
+eligible skill descriptions and saved preferences. It does not tokenize, score,
+match, or recommend from request text. The active model interprets explicit
+direction and preferences, chooses a skill or no skill, then runs guard.
+Preference never changes availability.
 
 Version 2 route, can-use, and guard require `--agent`; generated agent guidance
 passes it automatically. This prevents one agent from selecting another
@@ -82,8 +85,8 @@ skills:
 - `enabled` and `shared` are required Booleans.
 - `shared: false` means agent-local; `shared: true` enables managed cross-agent
   copies while preserving the original.
-- `preference` is optional and ranks enabled skills installed for the current
-  agent only.
+- `preference` is optional raw context for model selection when the skill is
+  enabled and installed for the current agent. SkillBoard does not score it.
 - Unknown policy keys are rejected.
 - Skill ids use letters, numbers, `.`, `_`, `:`, and `-`; path-like ids are rejected.
 - A valid newly discovered skill defaults to enabled and agent-local.

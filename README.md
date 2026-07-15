@@ -6,8 +6,9 @@ SkillBoard gives AI agents one small user-level policy for installed skills:
 2. Keep an enabled skill agent-local or shared across agents.
 
 Valid installed skills default to enabled and agent-local. Sharing is opt-in per
-skill. Optional preference ranks enabled skills installed for the current agent
-and never changes availability or copies files.
+skill. The model makes semantic skill choices from the request, eligible skill
+descriptions, and raw saved preferences. SkillBoard does not tokenize, score,
+match, or recommend from v2 request text.
 
 Status: public alpha. Package 0.3.2 writes policy schema v2.
 
@@ -128,8 +129,9 @@ destructive actions, and secrets.
 From any working directory, an agent can:
 
 1. Read `skillboard brief --intent <request> --agent <agent> --json`.
-2. Select an enabled skill installed for that agent, using preference only to
-   rank matches.
+2. Select the best eligible skill from the full request, descriptions, local
+   instructions, and raw saved preferences, or use no skill. The model itself
+   interprets explicit user direction and preference semantics.
 3. Run `skillboard guard use <skill-id> --agent <agent> --json` before use.
 4. Work without another approval when the guard allows use.
 5. Ask after completion only if remembering a preference would help.
@@ -151,8 +153,8 @@ current action, runs `skillboard apply-action <action-id> --agent <agent> --yes 
 rereads the returned post-apply brief.
 
 This is the distinction from a pure distribution tool: skills stay local by
-default, users promote only selected skills to shared use, and routing preference
-can be remembered without changing installation or availability.
+default, users promote only selected skills to shared use, and a model-facing
+preference can be remembered without changing installation or availability.
 
 ## Migrate version 1
 

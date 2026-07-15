@@ -3,27 +3,29 @@
 
 SkillBoard keeps one user-level policy. A valid installed skill defaults to
 enabled and agent-local. Users may opt individual skills into cross-agent
-sharing. Optional preference ranks enabled skills installed for the current
-agent and never changes availability or copies files.
+sharing. Optional preference is raw context for the model and never changes
+availability or copies files.
 
 ## Route and use
 
 - Work normally unless skills overlap or the user asks
   for a skill decision.
 - Read `skillboard brief --intent <request> --agent <agent> --json`.
-- Use the recommended enabled, installed skill and ordered fallbacks. Honor an
-  explicit user choice when the guard allows it.
+- SkillBoard returns eligible skill descriptions and raw saved preferences. It
+  does not tokenize, score, match, or recommend from v2 request text.
+- The model makes the semantic choice, including explicit user requests and
+  saved preferences, or continues without a skill when none fits.
 - Run `skillboard guard use <skill-id> --agent <agent> --json` immediately
   before use.
 - Do not ask for another approval when guard allows use. Briefly disclose the
   selected skill as an audit trace.
-- If the routed brief suggests policy memory, finish the work first, then ask
+- If remembering the choice would help later model selection, finish the work first, then ask
   once whether to remember that intent preference. Do not prompt before use.
 
 ## Change policy
 
 - Policy changes only enable/disable a skill, share/unshare one skill, or
-  remember optional ranking preference.
+  remember optional model preference.
 - Read a fresh brief with `--include-actions`, choose one current action id, ask
   for one confirmation, then run `skillboard apply-action <action-id> --yes
   --json`.

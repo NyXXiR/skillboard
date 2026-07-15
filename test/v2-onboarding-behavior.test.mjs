@@ -51,7 +51,15 @@ test("setup creates home state and reaches guard from a project without init", a
     ], env)).stdout);
 
     assert.equal(brief.health.config.version, 2);
-    assert.equal(brief.assistant_guidance.route.recommended_skill, "tdd");
+    assert.equal(brief.assistant_guidance.route.recommended_skill, null);
+    assert.equal(brief.assistant_guidance.route.selection_mode, "model");
+    assert.equal(brief.assistant_guidance.route.model_selection_required, true);
+    assert.deepEqual(brief.assistant_guidance.route.route_candidates, []);
+    assert.ok(brief.assistant_guidance.route.possible_skills.some(({ id }) => id === "tdd"));
+    assert.match(
+      brief.assistant_guidance.route.possible_skills.find(({ id }) => id === "tdd").description,
+      /failing-first/i
+    );
     assert.equal(guard.allowed, true);
     await assert.rejects(readFile(join(project, "skillboard.config.yaml"), "utf8"), /ENOENT/);
   } finally {
@@ -124,10 +132,12 @@ test("invalid v2 example fails at the minimal policy boundary", async () => {
   );
 });
 
-test("main help exposes v2 core without legacy authorization vocabulary", async () => {
+test("main help exposes model-owned v2 selection without legacy authorization vocabulary", async () => {
   const help = (await run(["help"])).stdout;
   const v2 = help.slice(help.indexOf("v2 AI/automation control loop:"));
   assert.match(v2, /enabled\/disabled and per-skill opt-in sharing/);
+  assert.match(v2, /model selects from raw eligible skill descriptions and saved preferences, or uses no skill/i);
+  assert.match(v2, /SkillBoard does not tokenize, score, match, or recommend from v2 request text/i);
   assert.doesNotMatch(v2, /invocation|exposure|trust_level|quarantined|manual-only|router-only|workflow-auto/i);
 });
 
@@ -198,17 +208,22 @@ test("v2 guard denies disabled policy regardless of preference", () => {
   assert.equal(canUseSkill(v2Workspace(), "disabled", undefined, "codex").allowed, false);
 });
 
-test("v2 preference ranks only enabled candidates installed for the current agent", () => {
+test("v2 exposes preference only for enabled candidates installed for the current agent", () => {
   const route = routeSkill(v2Workspace(), { intent: "write tests", agent: "codex" });
-  assert.equal(route.recommended_skill, "scoped");
-  assert.equal(route.guard.allowed, true);
-  assert.doesNotMatch(JSON.stringify(route.route_candidates), /disabled/);
+  assert.equal(route.recommended_skill, null);
+  assert.equal(route.guard, null);
+  assert.deepEqual(route.route_candidates, []);
+  assert.deepEqual(route.possible_skills.map(({ id, preference }) => ({ id, preference })), [
+    { id: "global", preference: { intents: ["tests"], priority: 1 } },
+    { id: "scoped", preference: { intents: ["tests"], priority: 9 } }
+  ]);
 });
 
-test("explicit user selection wins among enabled installed candidates", () => {
+test("explicit-looking request text remains model-owned in v2", () => {
   const route = routeSkill(v2Workspace(), { intent: "use global to write tests", agent: "codex" });
-  assert.equal(route.recommended_skill, "global");
-  assert.equal(route.match_source, "explicit-skill");
+  assert.equal(route.recommended_skill, null);
+  assert.equal(route.match_source, "none");
+  assert.deepEqual(route.possible_skills.map(({ id }) => id), ["global", "scoped"]);
 });
 
 test("variant lifecycle docs label legacy modes compatibility-only", async () => {

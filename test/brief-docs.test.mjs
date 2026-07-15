@@ -27,7 +27,7 @@ test("generated bridge teaches route guard policy change and stale-v1 migration"
   const text = bridgeBlock();
   assert.match(text, /enabled/);
   assert.match(text, /scope/);
-  assert.match(text, /preference[^.]*never changes availability/i);
+  assert.match(text, /preference[^.]*never changes\s+availability/i);
   assert.match(text, /brief --intent/);
   assert.match(text, /guard use/);
   assert.match(text, /apply-action <action-id>/);
@@ -42,4 +42,13 @@ test("generated bridge does not pre-prompt allowed use or treat audit as policy"
   assert.match(text, /Do not ask for another approval when guard allows use/i);
   assert.match(text, /audit metadata and never\s+determine availability/i);
   assert.doesNotMatch(text, /ask (?:the user )?for approval when the guard allows/i);
+});
+
+test("generated bridge assigns semantic selection to the model and policy to SkillBoard", () => {
+  const text = bridgeBlock();
+
+  assert.match(text, /model makes the semantic choice/i);
+  assert.match(text, /does not tokenize, score, match, or recommend from v2 request text/i);
+  assert.match(text, /explicit user requests[^.]*saved preferences/i);
+  assert.match(text, /guard[^.]*before use/i);
 });

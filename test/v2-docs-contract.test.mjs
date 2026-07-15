@@ -18,7 +18,7 @@ test("primary onboarding teaches only the two v2 availability decisions", async 
 
   assert.match(text, /enable or disable/i);
   assert.match(text, /agent-local[^.]*shared|shared[^.]*agent-local/i);
-  assert.match(text, /preference[^.]*rank/i);
+  assert.match(text, /preference[^.]*raw (?:model )?context/i);
   assert.match(text, /preference[^.]*never[^.]*availability/i);
   assert.match(text, /installed[^.]*enabled[^.]*agent-local/i);
   assert.match(text, /runtime[^.]*authorization[^.]*outside/i);
@@ -34,7 +34,8 @@ test("generated agent bridge teaches v2 route and guard with stale-v1 migration"
 
   assert.match(text, /enabled/);
   assert.match(text, /sharing/);
-  assert.match(text, /preference[^.]*rank/i);
+  assert.match(text, /preference[^.]*raw context/i);
+  assert.match(text, /does not tokenize, score, match, or recommend from v2 request text/i);
   assert.match(text, /skillboard migrate v2/);
   assert.match(text, /guard use/);
   assert.doesNotMatch(text, /trust|quarantin|invocation|exposure|install-unit/i);

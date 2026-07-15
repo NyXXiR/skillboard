@@ -12,7 +12,11 @@ node --test test/v2-agent-sharing.test.mjs test/v2-onboarding-behavior.test.mjs 
 - Valid discovered skills default to enabled and agent-local.
 - Disabled skills and skills absent from the selected agent are denied.
 - Share and unshare preserve agent-owned originals.
-- Optional preference changes ranking without changing availability.
+- V2 returns raw eligible descriptions and preferences without interpreting
+  request text or producing a recommendation.
+- Korean, explicit skill direction, and saved preference semantics remain owned
+  by the active model.
+- Optional preference never changes availability.
 - Source and provenance audits do not change guard results.
 - Commands produce the same result from different working directories.
 - Version 1 project policy remains read-only until explicit migration; setup

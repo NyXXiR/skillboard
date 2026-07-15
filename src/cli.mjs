@@ -1632,7 +1632,15 @@ function renderRoute(result) {
   if (result.matched_capability === null) {
     lines.push("Possible skills:");
     for (const skill of result.possible_skills.slice(0, 5)) {
-      lines.push(`- ${skill.id} (${skill.category ?? "uncategorized"}, allowed=${skill.allowed})`);
+      if (result.selection_mode === "model") {
+        const description = skill.description ?? "no description";
+        const preference = skill.preference === null || skill.preference === undefined
+          ? "no saved preference"
+          : `saved preference=${JSON.stringify(skill.preference)}`;
+        lines.push(`- ${skill.id}: ${description} (${preference}, allowed=${skill.allowed})`);
+      } else {
+        lines.push(`- ${skill.id} (${skill.category ?? "uncategorized"}, allowed=${skill.allowed})`);
+      }
     }
   }
   lines.push("");
@@ -1833,8 +1841,10 @@ function helpText() {
     "",
     "v2 AI/automation control loop:",
     "  Policy decides only enabled/disabled and per-skill opt-in sharing; see docs/ai-skill-routing-goal.md.",
-    "  Valid installed skills default to enabled and agent-local. Optional preference ranks only and never changes availability.",
-    "  Read brief --intent --agent <agent>, select an enabled installed skill, and run guard use automatically before use.",
+    "  Valid installed skills default to enabled and agent-local. Optional preference is raw model context and never changes availability.",
+    "  Read brief --intent --agent <agent>; the model selects from raw eligible skill descriptions and saved preferences, or uses no skill.",
+    "  SkillBoard does not tokenize, score, match, or recommend from v2 request text.",
+    "  Run guard use automatically before using the model-selected skill.",
     "  For an allowed skill, work without another approval; ask once only before a persistent policy change.",
     "  Source/provenance observations are audit metadata, never availability. Runtime/action authorization is outside SkillBoard.",
     "  Stale v1 policy is read-only: preview with skillboard migrate v2 --config <path> --json, apply with --yes --json, or restore with --rollback <backup> --json.",
@@ -2068,7 +2078,7 @@ function briefHelpText() {
     "",
     "Options:",
     "  --agent <name>        Evaluate actual installation for the current agent; required for v2 availability and routing.",
-    "  --intent <request>    Add a natural-language request so SkillBoard can suggest a skill.",
+    "  --intent <request>    Pass the request beside raw eligible descriptions and saved preferences; v2 does not score it.",
     "  --config <path>       Advanced policy override; defaults to ~/skillboard.config.yaml.",
     "  --skills <dir>        Use a specific skills directory.",
     "  --include-actions     Include current action ids in JSON output.",
@@ -2088,8 +2098,9 @@ function routeHelpText() {
   return [
     "Usage: skillboard route <intent> --agent codex|claude|opencode|hermes (v2 policy) | --workflow <name> (v1 policy) [--config <path>] [--skills <dir>] [--json]",
     "",
-    "Suggests the routed skill for a user request when several allowed skills may overlap.",
-    "Use it when the AI needs a skill recommendation without changing policy.",
+    "In v2, returns raw eligible skill descriptions and saved preferences without interpreting the request.",
+    "The model makes the semantic choice, including explicit requests and preferences, without changing policy.",
+    "Version 1 compatibility routing retains its legacy deterministic tokenizer and recommendation behavior.",
     "",
     "Options:",
     "  <intent>           Natural-language request, such as \"write tests first\".",
@@ -2100,10 +2111,11 @@ function routeHelpText() {
     "  --json             Print an agent-readable payload.",
     "",
     "AI use:",
-    "  If a skill is recommended, run the guard automatically before invoking it.",
+    "  In v2, choose from the eligible skill descriptions and raw saved preferences, or use no skill.",
+    "  Run the guard automatically before invoking the model-selected skill.",
     "  If the guard allows use, disclose the skill at start and completion; do not ask for another approval.",
-    "  If policy memory would reduce ambiguity, ask after completion whether to remember the routed skill.",
-    "  If no skill matches, ask a clarifying question instead of guessing.",
+    "  If a saved preference would help later model selection, ask after completion whether to remember it.",
+    "  In v1 compatibility mode, ask a clarifying question when no workflow route matches.",
     ""
   ].join("\n");
 }

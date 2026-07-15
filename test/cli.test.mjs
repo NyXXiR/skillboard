@@ -346,7 +346,7 @@ test("cli init initializes v2 config and agent bridge files", async () => {
     assert.match(agents, /enabled/);
     assert.match(agents, /share\/unshare/i);
     assert.match(agents, /brief --intent <request>/i);
-    assert.match(agents, /preference ranks enabled skills installed for the current\s+agent/i);
+    assert.match(agents, /preference is raw context for the model/i);
     assert.match(agents, /one confirmation/i);
     assert.match(agents, /post-apply brief/i);
     assert.match(agents, /immediately\s+before use/i);
@@ -360,7 +360,7 @@ test("cli init initializes v2 config and agent bridge files", async () => {
     assert.match(claude, /BEGIN SKILLBOARD/);
     assert.match(claude, /user-level policy/i);
     assert.match(claude, /brief --intent <request>/i);
-    assert.match(claude, /preference ranks enabled skills installed for the current\s+agent/i);
+    assert.match(claude, /preference is raw context for the model/i);
     assert.match(profilesReadme, /source profiles/);
     assert.match(hooksReadme, /skillboard hook install/);
     assert.equal(agents.match(/BEGIN SKILLBOARD/g).length, 1);
@@ -922,7 +922,7 @@ test("cli init scans installed skills into enabled agent-local v2 policy", async
   }
 });
 
-test("cli init scanned local skills remain routable by SKILL description metadata", async () => {
+test("cli init exposes scanned SKILL descriptions as model selection context", async () => {
   const root = await mkdtemp(join(tmpdir(), "skillboard-init-route-metadata-test-"));
   try {
     const home = join(root, "home");
@@ -959,11 +959,43 @@ test("cli init scanned local skills remain routable by SKILL description metadat
     ], { env });
     const payload = JSON.parse(brief.stdout);
 
-    assert.equal(payload.match_source, "skill-metadata");
-    assert.equal(payload.recommended_skill, "test-first");
-    assert.ok(payload.matched_terms.includes("implementation"));
-    assert.ok(payload.matched_terms.includes("failing"));
-    assert.equal(payload.guard.allowed, true);
+    assert.equal(payload.selection_mode, "model");
+    assert.equal(payload.match_source, "none");
+    assert.equal(payload.recommended_skill, null);
+    assert.equal(payload.model_selection_required, true);
+    assert.deepEqual(payload.matched_terms, []);
+    assert.equal(payload.guard, null);
+    assert.deepEqual(payload.route_candidates, []);
+    assert.deepEqual(payload.possible_skills, [
+      {
+        id: "docs-writer", name: "docs-writer",
+        description: "Write install guides, README copy, and quick starts.",
+        path: "docs-writer", preference: null, allowed: true
+      },
+      {
+        id: "test-first", name: "test-first",
+        description: "Write failing tests before implementation and keep a red green refactor loop.",
+        path: "test-first", preference: null, allowed: true
+      }
+    ]);
+
+    const textRoute = await execFileAsync(process.execPath, [
+      "bin/skillboard.mjs",
+      "route",
+      "write failing tests before implementation",
+      "--agent",
+      "codex",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot
+    ], { env });
+    assert.match(textRoute.stdout, /Recommended skill: none/);
+    assert.match(textRoute.stdout, /Model selection: required/i);
+    assert.match(textRoute.stdout, /eligible skill descriptions and raw saved preferences/i);
+    assert.doesNotMatch(textRoute.stdout, /Route candidates:/);
+    assert.match(textRoute.stdout, /test-first: Write failing tests before implementation/i);
+    assert.doesNotMatch(textRoute.stdout, /ask a clarifying question/i);
 
     const unrelated = await execFileAsync(process.execPath, [
       "bin/skillboard.mjs",
@@ -980,7 +1012,10 @@ test("cli init scanned local skills remain routable by SKILL description metadat
     const unrelatedPayload = JSON.parse(unrelated.stdout);
     assert.equal(unrelatedPayload.match_source, "none");
     assert.equal(unrelatedPayload.recommended_skill, null);
+    assert.equal(unrelatedPayload.model_selection_required, true);
     assert.deepEqual(unrelatedPayload.matched_terms, []);
+    assert.deepEqual(unrelatedPayload.route_candidates, []);
+    assert.deepEqual(unrelatedPayload.possible_skills, payload.possible_skills);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
