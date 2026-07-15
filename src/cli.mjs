@@ -60,6 +60,7 @@ import { ApplyActionError, applyActionErrorPayload, applyAdvisorAction } from ".
 import { importAgentSkill, renderImportAgentSkill } from "./agent-skill-import.mjs";
 import { runBriefCommand } from "./brief-cli.mjs";
 import { renderSkillBrief } from "./brief-renderer.mjs";
+import { shellQuote } from "./agent-integration-command.mjs";
 import { planGuardHookInstall } from "./control.mjs";
 import { writeCheckedConfig } from "./control/config-write.mjs";
 import { runInitCommand, runSetupCommand, runUninstallCommand } from "./lifecycle-cli.mjs";
@@ -1337,10 +1338,6 @@ function assertKnownOptions(command, options, allowed) {
 
 function formatList(values) {
   return values.length === 0 ? "none" : values.map((value) => `\`${value}\``).join(", ");
-}
-
-function shellQuote(value) {
-  return /^[A-Za-z0-9_./:=@-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 function readCsv(value) {

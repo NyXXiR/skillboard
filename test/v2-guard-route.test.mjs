@@ -362,6 +362,9 @@ test("CLI explains v1 and v2 selector flag mismatches", async () => {
   try {
     const v1Config = join(v1Root, "skillboard.config.yaml");
     const v2Config = join(v2Root, "skillboard.config.yaml");
+    const expectedV1ConfigArgument = process.platform === "win32"
+      ? `"${v1Config.replace(/"/g, '""')}"`
+      : v1Config;
     for (const args of commands) {
       const v1Mismatch = await runCli([...args, "--agent", "codex", "--config", v1Config]);
       assert.equal(v1Mismatch.code, 1, v1Mismatch.stderr);
@@ -369,7 +372,7 @@ test("CLI explains v1 and v2 selector flag mismatches", async () => {
       assert.match(v1Mismatch.stderr, /--workflow <name>/);
       assert.match(
         v1Mismatch.stderr,
-        new RegExp(`skillboard migrate v2 --config ${escapeRegExp(v1Config)} --json`)
+        new RegExp(`skillboard migrate v2 --config ${escapeRegExp(expectedV1ConfigArgument)} --json`)
       );
 
       const v2Mismatch = await runCli([...args, "--workflow", "legacy", "--config", v2Config]);
