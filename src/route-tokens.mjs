@@ -32,17 +32,32 @@ const ROUTE_STOP_WORDS = new Set([
   "your"
 ]);
 
+const ASCII_ROUTE_TOKEN = /^[a-z0-9]+$/u;
+const CJK_ROUTE_TOKEN = /[\p{Script=Hangul}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+
 export function tokensFor(value) {
   return new Set(String(value)
     .toLowerCase()
-    .split(/[^a-z0-9]+/u)
+    .split(/[^\p{L}\p{N}]+/u)
     .flatMap(tokenForms)
     .filter(isRouteToken));
 }
 
 function tokenForms(token) {
+  if (CJK_ROUTE_TOKEN.test(token)) {
+    return cjkTokenForms(token);
+  }
   const singular = singularRouteToken(token);
   return singular === token ? [token] : [token, singular];
+}
+
+function cjkTokenForms(token) {
+  const characters = [...token];
+  const forms = [token];
+  for (let index = 0; index < characters.length - 1; index += 1) {
+    forms.push(characters.slice(index, index + 2).join(""));
+  }
+  return forms;
 }
 
 export function canonicalRouteToken(token) {
@@ -50,6 +65,9 @@ export function canonicalRouteToken(token) {
 }
 
 function singularRouteToken(token) {
+  if (!ASCII_ROUTE_TOKEN.test(token)) {
+    return token;
+  }
   if (token.length > 4 && token.endsWith("ies")) {
     return `${token.slice(0, -3)}y`;
   }
@@ -60,7 +78,7 @@ function singularRouteToken(token) {
 }
 
 function isRouteToken(token) {
-  return token.length > 1 && !ROUTE_STOP_WORDS.has(token);
+  return (token.length > 1 || CJK_ROUTE_TOKEN.test(token)) && !ROUTE_STOP_WORDS.has(token);
 }
 
 export function phraseKey(value) {

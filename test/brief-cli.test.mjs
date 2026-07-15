@@ -16,6 +16,7 @@ import {
   withInitializedEmptyProject
 } from "./helpers/brief-cli.mjs";
 import { displayCommand } from "./helpers/expected-command.mjs";
+import { withKoreanRouteFixture } from "./helpers/korean-route-fixture.mjs";
 
 test("brief command renders readable text sections", async () => {
   await withBriefFixture(async ({ configPath, skillsRoot }) => {
@@ -144,6 +145,30 @@ test("brief command intent json includes route-backed skill suggestion", async (
     });
     assert.equal(payload.assistant_guidance.route.guard_allowed, true);
     assert.match(payload.assistant_guidance.route.guard_command, /skillboard guard use matt\.tdd/);
+  });
+});
+
+test("brief command routes a Korean intent through fixture skill metadata", async () => {
+  await withKoreanRouteFixture(async ({ configPath, skillsRoot }) => {
+    const result = await runCli([
+      "brief",
+      "--intent",
+      "유튜브 쇼츠 영상 제작",
+      "--workflow",
+      "codex-local-manual",
+      "--config",
+      configPath,
+      "--skills",
+      skillsRoot,
+      "--json"
+    ]);
+
+    assert.equal(result.code, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(
+      payload.assistant_guidance.route.recommended_skill,
+      "openmontage-qwen-shorts"
+    );
   });
 });
 

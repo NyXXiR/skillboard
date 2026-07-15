@@ -186,3 +186,29 @@ node bin/skillboard.mjs brief --intent "유튜브 쇼츠 영상 제작" \
   tokenization for route/brief; Changed — route/can-use/guard usage errors now
   explain the v1/v2 flag vocabulary. Patch-level release (0.3.3) is
   appropriate; no schema change.
+
+## Implementation Progress
+
+- [x] Claim the plan and mark Current Plans as assigned (`f9c35ea`).
+- [x] Confirm `phraseKey` is runtime-only under `src/` and `test/`.
+- [x] Add failing Unicode token, route-selection, and Korean brief CLI tests.
+- [x] Implement Unicode/CJK tokenization and pass focused tests.
+- [ ] Add failing v1/v2 flag mismatch and help/reference tests.
+- [ ] Implement flag guidance, help/reference consistency, and release notes.
+- [ ] Pass diagnostics, full checks, and manual CLI QA.
+- [ ] Mark the plan consumed and write the shared Codex work log.
+
+### TDD Notes
+
+- Pre-change RED evidence: token suite failed 4/5 cases and the focused Korean
+  brief CLI test returned `recommended_skill: null`; ASCII baseline passed.
+- Post-change GREEN evidence: all 5 Unicode/route tests and the focused Korean
+  brief CLI test pass; `node --check src/route-tokens.mjs` exits 0.
+- ASCII `phraseKey` baseline: `youtube shorts short videos video`.
+- No persisted `phraseKey` consumer exists; all references are runtime route
+  comparisons in `src/route-selection.mjs`.
+
+### Resume State
+
+Add v1 `--agent` and v2 `--workflow` mismatch tests for route, can-use, and
+guard, capture the RED state, then update the shared CLI validation path.
