@@ -50,6 +50,17 @@ test("migration docs give exact preview apply rollback commands and a bounded v1
   assert.match(text, /v0\.4\.0[^.]*remove[^.]*v1/i);
 });
 
+test("reference documents selector vocabulary for v1 and v2 route surfaces", async () => {
+  const text = await readFile("docs/reference.md", "utf8");
+
+  for (const command of ["route <intent>", "can-use <skill-id>", "guard use <skill-id>"]) {
+    assert.match(
+      text,
+      new RegExp(`skillboard ${command.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}[^\\n]*--agent[^\\n]*v2 policy[^\\n]*--workflow[^\\n]*v1 policy`, "i")
+    );
+  }
+});
+
 test("primary examples use v2 policy and keep observations outside authorization", async () => {
   for (const file of ["examples/v2-multi-source.config.yaml", "examples/v2-policy-error.config.yaml"]) {
     const text = await readFile(file, "utf8");

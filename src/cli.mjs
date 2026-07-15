@@ -93,7 +93,7 @@ const COMMAND_USAGE = new Map([
   ["check", ["check --config <path> --skills <dir>"]],
   ["list", ["list [skills|workflows|harnesses|install-units] [--config <path>] [--skills <dir>] [--json]"]],
   ["explain", ["explain <skill-id> --config <path> --skills <dir> [--json]"]],
-  ["can-use", ["can-use <skill-id> --agent codex|claude|opencode|hermes [--json]"]],
+  ["can-use", ["can-use <skill-id> --agent <name> (v2 policy) | --workflow <name> (v1 policy) [--json]"]],
   ["audit", ["audit sources --config <path> --skills <dir> [--verify] [--json]"]],
   ["rollout", ["rollout [audit|plan|apply|rollback|report] [--dir <path>] [--config <path>] [--skills <dir>] [--transaction <id>] [--json]"]],
   ["hook", ["hook install --workflow <name> --config <path> --skills <dir> [--out <path>] [--skillboard-bin <path>] [--dry-run] [--json]"]],
@@ -580,15 +580,12 @@ async function route(argv, options, stdout) {
   const intent = positionalArgs(argv).join(" ").trim();
   const workflow = options.get("workflow");
   if (intent.length === 0) {
-    throw new Error("Usage: skillboard route <intent> [--agent <name>]");
+    throw new Error(selectorUsage("skillboard route <intent>"));
   }
   const config = configPath(options);
   const skills = skillsRoot(options);
   const workspace = await loadWorkspace({ configPath: config, skillsRoot: skills });
-  assertV2AgentOption(workspace, options, "skillboard route <intent> --agent <name>");
-  if (workspace.version === 1 && workflow === undefined) {
-    throw new Error("Usage: skillboard route <intent> --workflow <name>");
-  }
+  assertPolicySelectorOption(workspace, options, "skillboard route <intent>", config);
   const result = routeSkill(workspace, {
     intent,
     workflow,
@@ -605,13 +602,11 @@ async function canUse(argv, options, stdout) {
   const skillId = positionalArgs(argv)[0];
   const workflow = options.get("workflow");
   if (skillId === undefined) {
-    throw new Error("Usage: skillboard can-use <skill-id> [--agent <name>]");
+    throw new Error(selectorUsage("skillboard can-use <skill-id>"));
   }
-  const workspace = await loadWorkspace({ configPath: configPath(options), skillsRoot: skillsRoot(options) });
-  assertV2AgentOption(workspace, options, "skillboard can-use <skill-id> --agent <name>");
-  if (workspace.version === 1 && workflow === undefined) {
-    throw new Error("Usage: skillboard can-use <skill-id> --workflow <name>");
-  }
+  const config = configPath(options);
+  const workspace = await loadWorkspace({ configPath: config, skillsRoot: skillsRoot(options) });
+  assertPolicySelectorOption(workspace, options, "skillboard can-use <skill-id>", config);
   const result = canUseSkill(workspace, skillId, workflow, options.get("agent"));
   writeOutput(stdout, result, options, () => renderCanUse(result));
   return result.allowed ? 0 : 2;
@@ -623,9 +618,10 @@ async function guard(argv, options, stdout) {
   const skillId = args[0] === "use" ? args[1] : args[0];
   const workflow = options.get("workflow");
   if (skillId === undefined) {
-    throw new Error("Usage: skillboard guard use <skill-id> [--agent <name>]");
+    throw new Error(selectorUsage("skillboard guard use <skill-id>"));
   }
-  const workspace = await loadWorkspace({ configPath: configPath(options), skillsRoot: skillsRoot(options) });
+  const config = configPath(options);
+  const workspace = await loadWorkspace({ configPath: config, skillsRoot: skillsRoot(options) });
   const hookProjection = options.get("hook-projection-version") ?? process.env.SKILLBOARD_POLICY_PROJECTION_VERSION;
   if (args[0] !== "use" && hookProjection === undefined) {
     throw new Error("This pre-v2 policy projection is stale; regenerate the guard hook from version 2 policy.");
@@ -634,10 +630,7 @@ async function guard(argv, options, stdout) {
     throw new Error("This pre-v2 policy projection is stale; regenerate the guard hook from version 2 policy.");
   }
   assertCurrentProjectionVersion(hookProjection, workspace.version);
-  assertV2AgentOption(workspace, options, "skillboard guard use <skill-id> --agent <name>");
-  if (workspace.version === 1 && workflow === undefined) {
-    throw new Error("Usage: skillboard guard use <skill-id> --workflow <name>");
-  }
+  assertPolicySelectorOption(workspace, options, "skillboard guard use <skill-id>", config);
   const result = canUseSkill(workspace, skillId, workflow, options.get("agent"));
   if (options.get("json") === "true") {
     stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -1272,15 +1265,37 @@ function statePaths(options) {
   });
 }
 
-function assertV2AgentOption(workspace, options, usage) {
-  if (workspace.version !== 2) return;
+function assertPolicySelectorOption(workspace, options, command, config) {
   const agent = options.get("agent");
+  const workflow = options.get("workflow");
+  if (workspace.version === 1) {
+    if (agent !== undefined) {
+      throw new Error([
+        "This workspace uses a version 1 policy, which selects with --workflow <name>.",
+        `Either pass --workflow, or preview migration with: skillboard migrate v2 --config ${shellQuote(config)} --json`
+      ].join("\n"));
+    }
+    if (workflow === undefined) {
+      throw new Error(selectorUsage(command));
+    }
+    return;
+  }
+  if (workflow !== undefined) {
+    throw new Error([
+      "This workspace uses a version 2 policy, which selects with --agent <name>.",
+      "Pass --agent instead of --workflow."
+    ].join("\n"));
+  }
   if (agent === undefined) {
-    throw new Error(`Version 2 availability requires --agent. Usage: ${usage}`);
+    throw new Error(`Version 2 availability requires --agent. ${selectorUsage(command)}`);
   }
   if (!supportedAgentNames().includes(agent)) {
     throw new Error(`Unsupported agent: ${agent}. Expected one of: ${supportedAgentNames().join(", ")}.`);
   }
+}
+
+function selectorUsage(command) {
+  return `Usage: ${command} --agent <name> (v2 policy) | --workflow <name> (v1 policy)`;
 }
 
 const VALUE_OPTIONS = new Set([
@@ -1804,9 +1819,9 @@ function helpText() {
     "  check --config <path> --skills <dir>",
     "  list [skills|workflows|harnesses|install-units] [--config <path>] [--skills <dir>] [--json]",
     "  explain <skill-id> [--config <path>] [--skills <dir>] [--json]",
-    "  route <intent> --agent codex|claude|opencode|hermes [--config <path>] [--skills <dir>] [--json]",
-    "  can-use <skill-id> --agent codex|claude|opencode|hermes [--config <path>] [--skills <dir>] [--json]",
-    "  guard use <skill-id> --agent codex|claude|opencode|hermes [--config <path>] [--skills <dir>] [--json]",
+    "  route <intent> --agent codex|claude|opencode|hermes (v2 policy) | --workflow <name> (v1 policy) [--config <path>] [--skills <dir>] [--json]",
+    "  can-use <skill-id> --agent codex|claude|opencode|hermes (v2 policy) | --workflow <name> (v1 policy) [--config <path>] [--skills <dir>] [--json]",
+    "  guard use <skill-id> --agent codex|claude|opencode|hermes (v2 policy) | --workflow <name> (v1 policy) [--config <path>] [--skills <dir>] [--json]",
     "",
     "Advanced operator commands:",
     "  Import, audit, rollout, hook, lock, variant, reconcile, impact, dashboard, and v1 lifecycle commands remain available through command-specific help and docs/reference.md.",
@@ -2071,14 +2086,15 @@ function briefHelpText() {
 
 function routeHelpText() {
   return [
-    "Usage: skillboard route <intent> --agent codex|claude|opencode|hermes [--config <path>] [--skills <dir>] [--json]",
+    "Usage: skillboard route <intent> --agent codex|claude|opencode|hermes (v2 policy) | --workflow <name> (v1 policy) [--config <path>] [--skills <dir>] [--json]",
     "",
     "Suggests the routed skill for a user request when several allowed skills may overlap.",
     "Use it when the AI needs a skill recommendation without changing policy.",
     "",
     "Options:",
     "  <intent>           Natural-language request, such as \"write tests first\".",
-    "  --agent <name>     Route among skills installed for this agent.",
+    "  --agent <name> (v2 policy) | --workflow <name> (v1 policy)",
+    "                     Route with the selector required by the detected policy version.",
     "  --config <path>    Use a specific skillboard.config.yaml.",
     "  --skills <dir>     Use a specific skills directory.",
     "  --json             Print an agent-readable payload.",
@@ -2094,14 +2110,15 @@ function routeHelpText() {
 
 function canUseHelpText() {
   return [
-    "Usage: skillboard can-use <skill-id> --agent codex|claude|opencode|hermes [--config <path>] [--skills <dir>] [--json]",
+    "Usage: skillboard can-use <skill-id> --agent codex|claude|opencode|hermes (v2 policy) | --workflow <name> (v1 policy) [--config <path>] [--skills <dir>] [--json]",
     "",
     "Checks whether one skill is enabled and installed for the selected agent without changing policy.",
     "Use it when the AI needs an availability answer for a named skill.",
     "",
     "Options:",
     "  <skill-id>         Skill id to check.",
-    "  --agent <name>     Agent that would use the skill.",
+    "  --agent <name> (v2 policy) | --workflow <name> (v1 policy)",
+    "                     Select the agent or legacy workflow that would use the skill.",
     "  --config <path>    Use a specific skillboard.config.yaml.",
     "  --skills <dir>     Use a specific skills directory.",
     "  --json             Print an agent-readable payload.",
@@ -2116,7 +2133,7 @@ function canUseHelpText() {
 
 function guardHelpText() {
   return [
-    "Usage: skillboard guard use <skill-id> --agent codex|claude|opencode|hermes [--config <path>] [--skills <dir>] [--json]",
+    "Usage: skillboard guard use <skill-id> --agent codex|claude|opencode|hermes (v2 policy) | --workflow <name> (v1 policy) [--config <path>] [--skills <dir>] [--json]",
     "",
     "Checks whether one skill may be used right now.",
     "Run this immediately before the AI invokes a skill.",
@@ -2124,7 +2141,8 @@ function guardHelpText() {
     "Options:",
     "  use                Guard a skill invocation.",
     "  <skill-id>         Skill id to check.",
-    "  --agent <name>     Agent that will use the skill.",
+    "  --agent <name> (v2 policy) | --workflow <name> (v1 policy)",
+    "                     Select the agent or legacy workflow that will use the skill.",
     "  --config <path>    Use a specific skillboard.config.yaml.",
     "  --skills <dir>     Use a specific skills directory.",
     "  --json             Print an agent-readable payload.",

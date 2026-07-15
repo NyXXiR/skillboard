@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- Added deterministic Unicode intent tokenization with whole-run and character
+  bigram matching for Hangul and CJK route and brief requests.
+
+### Changed
+
+- Made route, can-use, and guard errors explain whether the detected policy
+  expects v2 `--agent` or v1 `--workflow`, including the v1 migration preview.
+
 ## 0.3.2 — 2026-07-14
 
 ### Changed

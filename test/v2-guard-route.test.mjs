@@ -226,10 +226,46 @@ test("v1 CLI still requires workflow before guard, can-use, and route", async ()
     for (const args of [["guard", "use", "global"], ["can-use", "global"], ["route", "use global"]]) {
       const result = await runCli([...args, "--config", join(root, "skillboard.config.yaml")]);
       assert.equal(result.code, 1);
-      assert.match(result.stderr, /Usage: skillboard (?:guard use|can-use|route).*--workflow <name>/);
+      assert.match(
+        result.stderr,
+        /Usage: skillboard (?:guard use|can-use|route).*--agent <name> \(v2 policy\).*--workflow <name> \(v1 policy\)/
+      );
     }
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("CLI explains v1 and v2 selector flag mismatches", async () => {
+  const commands = [
+    ["route", "use global"],
+    ["can-use", "global"],
+    ["guard", "use", "global"]
+  ];
+  const v1Root = await cliFixture(1);
+  const v2Root = await cliFixture(2);
+  try {
+    const v1Config = join(v1Root, "skillboard.config.yaml");
+    const v2Config = join(v2Root, "skillboard.config.yaml");
+    for (const args of commands) {
+      const v1Mismatch = await runCli([...args, "--agent", "codex", "--config", v1Config]);
+      assert.equal(v1Mismatch.code, 1, v1Mismatch.stderr);
+      assert.match(v1Mismatch.stderr, /workspace uses a version 1 policy/i);
+      assert.match(v1Mismatch.stderr, /--workflow <name>/);
+      assert.match(
+        v1Mismatch.stderr,
+        new RegExp(`skillboard migrate v2 --config ${escapeRegExp(v1Config)} --json`)
+      );
+
+      const v2Mismatch = await runCli([...args, "--workflow", "legacy", "--config", v2Config]);
+      assert.equal(v2Mismatch.code, 1, v2Mismatch.stderr);
+      assert.match(v2Mismatch.stderr, /workspace uses a version 2 policy/i);
+      assert.match(v2Mismatch.stderr, /--agent <name>/);
+      assert.match(v2Mismatch.stderr, /instead of --workflow/i);
+    }
+  } finally {
+    await rm(v1Root, { recursive: true, force: true });
+    await rm(v2Root, { recursive: true, force: true });
   }
 });
 
@@ -270,4 +306,8 @@ async function runCli(args) {
   } catch (error) {
     return { code: error.code, stdout: error.stdout ?? "", stderr: error.stderr ?? "" };
   }
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }

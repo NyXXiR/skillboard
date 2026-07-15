@@ -193,8 +193,8 @@ node bin/skillboard.mjs brief --intent "유튜브 쇼츠 영상 제작" \
 - [x] Confirm `phraseKey` is runtime-only under `src/` and `test/`.
 - [x] Add failing Unicode token, route-selection, and Korean brief CLI tests.
 - [x] Implement Unicode/CJK tokenization and pass focused tests.
-- [ ] Add failing v1/v2 flag mismatch and help/reference tests.
-- [ ] Implement flag guidance, help/reference consistency, and release notes.
+- [x] Add failing v1/v2 flag mismatch and help/reference tests.
+- [x] Implement flag guidance, help/reference consistency, and release notes.
 - [ ] Pass diagnostics, full checks, and manual CLI QA.
 - [ ] Mark the plan consumed and write the shared Codex work log.
 
@@ -204,11 +204,15 @@ node bin/skillboard.mjs brief --intent "유튜브 쇼츠 영상 제작" \
   brief CLI test returned `recommended_skill: null`; ASCII baseline passed.
 - Post-change GREEN evidence: all 5 Unicode/route tests and the focused Korean
   brief CLI test pass; `node --check src/route-tokens.mjs` exits 0.
+- P1 RED evidence: v1 mismatch remained a bare usage error, v2 `--workflow`
+  lacked selector guidance, and help/reference exposed only v2 `--agent`.
+- P1 GREEN evidence: 24/24 affected CLI/help/docs tests pass and
+  `npm run diagnostics` exits 0.
 - ASCII `phraseKey` baseline: `youtube shorts short videos video`.
 - No persisted `phraseKey` consumer exists; all references are runtime route
   comparisons in `src/route-selection.mjs`.
 
 ### Resume State
 
-Add v1 `--agent` and v2 `--workflow` mismatch tests for route, can-use, and
-guard, capture the RED state, then update the shared CLI validation path.
+Run `npm run check`, then exercise Korean brief, both selector mismatch
+directions, and top-level help through `node bin/skillboard.mjs`.

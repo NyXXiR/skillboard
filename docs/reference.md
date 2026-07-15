@@ -16,9 +16,9 @@ Source tree: replace `skillboard ` with `node bin/skillboard.mjs `.
 skillboard setup [--yes] [--agent codex[,claude,opencode,hermes]] [--skill-root <path>]
 skillboard inventory refresh [--config <path>] [--dry-run] [--json]
 skillboard brief [--agent codex|claude|opencode|hermes] [--intent <request>] [--include-actions] [--json]
-skillboard route <intent> --agent codex|claude|opencode|hermes [--json]
-skillboard can-use <skill-id> --agent codex|claude|opencode|hermes [--json]
-skillboard guard use <skill-id> --agent codex|claude|opencode|hermes [--json]
+skillboard route <intent> --agent <name> (v2 policy) | --workflow <name> (v1 policy) [--json]
+skillboard can-use <skill-id> --agent <name> (v2 policy) | --workflow <name> (v1 policy) [--json]
+skillboard guard use <skill-id> --agent <name> (v2 policy) | --workflow <name> (v1 policy) [--json]
 skillboard skill enable <skill-id> [--dry-run] [--json]
 skillboard skill disable <skill-id> [--dry-run] [--json]
 skillboard skill share <skill-id> [--dry-run] [--json]
@@ -56,6 +56,9 @@ availability.
 Version 2 route, can-use, and guard require `--agent`; generated agent guidance
 passes it automatically. This prevents one agent from selecting another
 agent's local-only skill without adding a user prompt to the normal flow.
+Version 1 compatibility policy uses `--workflow` instead. Passing the selector
+for the other policy version exits with guidance for the detected version and,
+for v1, the exact `migrate v2` preview command.
 
 ## Config schema v2
 

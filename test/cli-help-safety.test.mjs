@@ -28,6 +28,12 @@ test("direct source cli help renders AI-mediated help", async () => {
     result.stdout.indexOf("Core AI/automation operations:"),
     result.stdout.indexOf("Legacy v1 project policy mode:")
   );
+  for (const command of ["route <intent>", "can-use <skill-id>", "guard use <skill-id>"]) {
+    assert.match(
+      automationSection,
+      new RegExp(`${command.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}[^\\n]*--agent[^\\n]*v2 policy[^\\n]*--workflow[^\\n]*v1 policy`, "i")
+    );
+  }
   assert.doesNotMatch(automationSection, /^\s+init /m);
   assert.match(result.stdout, /Legacy v1 project policy mode:/);
   assert.match(result.stdout, /init \[--dir <path>\]/);
@@ -113,6 +119,12 @@ test("primary AI-loop commands expose safe command-local help", async () => {
       }
       if (entry.args[1] === "guard") {
         assert.match(result.stdout, /If allowed, disclose the skill at the start and completion; do not ask for another approval/i);
+      }
+      if (["route", "guard", "can-use"].includes(entry.args[1])) {
+        assert.match(
+          result.stdout,
+          /--agent <name> \(v2 policy\) \| --workflow <name> \(v1 policy\)/i
+        );
       }
       if (entry.args[1] === "init") {
         assert.match(result.stdout, /Deprecated project-local policy bootstrap/i);
