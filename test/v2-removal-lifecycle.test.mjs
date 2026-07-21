@@ -11,19 +11,28 @@ import YAML from "yaml";
 const execFileAsync = promisify(execFile);
 const CLI = fileURLToPath(new URL("../bin/skillboard.mjs", import.meta.url));
 
-test("skill forget removes only an absent unshared policy entry and restores doctor health", async () => {
+test("skill forget removes only an absent unshared stale observation from already healthy status", async () => {
   await withHome(async ({ home, env }) => {
     await installSkill(home, "demo");
     await run(["setup", "--agent", "codex", "--yes"], env);
     await rm(join(home, ".codex", "skills", "demo"), { recursive: true, force: true });
     await run(["inventory", "refresh", "--json"], env);
 
+    const beforeForgetStatus = await run(["status", "--strict", "--json"], env);
+    assert.equal(beforeForgetStatus.code, 0, commandFailure(beforeForgetStatus));
+    const beforeForgetHealth = JSON.parse(beforeForgetStatus.stdout);
+    assert.equal(beforeForgetHealth.ok, true);
+    assert.equal(beforeForgetHealth.strictOk, true);
+    assert.equal(beforeForgetHealth.mode, "passed");
+    assert.deepEqual(beforeForgetHealth.inventory.errors, []);
+    assert.deepEqual(beforeForgetHealth.inventory.stalePolicySkills, ["demo"]);
+
     const configPath = join(home, "skillboard.config.yaml");
-    const before = await readFile(configPath, "utf8");
+    const before = await readFile(configPath);
     const preview = await run(["skill", "forget", "demo", "--dry-run", "--json"], env);
     assert.equal(preview.code, 0, commandFailure(preview));
     assert.equal(JSON.parse(preview.stdout).dryRun, true);
-    assert.equal(await readFile(configPath, "utf8"), before);
+    assert.deepEqual(await readFile(configPath), before);
 
     const applied = await run(["skill", "forget", "demo", "--json"], env);
     assert.equal(applied.code, 0, commandFailure(applied));
@@ -33,7 +42,9 @@ test("skill forget removes only an absent unshared policy entry and restores doc
 
     const doctor = await run(["doctor", "--json"], env);
     assert.equal(doctor.code, 0, commandFailure(doctor));
-    assert.equal(JSON.parse(doctor.stdout).ok, true);
+    const health = JSON.parse(doctor.stdout);
+    assert.equal(health.ok, true);
+    assert.deepEqual(health.inventory.stalePolicySkills, []);
 
     const installed = await run(["skill", "forget", "skillboard"], env);
     assert.equal(installed.code, 1);
@@ -61,29 +72,38 @@ test("skill forget refuses shared policy even when inventory no longer observes 
   });
 });
 
-test("brief offers one current forget action that apply-action previews and applies", async () => {
+test("healthy brief offers exactly one current confirmed forget action that previews and applies", async () => {
   await withHome(async ({ home, env }) => {
     await installSkill(home, "demo");
     await run(["setup", "--agent", "codex", "--yes"], env);
     await rm(join(home, ".codex", "skills", "demo"), { recursive: true, force: true });
     await run(["inventory", "refresh", "--json"], env);
 
-    const brief = JSON.parse((await run([
+    const briefResult = await run([
       "brief", "--agent", "codex", "--include-actions", "--json"
-    ], env)).stdout);
-    const action = brief.actions.find((candidate) => candidate.id === "v2:forget-skill:demo");
-    assert.ok(action);
+    ], env);
+    assert.equal(briefResult.code, 0, commandFailure(briefResult));
+    const brief = JSON.parse(briefResult.stdout);
+    assert.equal(brief.ok, true);
+    assert.equal(brief.health.mode, "passed");
+    assert.equal(brief.health.strict_ok, true);
+    assert.deepEqual(brief.health.inventory.errors, []);
+    assert.deepEqual(brief.health.inventory.stale_policy_skills, ["demo"]);
+    assert.equal(brief.assistant_guidance.status, "ready");
+    const forgetActions = brief.actions.filter((candidate) => candidate.kind === "v2:forget-skill");
+    assert.deepEqual(forgetActions.map((candidate) => candidate.id), ["v2:forget-skill:demo"]);
+    const [action] = forgetActions;
     assert.equal(action.requires_user_confirmation, true);
     assert.match(action.application.apply.display, /--agent codex/);
 
     const configPath = join(home, "skillboard.config.yaml");
-    const before = await readFile(configPath, "utf8");
+    const before = await readFile(configPath);
     const preview = await run([
       "apply-action", action.id, "--agent", "codex", "--dry-run", "--json"
     ], env);
     assert.equal(preview.code, 0, commandFailure(preview));
     assert.equal(JSON.parse(preview.stdout).control.dryRun, true);
-    assert.equal(await readFile(configPath, "utf8"), before);
+    assert.deepEqual(await readFile(configPath), before);
 
     const applied = await run([
       "apply-action", action.id, "--agent", "codex", "--yes", "--json"

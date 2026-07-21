@@ -47,7 +47,7 @@ export async function doctorProject(options = {}) {
     bridges,
     installation,
     workspace: emptyWorkspaceSummary(),
-    inventory: { required: false, ok: true, path: null, errors: [] },
+    inventory: { required: false, ok: true, path: null, errors: [], stalePolicySkills: [] },
     policy: { ok: false, errors: [], warnings: [] },
     sources: { checked: false, verified: options.verifySources === true, ok: false, errors: [], warnings: [], blockingWarnings: [], units: [] },
     uninstall,
@@ -136,12 +136,9 @@ function doctorRecommendations(result) {
   const recommendations = [];
   if (!result.inventory.ok) {
     recommendations.push("run skillboard inventory refresh and fix generated inventory integrity errors");
-    for (const error of result.inventory.errors) {
-      const match = /^skill (?<skill>[^ ]+) is missing from generated inventory$/u.exec(error);
-      if (match?.groups?.skill !== undefined) {
-        recommendations.push(`reinstall ${match.groups.skill} or run skillboard skill forget ${match.groups.skill}`);
-      }
-    }
+  }
+  for (const skill of result.inventory.stalePolicySkills) {
+    recommendations.push(`reinstall ${skill} or run skillboard skill forget ${skill}`);
   }
   if (!result.bridges.some((bridge) => bridge.status === "installed")) {
     recommendations.push("legacy project bridge blocks are absent; run skillboard init only if maintaining deprecated project-local policy");
@@ -176,20 +173,22 @@ function doctorRecommendations(result) {
 
 function inventoryHealth(workspace) {
   if (workspace.version !== 2) {
-    return { required: false, ok: true, path: null, errors: [] };
+    return { required: false, ok: true, path: null, errors: [], stalePolicySkills: [] };
   }
   const errors = [...(workspace.inventory?.integrityErrors ?? ["generated inventory is unavailable"])];
   const observed = new Set(workspace.inventory?.skillIds ?? []);
-  for (const skill of workspace.skills) {
-    if (!observed.has(skill.id)) {
-      errors.push(`skill ${skill.id} is missing from generated inventory`);
-    }
-  }
+  const stalePolicySkills = errors.length === 0
+    ? workspace.skills
+      .map((skill) => skill.id)
+      .filter((skillId) => !observed.has(skillId))
+      .sort((left, right) => left.localeCompare(right))
+    : [];
   return {
     required: true,
     ok: errors.length === 0,
     path: workspace.inventory?.path ?? null,
-    errors
+    errors,
+    stalePolicySkills
   };
 }
 

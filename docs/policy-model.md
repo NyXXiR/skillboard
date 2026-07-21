@@ -54,6 +54,15 @@ optional audit metadata and never determine availability. Runtime and action
 authorization are outside SkillBoard's scope and remain with the agent or
 harness.
 
+Generated-inventory integrity is separate from stale removed-skill policy.
+Missing, malformed, unsupported, duplicate, or internally inconsistent
+inventory remains a hard health failure. When inventory is valid, policy ids it
+does not observe are reported as sorted stale-policy observations without
+failing strict health, changing passed mode, or blocking other observed skills.
+The absent skill remains unavailable to route and guard. Stale policy is retained
+until an explicit, confirmation-required forget action removes only that policy
+entry; SkillBoard never auto-deletes it.
+
 ## Installation default
 
 A newly discovered valid skill receives `enabled: true` and `shared: false`.

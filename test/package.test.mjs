@@ -127,7 +127,7 @@ test("npm pack dry-run includes public runtime files and excludes work artifacts
   const [pack] = JSON.parse(result.stdout);
   const paths = pack.files.map((file) => file.path);
 
-  assert.equal(pack.version, "0.3.3");
+  assert.equal(pack.version, "0.3.4");
   assert.ok(paths.includes("bin/skillboard.mjs"));
   assert.ok(paths.includes("bin/postinstall.mjs"));
   assert.ok(paths.includes("src/doctor.mjs"));

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.3.4 — 2026-07-21
+
+### Fixed
+
+- Separated generated-inventory integrity failures from sorted stale
+  removed-skill policy observations. Valid inventory now keeps doctor, status,
+  brief, strict health, and observed-skill routing healthy while absent skills
+  remain guard-denied and available for explicit, confirmation-required policy
+  forget actions.
+
 ## 0.3.3 — 2026-07-15
 
 ### Added

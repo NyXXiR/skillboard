@@ -53,6 +53,7 @@ export function renderSkillBrief(brief, options = {}) {
   }
   emitIntentRoute(lines, brief);
   emitPolicyHealth(lines, brief);
+  emitStalePolicy(lines, brief);
   emitCategorySummary(lines, brief);
   emitNextAction(lines, brief, { verbose });
   emitAvailableNowSection(lines, brief, { verbose });
@@ -106,6 +107,19 @@ function emitPolicyHealth(lines, brief) {
   emitPolicyDiagnostics(lines, "Policy errors", errors);
   emitPolicyDiagnostics(lines, "Policy warnings", warnings);
   lines.push(`- check with: ${code(policyCheckCommand(brief), Number.POSITIVE_INFINITY)}`);
+  lines.push("");
+}
+
+function emitStalePolicy(lines, brief) {
+  const skills = brief.health?.inventory?.stale_policy_skills ?? [];
+  if (skills.length === 0) {
+    return;
+  }
+  lines.push("## Stale removed-skill policy", "");
+  lines.push("These policy entries are retained for explicit review and do not block other installed skills.");
+  for (const skill of skills) {
+    lines.push(`- ${safeText(skill)}`);
+  }
   lines.push("");
 }
 

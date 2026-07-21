@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -11,12 +11,119 @@ import { impactDisable } from "../src/impact.mjs";
 import { reconcileWorkspace } from "../src/reconcile.mjs";
 import { routeSkill } from "../src/route.mjs";
 import { variantLifecycleStatus } from "../src/control/variant-status.mjs";
+import { runCli } from "./helpers/brief-cli.mjs";
+import { withV2StalePolicyFixture } from "./helpers/v2-stale-policy-fixture.mjs";
 
-test("doctor and brief fail health when v2 inventory is missing, malformed, or stale", async () => {
+test("valid v2 inventory keeps stale removed-skill policy healthy and explicitly forgettable", async () => {
+  await withV2StalePolicyFixture(async ({ root, configPath, skillsRoot }) => {
+    const doctor = await doctorProject({ root, configPath, skillsRoot });
+    assert.equal(doctor.ok, true);
+    assert.equal(doctor.strictOk, true);
+    assert.equal(doctor.reviewRequired, false);
+    assert.equal(doctor.mode, "passed");
+    assert.equal(doctor.inventory.ok, true);
+    assert.deepEqual(doctor.inventory.errors, []);
+    assert.deepEqual(doctor.inventory.stalePolicySkills, ["removed"]);
+
+    const brief = await buildSkillBrief({
+      root, configPath, skillsRoot, agent: "codex", includeActions: true
+    });
+    assert.equal(brief.ok, true);
+    assert.equal(brief.health.mode, "passed");
+    assert.equal(brief.health.strict_ok, true);
+    assert.equal(brief.health.review_required, false);
+    assert.equal(brief.health.inventory.ok, true);
+    assert.deepEqual(brief.health.inventory.errors, []);
+    assert.deepEqual(brief.health.inventory.stale_policy_skills, ["removed"]);
+    assert.equal(brief.assistant_guidance.status, "ready");
+
+    for (const extra of [[], ["--strict"]]) {
+      const status = await runCli([
+        "status", "--config", configPath, "--skills", skillsRoot, ...extra, "--json"
+      ]);
+      assert.equal(status.code, 0, status.stderr);
+      const payload = JSON.parse(status.stdout);
+      assert.equal(payload.ok, true);
+      assert.equal(payload.strictOk, true);
+      assert.equal(payload.mode, "passed");
+      assert.deepEqual(payload.inventory.stalePolicySkills, ["removed"]);
+    }
+
+    const statusSummary = await runCli([
+      "status", "--summary", "--config", configPath, "--skills", skillsRoot
+    ]);
+    assert.equal(statusSummary.code, 0, statusSummary.stderr);
+    assert.match(statusSummary.stdout, /Inventory integrity: passed \(0 errors\)/);
+    assert.match(statusSummary.stdout, /Stale removed-skill policy: 1/);
+
+    const statusDetail = await runCli([
+      "status", "--config", configPath, "--skills", skillsRoot
+    ]);
+    assert.equal(statusDetail.code, 0, statusDetail.stderr);
+    assert.match(statusDetail.stdout, /Inventory integrity: passed \(0 errors\)/);
+    assert.match(statusDetail.stdout, /Stale removed-skill policy \(1\): `removed`/);
+
+    const briefCli = await runCli([
+      "brief", "--agent", "codex", "--include-actions",
+      "--config", configPath, "--skills", skillsRoot, "--json"
+    ]);
+    assert.equal(briefCli.code, 0, briefCli.stderr);
+    assert.equal(JSON.parse(briefCli.stdout).ok, true);
+
+    const routed = await runCli([
+      "route", "use a skill", "--agent", "codex",
+      "--config", configPath, "--skills", skillsRoot, "--json"
+    ]);
+    assert.equal(routed.code, 0, routed.stderr);
+    assert.deepEqual(JSON.parse(routed.stdout).possible_skills.map(({ id }) => id), ["observed"]);
+
+    const allowed = await runCli([
+      "guard", "use", "observed", "--agent", "codex",
+      "--config", configPath, "--skills", skillsRoot, "--json"
+    ]);
+    assert.equal(allowed.code, 0, allowed.stderr);
+    assert.equal(JSON.parse(allowed.stdout).allowed, true);
+
+    const denied = await runCli([
+      "guard", "use", "removed", "--agent", "codex",
+      "--config", configPath, "--skills", skillsRoot, "--json"
+    ]);
+    assert.equal(denied.code, 2, denied.stderr);
+    assert.equal(JSON.parse(denied.stdout).integrityError, true);
+
+    const forgetActions = brief.actions.filter((action) => action.kind === "v2:forget-skill");
+    assert.deepEqual(forgetActions.map((action) => action.id), ["v2:forget-skill:removed"]);
+    assert.equal(forgetActions[0].requires_user_confirmation, true);
+
+    const before = await readFile(configPath);
+    const preview = await runCli([
+      "apply-action", forgetActions[0].id, "--agent", "codex",
+      "--config", configPath, "--skills", skillsRoot, "--dry-run", "--json"
+    ]);
+    assert.equal(preview.code, 0, preview.stderr);
+    assert.deepEqual(await readFile(configPath), before);
+  });
+});
+
+test("doctor and brief fail health when v2 inventory is missing, malformed, unsupported, or inconsistent", async () => {
+  const observed = { id: "demo", path: "demo", owner_install_unit: "codex.user-skills" };
   for (const inventoryText of [
     null,
     "{bad-json",
-    JSON.stringify({ format_version: 1, generated: true, authoritative_for_availability: false, skills: [] })
+    JSON.stringify({ format_version: 2, generated: true, authoritative_for_availability: false, skills: [] }),
+    JSON.stringify({ format_version: 1, generated: false, authoritative_for_availability: true, skills: [] }),
+    JSON.stringify({
+      format_version: 1, generated: true, authoritative_for_availability: false,
+      skills: [observed, observed]
+    }),
+    JSON.stringify({
+      format_version: 1, generated: true, authoritative_for_availability: false,
+      skills: [{ id: "demo", path: "", owner_install_unit: "" }]
+    }),
+    JSON.stringify({
+      format_version: 1, generated: true, authoritative_for_availability: false,
+      skills: [observed], install_units: [{ id: "unit" }, { id: "unit" }]
+    })
   ]) {
     const fixture = await writeV2Fixture(inventoryText);
     try {
@@ -26,12 +133,14 @@ test("doctor and brief fail health when v2 inventory is missing, malformed, or s
       assert.equal(doctor.mode, "failed");
       assert.equal(doctor.inventory.ok, false);
       assert.match(doctor.inventory.errors.join("\n"), /inventory/i);
+      assert.deepEqual(doctor.inventory.stalePolicySkills, []);
 
       const brief = await buildSkillBrief(fixture);
       assert.equal(brief.ok, false);
       assert.equal(brief.health.mode, "failed");
       assert.equal(brief.health.strict_ok, false);
       assert.equal(brief.health.inventory.ok, false);
+      assert.deepEqual(brief.health.inventory.stale_policy_skills, []);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }

@@ -10,7 +10,7 @@ skill. The model makes semantic skill choices from the request, eligible skill
 descriptions, and raw saved preferences. SkillBoard does not tokenize, score,
 match, or recommend from v2 request text.
 
-Status: public alpha. Package 0.3.3 writes policy schema v2.
+Status: public alpha. Package 0.3.4 writes policy schema v2.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/NyXXiR/skillboard/main/skillboard.png" alt="SkillBoard architecture diagram" width="100%">
@@ -191,6 +191,15 @@ skillboard skill forget <skill-id>
 
 `forget` never deletes skill files. It refuses skills that are still observed or
 shared, so shared skills must be unshared first.
+
+A valid generated inventory remains healthy when it no longer observes an
+unshared policy entry. Doctor/status expose sorted entries as
+`inventory.stalePolicySkills`; brief exposes the same observation as
+`health.inventory.stale_policy_skills`. Stale removed-skill policy does not fail
+strict health, change passed mode, or block other observed skills. The absent
+skill itself remains unavailable to route and guard. SkillBoard never deletes
+these entries automatically: review one current forget action, confirm it, and
+then reread the returned brief.
 
 Before removing the SkillBoard package, preview and apply the complete
 user-level cleanup:

@@ -103,6 +103,17 @@ provenance, digests, aliases, install units, and runtime-component observations.
 Only `installed_on` participates in the presence check. Other observations are
 optional audit metadata and never determine availability.
 
+Missing, invalid JSON, unsupported flags or format, duplicate records, and
+malformed records are generated-inventory integrity failures. With an otherwise
+valid inventory, policy ids absent from inventory are instead sorted,
+non-blocking stale-policy observations. Doctor/status return them in
+`inventory.stalePolicySkills`; brief returns them in
+`health.inventory.stale_policy_skills`. They do not fail strict health or stop
+observed skills from routing and guard, while the specifically absent skill
+remains unavailable. No command automatically removes stale policy. A current
+`v2:forget-skill:<skill-id>` action requires explicit confirmation, refuses
+installed or shared skills, and changes policy only.
+
 Runtime and action authorization are outside SkillBoard's scope. The active
 agent or harness owns permission checks for hooks, MCP servers, commands,
 network access, external writes, destructive operations, and secrets.

@@ -97,6 +97,18 @@ test("policy action docs identify current v2 action cards and post-apply reread"
   assert.match(text, /post-apply brief|rereads? the (?:returned|resulting) brief/i);
 });
 
+test("docs keep stale removed-skill policy non-blocking and explicitly forgettable", async () => {
+  const text = await readCombined(["README.md", "docs/reference.md", "docs/policy-model.md"]);
+
+  assert.match(text, /valid (?:generated )?inventory[^.]*healthy[^.]*policy/i);
+  assert.match(text, /stale[^.]*does not fail[^.]*strict/i);
+  assert.match(text, /(?:do not block|without[^.]*blocking)[^.]*other observed skills/i);
+  assert.match(text, /absent skill[^.]*unavailable[^.]*route and guard/i);
+  assert.match(text, /never (?:deletes?|auto-deletes?)[^.]*automatically|never auto-deletes?/i);
+  assert.match(text, /forget action[^.]*explicit confirmation|confirmation-required forget action/i);
+  assert.match(text, /refuses[^.]*installed or shared skills/i);
+});
+
 async function readCombined(files) {
   return (await Promise.all(files.map((file) => readFile(file, "utf8")))).join("\n");
 }

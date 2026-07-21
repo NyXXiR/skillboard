@@ -93,7 +93,8 @@ export function healthFromDoctor(doctor, paths) {
       required: true,
       ok: doctor.inventory.ok,
       path: doctor.inventory.path,
-      errors: sortedStrings(doctor.inventory.errors)
+      errors: sortedStrings(doctor.inventory.errors),
+      stale_policy_skills: sortedStrings(doctor.inventory.stalePolicySkills ?? [])
     };
   }
   return health;

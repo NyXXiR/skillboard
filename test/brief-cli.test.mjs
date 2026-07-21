@@ -17,6 +17,25 @@ import {
 } from "./helpers/brief-cli.mjs";
 import { displayCommand } from "./helpers/expected-command.mjs";
 import { withKoreanRouteFixture } from "./helpers/korean-route-fixture.mjs";
+import { withV2StalePolicyFixture } from "./helpers/v2-stale-policy-fixture.mjs";
+
+test("brief text reports stale removed-skill policy without changing usable counts", async () => {
+  await withV2StalePolicyFixture(async ({ configPath, skillsRoot }) => {
+    const result = await runCli([
+      "brief", "--agent", "codex", "--config", configPath, "--skills", skillsRoot
+    ]);
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /AI can use now: 1 \(1 automatic, 0 manual\)/);
+    assert.match(result.stdout, /## Stale removed-skill policy/);
+    assert.match(
+      result.stdout,
+      /retained for explicit review and do not block other installed skills/i
+    );
+    assert.match(result.stdout, /^- removed$/m);
+    assert.doesNotMatch(result.stdout, /SkillBoard Brief[^]*needs attention/i);
+  });
+});
 
 test("brief command renders readable text sections", async () => {
   await withBriefFixture(async ({ configPath, skillsRoot }) => {

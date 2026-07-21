@@ -1709,6 +1709,8 @@ function renderDoctorSummary(result) {
     `SkillBoard doctor: ${status}`,
     renderInstallation(result.installation),
     `Workspace: ${result.workspace.skills.declared} skills, ${result.workspace.workflows} workflows, ${result.workspace.harnesses} harnesses, ${result.workspace.installUnits.total} install units`,
+    `Inventory integrity: ${result.inventory.ok ? "passed" : "failed"} (${result.inventory.errors.length} errors)`,
+    `Stale removed-skill policy: ${result.inventory.stalePolicySkills.length}`,
     `Source audit: ${result.sources.ok ? "passed" : "failed"} (${result.sources.errors.length} errors, ${result.sources.warnings.length} warnings, ${result.sources.blockingWarnings.length} blocking)`,
     `Policy: ${result.policy.ok ? "passed" : "failed"} (${result.policy.errors.length} errors, ${result.policy.warnings.length} warnings)`
   ];
@@ -1746,6 +1748,8 @@ function renderDoctor(result) {
     `Config: ${result.config.exists ? result.config.valid ? `valid v${result.config.version}` : `invalid (${result.config.error})` : "missing"}`,
     `Bridge: ${bridges}`,
     `Workspace: ${result.workspace.skills.declared} declared skills, ${result.workspace.skills.installed} installed skills, ${result.workspace.workflows} workflows, ${result.workspace.harnesses} harnesses, ${result.workspace.installUnits.total} install units`,
+    `Inventory integrity: ${result.inventory.ok ? "passed" : "failed"} (${result.inventory.errors.length} errors)`,
+    `Stale removed-skill policy (${result.inventory.stalePolicySkills.length}): ${formatList(result.inventory.stalePolicySkills)}`,
     `Skill states: ${renderCounts(result.workspace.skills.byStatus)}`,
     `Invocations: ${renderCounts(result.workspace.skills.byInvocation)}`,
     `Source classes: ${renderCounts(result.workspace.installUnits.bySourceClass)}`,
