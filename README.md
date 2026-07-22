@@ -1,6 +1,16 @@
 # SkillBoard
 
-SkillBoard gives AI agents one small user-level policy for installed skills:
+[![npm version](https://img.shields.io/npm/v/agent-skillboard.svg)](https://www.npmjs.com/package/agent-skillboard)
+[![CI](https://github.com/NyXXiR/skillboard/actions/workflows/check.yml/badge.svg)](https://github.com/NyXXiR/skillboard/actions/workflows/check.yml)
+[![license](https://img.shields.io/npm/l/agent-skillboard.svg)](LICENSE)
+
+After a global install, SkillBoard attaches guidance to detected Codex, Claude
+Code, OpenCode, and Hermes environments. When installed skills overlap, the
+active model chooses from eligible descriptions and saved preferences;
+SkillBoard then verifies that the chosen skill is enabled and installed for the
+current agent before use.
+
+SkillBoard keeps that behavior in one small user-level policy:
 
 1. Enable or disable a skill.
 2. Keep an enabled skill agent-local or shared across agents.
@@ -10,13 +20,16 @@ skill. The model makes semantic skill choices from the request, eligible skill
 descriptions, and raw saved preferences. SkillBoard does not tokenize, score,
 match, or recommend from v2 request text.
 
-Status: public alpha. Package 0.3.4 writes policy schema v2.
+Status: public alpha. Current releases use policy schema v2.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/NyXXiR/skillboard/main/skillboard.png" alt="SkillBoard architecture diagram" width="100%">
 </p>
 
 ## 5-Minute Quick Start
+
+Requires Node.js 14.21 or newer. SkillBoard currently supports Codex, Claude
+Code, OpenCode, and Hermes.
 
 Try the read-only CLI:
 
@@ -31,6 +44,12 @@ Install globally:
 npm install -g agent-skillboard
 skillboard doctor --summary
 ```
+
+Restart or refresh your AI agent after installation, then ask for work normally.
+SkillBoard is consulted when installed skills overlap or when you ask which
+skill should be used. For example:
+
+> Which skill should you use to create a source-verified executive report?
 
 The package postinstall sets up detected agent guidance and creates the
 user-level state at `~/skillboard.config.yaml` and
@@ -84,9 +103,6 @@ scope; per-skill `shared` remains the only cross-agent sharing decision.
 `sudo npm install -g agent-skillboard` is supported when system npm requires
 it. Setup resolves `SUDO_USER` and restores managed home files to that user.
 Setup and ordinary use write no project policy and require no project init.
-
-Ask the agent for the work you want. SkillBoard is consulted when skills overlap
-or when you ask which skill should be used.
 
 ## The v2 policy
 

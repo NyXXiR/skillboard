@@ -1,7 +1,7 @@
 {
   "name": "agent-skillboard",
   "version": "0.3.4",
-  "description": "Keep agent skills broadly available while routing overlaps consistently.",
+  "description": "Give Codex, Claude Code, OpenCode, and Hermes a policy for choosing and sharing overlapping agent skills.",
   "keywords": [
     "ai-agent",
     "agent-skills",

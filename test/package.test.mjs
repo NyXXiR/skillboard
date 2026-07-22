@@ -21,7 +21,10 @@ test("package manifest is publishable as the SkillBoard CLI", async () => {
   const manifest = JSON.parse(await readFile(resolve("package.json"), "utf8"));
 
   assert.equal(manifest.name, "agent-skillboard");
-  assert.equal(manifest.description, "Keep agent skills broadly available while routing overlaps consistently.");
+  assert.equal(
+    manifest.description,
+    "Give Codex, Claude Code, OpenCode, and Hermes a policy for choosing and sharing overlapping agent skills."
+  );
   assert.equal(manifest.private, undefined);
   assert.deepEqual(manifest.bin, {
     skillboard: "bin/skillboard.mjs",
