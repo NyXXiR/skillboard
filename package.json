@@ -1,6 +1,6 @@
 {
   "name": "agent-skillboard",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Give Codex, Claude Code, OpenCode, and Hermes a policy for choosing and sharing overlapping agent skills.",
   "keywords": [
     "ai-agent",

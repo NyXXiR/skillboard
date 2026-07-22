@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.3.5 — 2026-07-22
+
+### Changed
+
+- Clarified that global installation attaches SkillBoard guidance to detected
+  Codex, Claude Code, OpenCode, and Hermes environments while the active model
+  chooses among overlapping eligible skills and SkillBoard verifies the choice.
+- Added npm, CI, and license badges plus supported-agent, runtime, restart, and
+  first-use guidance to the quick start.
+- Updated npm package metadata to describe SkillBoard's installed-agent policy
+  and overlap-routing role directly.
+
 ## 0.3.4 — 2026-07-21
 
 ### Fixed
